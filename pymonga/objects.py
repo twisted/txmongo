@@ -16,6 +16,7 @@
 import types
 from pymonga._pymongo.son import SON
 from pymonga._pymongo.objectid import ObjectId
+from twisted.internet.defer import Deferred
 
 """Utilities for dealing with Mongo objects: Database and Collection"""
 
@@ -49,6 +50,15 @@ class Collection(object):
 	    as_dict[field] = 1
 	return as_dict
 
+    def _safe_operation(self, safe=False):
+	if safe is True:
+	    deferred = self._database["$cmd"].find_one({"getlasterror":1})
+	else:
+	    deferred = Deferred()
+	    deferred.callback(None)
+	return deferred
+	    
+
     def find(self, spec=None, skip=0, limit=0, fields=None):
 	if spec is None: spec = SON()
 	elif isinstance(spec, ObjectId): spec = SON(dict(_id=spec))
@@ -78,8 +88,7 @@ class Collection(object):
 	if not isinstance(docs, types.ListType):
 	    raise TypeError("insert takes a document or a list of documents")
 	self._database._connection._OP_INSERT(str(self), docs)
-	if safe is True:
-	    return self._database["$cmd"].find_one({"getlasterror":1})
+	return self._safe_operation(safe)
 
     def update(self, spec, document, upsert=False, safe=False):
 	if not isinstance(spec, types.DictType):
@@ -89,16 +98,14 @@ class Collection(object):
 	if not isinstance(upsert, types.BooleanType):
 	    raise TypeError("upsert must be an instance of bool")
 	self._database._connection._OP_UPDATE(str(self), spec, document)
-	if safe is True:
-	    return self._database["$cmd"].find_one({"getlasterror":1})
+	return self._safe_operation(safe)
     
     def remove(self, spec, safe=False):
 	if isinstance(spec, ObjectId): spec = SON(dict(_id=spec))
 	if not isinstance(spec, types.DictType):
 	    raise TypeError("spec must be an instance of dict, not %s" % type(spec))
 	self._database._connection._OP_DELETE(str(self), spec)
-	if safe is True:
-	    return self._database["$cmd"].find_one({"getlasterror":1})
+	return self._safe_operation(safe)
 
     def drop(self, safe=False):
 	# this could become a native feature
