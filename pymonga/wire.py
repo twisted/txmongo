@@ -76,7 +76,7 @@ class _MongoWire(protocol.Protocol):
 	self._querySuccess(request_id, cursor_id, bson._to_dicts(packet[20:]))
 	    
     def _send(self, operation, collection, message, query_opts=_ZERO):
-	fullname = collection is None and "" or bson._make_c_string(collection)
+	fullname = collection and bson._make_c_string(collection) or ""
 	message = query_opts + fullname + message
 	header = struct.pack("<iiii", 16+len(message), self.__id, 0, operation)
 	self.transport.write(header+message)
