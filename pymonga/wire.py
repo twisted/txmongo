@@ -131,7 +131,7 @@ class _MongoWire(protocol.Protocol):
 	    else:
 		if cursor_id: self._OP_KILL_CURSORS([cursor_id])
 		queryObj.deferred.callback(queryObj.documents)
-	    del queryObj
+		del queryObj
 
 
 class MongoProtocol(_MongoWire):
