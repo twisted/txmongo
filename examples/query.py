@@ -7,9 +7,7 @@ from twisted.internet import reactor
 
 def show_results(docs, collection):
     print "got %d results" % len(docs)
-    #for doc in docs:
-	#print doc
-	#collection.remove(doc["_id"])
+    #for doc in docs: collection.remove(doc["_id"])
     finish()
 
 def connectionMade(db):
@@ -20,7 +18,7 @@ def connectionMade(db):
     deferred = test.find(limit=200000)
     deferred.addCallback(show_results, test)
 
-def finish(ignore=None):
+def finish():
     print "%s seconds" % (time.time() - startTime)
     reactor.stop()
 

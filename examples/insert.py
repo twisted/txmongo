@@ -10,10 +10,8 @@ def connectionMade(db):
     test = foo.test  # `test` collection
 
     # insert some data
-    #test.insert({u"foo":"bar"})
-    #test.insert({u"homer":"simpson"})
     inserts = []
-    for x in xrange(100000):
+    for x in xrange(10000):
 	d = test.insert({"something":x*time.time()}, safe=True)
 	inserts.append(d)
     
