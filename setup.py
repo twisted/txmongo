@@ -93,7 +93,7 @@ setup(
     author_email="mongodb-user@googlegroups.com",
     url="http://github.com/mongodb/mongo-python-driver",
     keywords=["mongo", "mongodb", "pymongo", "gridfs", "pymonga"],
-    packages=["pymonga"],
+    packages=["pymonga", "pymonga._pymongo"],
     install_requires=requirements,
     features=features,
     license="Apache License, Version 2.0",
