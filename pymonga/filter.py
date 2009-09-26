@@ -15,7 +15,6 @@
 
 import types
 from collections import defaultdict
-from pymonga._pymongo.son import SON
 
 """Query filters"""
 
