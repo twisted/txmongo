@@ -5,6 +5,9 @@ import time
 import pymonga
 from twisted.internet import reactor
 
+def show_result(doc):
+    print "got this: %s" % doc
+
 def show_results(docs, collection):
     print "got %d results" % len(docs)
     #for doc in docs: collection.remove(doc["_id"])
@@ -14,8 +17,12 @@ def connectionMade(db):
     foo = db.foo     # `foo` database
     test = foo.test  # `test` collection
 
-    # fetch documents
-    deferred = test.find(limit=200000)
+    # fetch one document
+    deferred = test.find_one()
+    deferred.addCallback(show_result)
+
+    # fetch some documents
+    deferred = test.find(limit=200)
     deferred.addCallback(show_results, test)
 
 def finish():
