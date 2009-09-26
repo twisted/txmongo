@@ -16,6 +16,7 @@
 import types
 from pymonga._pymongo.son import SON
 from pymonga._pymongo.objectid import ObjectId
+from pymonga.filter import sort, hint, explain, snapshot
 from twisted.internet.defer import Deferred
 
 """Utilities for dealing with Mongo objects: Database and Collection"""
@@ -59,10 +60,8 @@ class Collection(object):
 	return deferred
 	    
 
-    def find(self, spec=None, skip=0, limit=0, fields=None):
+    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None):
 	if spec is None: spec = SON()
-	elif isinstance(spec, ObjectId): spec = SON(dict(_id=spec))
-	else: spec = SON(dict(query=spec))
 
 	if not isinstance(spec, types.DictType):
 	    raise TypeError("spec must be an instance of dict")
@@ -72,13 +71,21 @@ class Collection(object):
 	    raise TypeError("skip must be an instance of int")
 	if not isinstance(limit, types.IntType):
 	    raise TypeError("limit must be an instance of int")
+
 	if fields is not None:
 	    if not fields: fields = ["_id"]
 	    fields = self._fields_list_to_dict(fields)
+
+	if isinstance(filter, (sort, hint, explain, snapshot)):
+	    spec = SON(dict(query=spec))
+	    for k, v in filter.items():
+		spec[k] = isinstance(v, types.TupleType) and SON(v) or v
+
 	return self._database._connection._OP_QUERY(str(self), spec, skip, limit, fields)
 
     def find_one(self, spec=None, fields=None):
 	def wrapper(docs): return docs[0] 
+	if isinstance(spec, ObjectId): spec = SON(dict(_id=spec))
 	d = self.find(spec, limit=-1, fields=fields)
 	d.addCallback(wrapper)
 	return d
@@ -108,5 +115,4 @@ class Collection(object):
 	return self._safe_operation(safe)
 
     def drop(self, safe=False):
-	# this could become a native feature
 	return self.remove({}, safe)
