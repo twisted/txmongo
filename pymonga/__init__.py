@@ -14,6 +14,7 @@
 # limitations under the License.
 
 from pymonga import wire
+from pymonga._pymongo.objectid import ObjectId
 from twisted.internet import reactor, protocol
 
 """An asynchronous Mongo driver for Python."""
