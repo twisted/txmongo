@@ -84,7 +84,7 @@ class Collection(object):
 	return self._database._connection._OP_QUERY(str(self), spec, skip, limit, fields)
 
     def find_one(self, spec=None, fields=None):
-	def wrapper(docs): return docs[0] 
+	def wrapper(docs): return docs and docs[0] or {}
 	if isinstance(spec, ObjectId): spec = SON(dict(_id=spec))
 	d = self.find(spec, limit=-1, fields=fields)
 	d.addCallback(wrapper)
