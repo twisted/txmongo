@@ -16,7 +16,7 @@
 import types
 from pymonga._pymongo.son import SON
 from pymonga._pymongo.objectid import ObjectId
-from pymonga.filter import sort, hint, explain, snapshot
+from pymonga import filter as qf
 from twisted.internet.defer import Deferred
 
 """Utilities for dealing with Mongo objects: Database and Collection"""
@@ -76,7 +76,7 @@ class Collection(object):
 	    if not fields: fields = ["_id"]
 	    fields = self._fields_list_to_dict(fields)
 
-	if isinstance(filter, (sort, hint, explain, snapshot)):
+	if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
 	    spec = SON(dict(query=spec))
 	    for k, v in filter.items():
 		spec[k] = isinstance(v, types.TupleType) and SON(v) or v
@@ -87,6 +87,20 @@ class Collection(object):
 	def wrapper(docs): return docs and docs[0] or {}
 	if isinstance(spec, ObjectId): spec = SON(dict(_id=spec))
 	d = self.find(spec, limit=-1, fields=fields)
+	d.addCallback(wrapper)
+	return d
+
+    def count(self, spec=None, fields=None):
+	def wrapper(result): return result["n"]
+
+	if fields is not None:
+	    if not fields: fields = ["_id"]
+	    fields = self._fields_list_to_dict(fields)
+
+	spec = SON([("count", self._collection_name),
+		    ("query", spec or SON()),
+		    ("fields", fields)])
+	d = self._database["$cmd"].find_one(spec)
 	d.addCallback(wrapper)
 	return d
 
