@@ -25,117 +25,130 @@ _ZERO = "\x00\x00\x00\x00"
 
 class _MongoQuery(object):
     def __init__(self, id, collection, limit):
-	self.id = id
-	self.limit = limit
-	self.collection = collection
-	self.documents = []
-	self.deferred = defer.Deferred()
+        self.id = id
+        self.limit = limit
+        self.collection = collection
+        self.documents = []
+        self.deferred = defer.Deferred()
 
 
 class _MongoWire(protocol.Protocol):
     def __init__(self):
-	self.__id = 0
-	self.__queries = {}
-	self.__buffer = ""
-	self.__datalen = None
-	self.__response = 0
-	self.__waiting_header = True
+        self.__id = 0
+        self.__queries = {}
+        self.__buffer = ""
+        self.__datalen = None
+        self.__response = 0
+        self.__waiting_header = True
 
     def dataReceived(self, data):
-	while self.__waiting_header:
-	    self.__buffer += data
-	    if len(self.__buffer) < 16: break
+        while self.__waiting_header:
+            self.__buffer += data
+            if len(self.__buffer) < 16:
+                break
 
-	    # got full header, 16 bytes (or more)
-	    header, extra = self.__buffer[:16], self.__buffer[16:]
-	    self.__buffer = ""
-	    self.__waiting_header = False
-	    datalen, request, response, operation = struct.unpack("<iiii", header)
-	    self.__datalen = datalen - 16
-	    self.__response = response
-	    if extra: self.dataReceived(extra)
-	    break
-	else:
-	    if self.__datalen is not None:
-		data, extra = data[:self.__datalen], data[self.__datalen:]
-		self.__datalen -= len(data)
-	    else: extra = ""
-	
-	    self.__buffer += data
-	    if self.__datalen == 0:
-		self.messageReceived(self.__response, self.__buffer)
-		self.__datalen = None
-		self.__waiting_header = True
-		self.__buffer = ""
-		if extra: self.dataReceived(extra)
+            # got full header, 16 bytes (or more)
+            header, extra = self.__buffer[:16], self.__buffer[16:]
+            self.__buffer = ""
+            self.__waiting_header = False
+            datalen, request, response, operation = struct.unpack("<iiii", header)
+            self.__datalen = datalen - 16
+            self.__response = response
+            if extra:
+                self.dataReceived(extra)
+            break
+        else:
+            if self.__datalen is not None:
+                data, extra = data[:self.__datalen], data[self.__datalen:]
+                self.__datalen -= len(data)
+            else:
+                extra = ""
+        
+            self.__buffer += data
+            if self.__datalen == 0:
+                self.messageReceived(self.__response, self.__buffer)
+                self.__datalen = None
+                self.__waiting_header = True
+                self.__buffer = ""
+                if extra:
+                    self.dataReceived(extra)
 	
     def messageReceived(self, request_id, packet):
-	response_flag, cursor_id, start, length = struct.unpack("<iqii", packet[:20])
-	if response_flag:
-	    return self._queryFailure(request_id, cursor_id, response_flag, packet[20:])
-	self._querySuccess(request_id, cursor_id, bson._to_dicts(packet[20:]))
+        response_flag, cursor_id, start, length = struct.unpack("<iqii", packet[:20])
+        if response_flag:
+            return self._queryFailure(request_id, cursor_id, response_flag, packet[20:])
+        self._querySuccess(request_id, cursor_id, bson._to_dicts(packet[20:]))
 	    
     def _send(self, operation, collection, message, query_opts=_ZERO):
-	fullname = collection and bson._make_c_string(collection) or ""
-	message = query_opts + fullname + message
-	header = struct.pack("<iiii", 16+len(message), self.__id, 0, operation)
-	self.transport.write(header+message)
-	self.__id += 1
+        fullname = collection and bson._make_c_string(collection) or ""
+        message = query_opts + fullname + message
+        header = struct.pack("<iiii", 16+len(message), self.__id, 0, operation)
+        self.transport.write(header+message)
+        self.__id += 1
 
     def _OP_KILL_CURSORS(self, cursors):
-	message = struct.pack("<i", len(cursors))
-	for cursor_id in cursors: message += struct.pack("<q", cursor_id)
-	self._send(2007, None, message)
+        message = struct.pack("<i", len(cursors))
+        for cursor_id in cursors:
+            message += struct.pack("<q", cursor_id)
+        self._send(2007, None, message)
 
     def _OP_INSERT(self, collection, docs):
-	self._send(2002, collection,
-	    "".join([bson.BSON.from_dict(doc) for doc in docs]))
+        self._send(2002, collection,
+            "".join([bson.BSON.from_dict(doc) for doc in docs]))
 
     def _OP_UPDATE(self, collection, spec, document, upsert=False):
-	message = (upsert and _ONE or _ZERO) + \
-	    bson.BSON.from_dict(spec) + bson.BSON.from_dict(document)
-	self._send(2001, collection, message)
+        message = (upsert and _ONE or _ZERO) + \
+            bson.BSON.from_dict(spec) + bson.BSON.from_dict(document)
+        self._send(2001, collection, message)
 
     def _OP_DELETE(self, collection, spec):
-	self._send(2006, collection, _ZERO + bson.BSON.from_dict(spec))
+        self._send(2006, collection, _ZERO + bson.BSON.from_dict(spec))
 
     def _OP_GET_MORE(self, collection, limit, cursor_id):
-	message = struct.pack("<iq", limit, cursor_id)
-	self._send(2005, collection, message)
+        message = struct.pack("<iq", limit, cursor_id)
+        self._send(2005, collection, message)
 
     def _OP_QUERY(self, collection, spec, skip, limit, fields=None):
-	message = struct.pack("<ii", skip, limit) + bson.BSON.from_dict(spec)
-	if fields: message += bson.BSON.from_dict(fields)
+        message = struct.pack("<ii", skip, limit) + bson.BSON.from_dict(spec)
+        if fields:
+            message += bson.BSON.from_dict(fields)
 
-	queryObj = _MongoQuery(self.__id, collection, limit)
-	self.__queries[self.__id] = queryObj
-	self._send(2004, collection, message)
-	return queryObj.deferred
+        queryObj = _MongoQuery(self.__id, collection, limit)
+        self.__queries[self.__id] = queryObj
+        self._send(2004, collection, message)
+        return queryObj.deferred
 
     def _queryFailure(self, request_id, cursor_id, response, raw_error):
-	queryObj = self.__queries.pop(request_id, None)
-	if queryObj:
-	    queryObj.deferred.errback((response, raw_error))
-	    del queryObj
+        queryObj = self.__queries.pop(request_id, None)
+        if queryObj:
+            queryObj.deferred.errback((response, raw_error))
+            del queryObj
 
     def _querySuccess(self, request_id, cursor_id, documents):
-	queryObj = self.__queries.pop(request_id, None)
-	if queryObj:
-	    ndocs = len(documents)
-	    queryObj.documents += documents
-	    if cursor_id and ndocs < queryObj.limit:
-		queryObj.limit -= ndocs
-		queryObj.id = self.__id
-		self.__queries[self.__id] = queryObj
-		self._OP_GET_MORE(queryObj.collection, 0, cursor_id)
-	    else:
-		if cursor_id: self._OP_KILL_CURSORS([cursor_id])
-		queryObj.deferred.callback(queryObj.documents)
-		del queryObj
+        queryObj = self.__queries.pop(request_id, None)
+        if queryObj:
+            ndocs = len(documents)
+            queryObj.documents += documents
+
+            if cursor_id and ndocs < queryObj.limit:
+                queryObj.limit -= ndocs
+                queryObj.id = self.__id
+                self.__queries[self.__id] = queryObj
+                self._OP_GET_MORE(queryObj.collection, 0, cursor_id)
+            else:
+                if cursor_id:
+                    self._OP_KILL_CURSORS([cursor_id])
+                queryObj.deferred.callback(queryObj.documents)
+                del queryObj
 
 
 class MongoProtocol(_MongoWire):
-    def __str__(self): return "<mongodb Connection: %s>" % \
-	":".join([str(field) for field in self.transport.getHost()])
-    def __getitem__(self, database_name): return Database(self, database_name)
-    def __getattr__(self, database_name): return Database(self, database_name)
+    def __str__(self):
+        return "<mongodb Connection: %s>" % \
+            ":".join([str(field) for field in self.transport.getHost()])
+
+    def __getitem__(self, database_name):
+        return Database(self, database_name)
+
+    def __getattr__(self, database_name):
+        return Database(self, database_name)

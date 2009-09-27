@@ -9,7 +9,7 @@ from twisted.internet import reactor
 def show_results(docs, collection):
     print "got %d results" % len(docs)
     for n, doc in enumerate(docs):
-	print n, doc
+        print n, doc
     finish()
 
 def connectionMade(db):

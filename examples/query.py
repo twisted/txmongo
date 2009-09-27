@@ -10,7 +10,8 @@ def show_result(doc):
 
 def show_results(docs, collection):
     print "got %d results" % len(docs)
-    #for doc in docs: collection.remove(doc["_id"])
+    #for doc in docs:
+        #collection.remove(doc["_id"])
     finish()
 
 def connectionMade(db):

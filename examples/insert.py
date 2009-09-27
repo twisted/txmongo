@@ -12,9 +12,9 @@ def connectionMade(db):
     # insert some data
     inserts = []
     for x in xrange(10000):
-	d = test.insert({"something":x*time.time()}, safe=True)
-	inserts.append(d)
-    
+        d = test.insert({"something":x*time.time()}, safe=True)
+        inserts.append(d)
+
     deferred = defer.gatherResults(inserts)
     deferred.addCallback(finish)
 
