@@ -15,10 +15,25 @@
 
 from pymonga import wire
 from pymonga._pymongo.objectid import ObjectId
-from twisted.internet import reactor, protocol
+from twisted.internet import defer, reactor, protocol
 
 """An asynchronous Mongo driver for Python."""
 
 def Connection(host="localhost", port=27017):
     cli = protocol.ClientCreator(reactor, wire.MongoProtocol)
     return cli.connectTCP(host, port)
+
+def ConnectionPool(host="localhost", port=27017, size=5):
+    def wrapper(connections):
+        size = len(connections)
+        for cli in connections:
+            cli._set_pool(connections, size)
+        return cli
+
+    conn = []
+    for x in xrange(size):
+        conn.append(Connection(host, port))
+
+    deferred = defer.gatherResults(conn)
+    deferred.addCallback(wrapper)
+    return deferred

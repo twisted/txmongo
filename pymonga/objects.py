@@ -22,9 +22,13 @@ from twisted.internet.defer import Deferred
 """Utilities for dealing with Mongo objects: Database and Collection"""
 
 class Database(object):
-    def __init__(self, connection, database_name):
-        self._connection = connection
+    def __init__(self, protocol, database_name):
+        self._protocol = protocol
         self._database_name = database_name
+
+    @property
+    def _connection(self):
+        return self._protocol._get_conn()
 
     def __str__(self):
         return self._database_name
@@ -61,15 +65,15 @@ class Collection(object):
             as_dict[field] = 1
         return as_dict
 
-    def _safe_operation(self, safe=False):
-    if safe is True:
-        deferred = self._database["$cmd"].find_one({"getlasterror":1})
-    else:
-        deferred = Deferred()
-        deferred.callback(None)
-    return deferred
+    def _safe_operation(self, proto, safe=False):
+        if safe is True:
+            deferred = self._database["$cmd"].find_one({"getlasterror":1}, _proto=proto)
+        else:
+            deferred = Deferred()
+            deferred.callback(None)
+        return deferred
 
-    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None):
+    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, _proto=None):
         if spec is None: spec = SON()
 
         if not isinstance(spec, types.DictType):
@@ -91,16 +95,23 @@ class Collection(object):
             for k, v in filter.items():
                 spec[k] = isinstance(v, types.TupleType) and SON(v) or v
 
-        return self._database._connection._OP_QUERY(str(self), spec, skip, limit, fields)
+        # send the command through a specific connection
+        # this is required for the connection pool to work
+        # when safe=True
+        if _proto is None:
+            proto = self._database._connection
+        else:
+            proto = _proto
+        return proto._OP_QUERY(str(self), spec, skip, limit, fields)
 
-    def find_one(self, spec=None, fields=None):
+    def find_one(self, spec=None, fields=None, _proto=None):
         def wrapper(docs):
             return docs and docs[0] or {}
 
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
 
-        d = self.find(spec, limit=-1, fields=fields)
+        d = self.find(spec, limit=-1, fields=fields, _proto=_proto)
         d.addCallback(wrapper)
         return d
 
@@ -125,8 +136,9 @@ class Collection(object):
             docs = [docs]
         if not isinstance(docs, types.ListType):
             raise TypeError("insert takes a document or a list of documents")
-        self._database._connection._OP_INSERT(str(self), docs)
-        return self._safe_operation(safe)
+        proto = self._database._connection
+        proto._OP_INSERT(str(self), docs)
+        return self._safe_operation(proto, safe)
 
     def update(self, spec, document, upsert=False, safe=False):
         if not isinstance(spec, types.DictType):
@@ -135,16 +147,18 @@ class Collection(object):
             raise TypeError("document must be an instance of dict")
         if not isinstance(upsert, types.BooleanType):
             raise TypeError("upsert must be an instance of bool")
-        self._database._connection._OP_UPDATE(str(self), spec, document)
-        return self._safe_operation(safe)
+        proto = self._database._connection
+        proto._OP_UPDATE(str(self), spec, document)
+        return self._safe_operation(proto, safe)
     
     def remove(self, spec, safe=False):
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict, not %s" % type(spec))
-        self._database._connection._OP_DELETE(str(self), spec)
-        return self._safe_operation(safe)
+        proto = self._database._connection
+        proto._OP_DELETE(str(self), spec)
+        return self._safe_operation(proto, safe)
 
     def drop(self, safe=False):
         return self.remove({}, safe)

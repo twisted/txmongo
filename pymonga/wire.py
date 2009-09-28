@@ -76,21 +76,17 @@ class _MongoWire(protocol.Protocol):
     def messageReceived(self, request_id, packet):
         response_flag, cursor_id, start, length = struct.unpack("<iqii", packet[:20])
         if response_flag:
-            return self._queryFailure(request_id, cursor_id, response_flag, packet[20:])
+            self._queryFailure(request_id, cursor_id, response_flag, packet[20:])
+            return
         self._querySuccess(request_id, cursor_id, bson._to_dicts(packet[20:]))
 	    
     def _send(self, operation, collection, message, query_opts=_ZERO):
+        #print "sending %d to %s" % (operation, self)
         fullname = collection and bson._make_c_string(collection) or ""
         message = query_opts + fullname + message
         header = struct.pack("<iiii", 16+len(message), self.__id, 0, operation)
         self.transport.write(header+message)
         self.__id += 1
-
-    def _OP_KILL_CURSORS(self, cursors):
-        message = struct.pack("<i", len(cursors))
-        for cursor_id in cursors:
-            message += struct.pack("<q", cursor_id)
-        self._send(2007, None, message)
 
     def _OP_INSERT(self, collection, docs):
         self._send(2002, collection,
@@ -103,6 +99,12 @@ class _MongoWire(protocol.Protocol):
 
     def _OP_DELETE(self, collection, spec):
         self._send(2006, collection, _ZERO + bson.BSON.from_dict(spec))
+
+    def _OP_KILL_CURSORS(self, cursors):
+        message = struct.pack("<i", len(cursors))
+        for cursor_id in cursors:
+            message += struct.pack("<q", cursor_id)
+        self._send(2007, None, message)
 
     def _OP_GET_MORE(self, collection, limit, cursor_id):
         message = struct.pack("<iq", limit, cursor_id)
@@ -143,9 +145,26 @@ class _MongoWire(protocol.Protocol):
 
 
 class MongoProtocol(_MongoWire):
+    def __init__(self):
+        self.__pool = None
+        _MongoWire.__init__(self)
+
+    def _set_pool(self, pool, size):
+        self.__pool = pool
+        self.__poolidx = 0
+        self.__poolsize = size
+
+    def _get_conn(self):
+        if self.__pool:
+            conn = self.__pool[self.__poolidx]
+            self.__poolidx = (self.__poolidx + 1) % self.__poolsize
+            return conn
+        else:
+            return self
+
     def __str__(self):
-        return "<mongodb Connection: %s>" % \
-            ":".join([str(field) for field in self.transport.getHost()])
+        addr = self.transport.getHost()
+        return "<mongodb Connection: %s:%s>" % (addr.host, addr.port)
 
     def __getitem__(self, database_name):
         return Database(self, database_name)
