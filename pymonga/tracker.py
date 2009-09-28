@@ -54,6 +54,13 @@ class Tracker(object):
         except:
             return self.disconnected
 
+    def disconnect(self):
+        for conn in self.pool:
+            try:
+                conn.factory.continueTrying = 0
+                conn.transport.loseConnection()
+            except: pass
+        
     def append(self, proto):
         self.pool.append(proto)
         self.size += 1

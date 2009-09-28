@@ -20,6 +20,7 @@ from twisted.internet import defer, reactor, protocol
 
 """An asynchronous Mongo driver for Python."""
 
+
 class MongoFactory(protocol.ReconnectingClientFactory):
     protocol = wire.MongoProtocol
 
@@ -29,6 +30,7 @@ class MongoFactory(protocol.ReconnectingClientFactory):
 
     def buildProtocol(self, addr):
         p = self.protocol()
+        p.factory = self
         self.tracker.append(p)
         if self.deferred is not None:
             reactor.callLater(0, self.deferred.callback, self.tracker)
@@ -46,12 +48,15 @@ class MongoFactory(protocol.ReconnectingClientFactory):
 
 def Connection(host="localhost", port=27017, reconnect=True):
     d = defer.Deferred()
+    factory = MongoFactory(d)
+    factory.continueTrying = reconnect
     reactor.connectTCP(host, port, MongoFactory(d))
     return d
 
 def ConnectionPool(host="localhost", port=27017, reconnect=True, size=5):
     d = defer.Deferred()
     factory = MongoFactory(d)
+    factory.continueTrying = reconnect
     for x in xrange(size):
         reactor.connectTCP(host, port, factory)
     return d
