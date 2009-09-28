@@ -37,14 +37,6 @@ class MongoFactory(protocol.ReconnectingClientFactory):
             self.deferred = None
         return p
 
-    def clientConnectionLost(self, connector, error):
-        self.resetDelay()
-        protocol.ReconnectingClientFactory.clientConnectionLost(self, connector, error)
-
-    def clientConnectionFailed(self, connector, error):
-        self.resetDelay()
-        protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, error)
-
 
 def Connection(host="localhost", port=27017, reconnect=True):
     d = defer.Deferred()
@@ -52,6 +44,7 @@ def Connection(host="localhost", port=27017, reconnect=True):
     factory.continueTrying = reconnect
     reactor.connectTCP(host, port, factory)
     return d
+
 
 def ConnectionPool(host="localhost", port=27017, reconnect=True, size=5):
     d = defer.Deferred()

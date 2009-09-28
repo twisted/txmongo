@@ -55,11 +55,14 @@ class Tracker(object):
             return self.disconnected
 
     def disconnect(self):
-        for conn in self.pool:
+        for idx in range(len(self.pool)):
             try:
+                conn = self.pool.pop(0)
                 conn.factory.continueTrying = 0
                 conn.transport.loseConnection()
-            except: pass
+                self.size -= 1
+            except:
+                pass
         
     def append(self, proto):
         self.pool.append(proto)
@@ -70,14 +73,12 @@ class Tracker(object):
         self.size -= 1
 
     def __repr__(self):
-        peers = []
-        for conn in self.pool:
-            try:
-                cli = conn.transport.getHost()
-                peers.append("%s:%s" % (cli.host, cli.port))
-            except: pass
+        try:
+            cli = self.pool[0].transport.getPeer()
+            info = "%s:%s - %d connection(s)" % (cli.host, cli.port, self.size)
+        except:
+            info = "not connected"
 
-        info = ", ".join(peers) or "not connected"
         return "<mongodb Connection: %s>" % info
 
     def __getitem__(self, database_name):
