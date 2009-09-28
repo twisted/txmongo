@@ -14,26 +14,44 @@
 # limitations under the License.
 
 from pymonga import wire
+from pymonga.tracker import Tracker
 from pymonga._pymongo.objectid import ObjectId
 from twisted.internet import defer, reactor, protocol
 
 """An asynchronous Mongo driver for Python."""
 
-def Connection(host="localhost", port=27017):
-    cli = protocol.ClientCreator(reactor, wire.MongoProtocol)
-    return cli.connectTCP(host, port)
+class MongoFactory(protocol.ReconnectingClientFactory):
+    protocol = wire.MongoProtocol
 
-def ConnectionPool(host="localhost", port=27017, size=5):
-    def wrapper(connections):
-        size = len(connections)
-        for cli in connections:
-            cli._set_pool(connections, size)
-        return cli
+    def __init__(self, deferred):
+        self.tracker = Tracker()
+        self.deferred = deferred
 
-    conn = []
+    def buildProtocol(self, addr):
+        p = self.protocol()
+        self.tracker.append(p)
+        if self.deferred is not None:
+            reactor.callLater(0, self.deferred.callback, self.tracker)
+            self.deferred = None
+        return p
+
+    def clientConnectionLost(self, connector, error):
+        self.resetDelay()
+        protocol.ReconnectingClientFactory.clientConnectionLost(self, connector, error)
+
+    def clientConnectionFailed(self, connector, error):
+        self.resetDelay()
+        protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, error)
+
+
+def Connection(host="localhost", port=27017, reconnect=True):
+    d = defer.Deferred()
+    reactor.connectTCP(host, port, MongoFactory(d))
+    return d
+
+def ConnectionPool(host="localhost", port=27017, reconnect=True, size=5):
+    d = defer.Deferred()
+    factory = MongoFactory(d)
     for x in xrange(size):
-        conn.append(Connection(host, port))
-
-    deferred = defer.gatherResults(conn)
-    deferred.addCallback(wrapper)
-    return deferred
+        reactor.connectTCP(host, port, factory)
+    return d
