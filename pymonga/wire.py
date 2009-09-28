@@ -32,7 +32,7 @@ class _MongoQuery(object):
         self.deferred = defer.Deferred()
 
 
-class _MongoWire(protocol.Protocol):
+class MongoProtocol(protocol.Protocol):
     def __init__(self):
         self.__id = 0
         self.__queries = {}
@@ -40,6 +40,10 @@ class _MongoWire(protocol.Protocol):
         self.__datalen = None
         self.__response = 0
         self.__waiting_header = True
+
+    def connectionLost(self, reason):
+        self.connected = 0
+        protocol.Protocol.connectionLost(self, reason)
 
     def dataReceived(self, data):
         while self.__waiting_header:
@@ -142,32 +146,3 @@ class _MongoWire(protocol.Protocol):
                     self._OP_KILL_CURSORS([cursor_id])
                 queryObj.deferred.callback(queryObj.documents)
                 del queryObj
-
-
-class MongoProtocol(_MongoWire):
-    def __init__(self):
-        self.__pool = None
-        _MongoWire.__init__(self)
-
-    def _set_pool(self, pool, size):
-        self.__pool = pool
-        self.__poolidx = 0
-        self.__poolsize = size
-
-    def _get_conn(self):
-        if self.__pool:
-            conn = self.__pool[self.__poolidx]
-            self.__poolidx = (self.__poolidx + 1) % self.__poolsize
-            return conn
-        else:
-            return self
-
-    def __str__(self):
-        addr = self.transport.getHost()
-        return "<mongodb Connection: %s:%s>" % (addr.host, addr.port)
-
-    def __getitem__(self, database_name):
-        return Database(self, database_name)
-
-    def __getattr__(self, database_name):
-        return Database(self, database_name)
