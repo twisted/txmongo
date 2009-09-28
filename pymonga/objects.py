@@ -22,13 +22,13 @@ from twisted.internet.defer import Deferred
 """Utilities for dealing with Mongo objects: Database and Collection"""
 
 class Database(object):
-    def __init__(self, protocol, database_name):
-        self._protocol = protocol
+    def __init__(self, tracker, database_name):
+        self._tracker = tracker
         self._database_name = database_name
 
     @property
     def _connection(self):
-        return self._protocol._get_conn()
+        return self._tracker()
 
     def __str__(self):
         return self._database_name
