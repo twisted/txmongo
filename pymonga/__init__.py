@@ -50,7 +50,7 @@ def Connection(host="localhost", port=27017, reconnect=True):
     d = defer.Deferred()
     factory = MongoFactory(d)
     factory.continueTrying = reconnect
-    reactor.connectTCP(host, port, MongoFactory(d))
+    reactor.connectTCP(host, port, factory)
     return d
 
 def ConnectionPool(host="localhost", port=27017, reconnect=True, size=5):
