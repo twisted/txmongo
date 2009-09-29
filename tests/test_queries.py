@@ -33,17 +33,34 @@ class TestPYMONGAQueries(unittest.TestCase):
     """Test querying for the mongoDB asynchronous python driver."""
 
     @defer.inlineCallbacks
-    def testQueryInPoolSafe(self):
+    def testQuerySafe(self):
         db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
         pymonga_db = db[DB_NAME]
         test = pymonga_db.test_collection
-        yield test.insert(dummy_doc, safe=False)
-
+        yield test.insert(dummy_doc, safe=True)
         test.drop(safe=True)
         yield db.disconnect() 
 
     @defer.inlineCallbacks
-    def testQueryInPoolNoSafe(self):
+    def testQueryNonSafe(self):
+        db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
+        pymonga_db = db[DB_NAME]
+        test = pymonga_db.test_collection
+        yield test.insert(dummy_doc, safe=False)
+        test.drop(safe=True)
+        yield db.disconnect() 
+
+    @defer.inlineCallbacks
+    def testQueryInPoolSafe(self):
+        db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
+        pymonga_db = db[DB_NAME]
+        test = pymonga_db.test_collection
+        yield test.insert(dummy_doc, safe=True)
+        test.drop(safe=True)
+        yield db.disconnect() 
+
+    @defer.inlineCallbacks
+    def testQueryInPoolNonSafe(self):
         db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
         pymonga_db = db[DB_NAME]
         test = pymonga_db.test_collection
