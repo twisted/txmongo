@@ -35,3 +35,7 @@ Thanks to (in no particular order):
 - Mike Dirolf (mdirolf)
 
   - The author of original ``pymongo`` package.
+
+- Renzo Sanchez-Silva (rnz0)
+ 
+  - Initial twisted trial unit tests.
