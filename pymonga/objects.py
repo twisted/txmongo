@@ -52,7 +52,7 @@ class Collection(object):
         return "%s.%s" % (str(self._database), self._collection_name)
 
     def __repr__(self):
-        return "<mongodb Collection: %s.%s>" % str(self)
+        return "<mongodb Collection: %s>" % str(self)
 
     def _fields_list_to_dict(self, fields):
         """
