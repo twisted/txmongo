@@ -51,7 +51,7 @@ class _QueryFilter(defaultdict):
                     raise TypeError("Invalid %sing key: %s" % (name, repr(k)))
                 if direction not in (1, -1):
                     raise TypeError("Invalid %sing direction: %s" % (name, direction))
-                self[operation] += tuple((key, direction))
+                self[operation] += tuple(((key, direction),))
         except Exception, e:
             raise TypeError("Invalid list of keys for %s: %s" % (name, repr(index_list)))
 
