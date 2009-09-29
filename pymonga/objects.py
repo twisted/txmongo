@@ -167,6 +167,16 @@ class Collection(object):
         proto = self._database._connection
         proto._OP_UPDATE(str(self), spec, document)
         return self._safe_operation(proto, safe)
+
+    def save(self, doc, safe=False):
+        if not isinstance(doc, types.DictType):
+            raise TypeError("cannot save objects of type %s" % type(doc))
+
+        objid = doc.get("_id")
+        if objid:
+            return self.update({"_id": objid}, doc, safe=safe)
+        else:
+            return self.insert(doc, safe=safe)
     
     def remove(self, spec, safe=False):
         if isinstance(spec, ObjectId):
@@ -180,7 +190,7 @@ class Collection(object):
     def drop(self, safe=False):
         return self.remove({}, safe)
 
-    def create_index(self, sort_fields, unique=False, safe=False):
+    def create_index(self, sort_fields, unique=False):
         def wrapper(result, name):
             return name
 
@@ -195,7 +205,7 @@ class Collection(object):
             unique = unique,
         ))
 
-        d = self._database.system.indexes.insert(index, safe=safe)
+        d = self._database.system.indexes.insert(index, safe=True)
         d.addCallback(wrapper, name)
         return d
 
