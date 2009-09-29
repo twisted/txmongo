@@ -27,8 +27,6 @@ DB_NAME = 'pymonga_test'
 
 dummy_doc = {'dummy_key': u'01'*100}
 
-#base.DelayedCall.debug = True 
-
 class TestPYMONGAQueries(unittest.TestCase):
     """Test querying for the mongoDB asynchronous python driver."""
 
