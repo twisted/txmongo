@@ -27,8 +27,10 @@ DB_NAME = 'pymonga_test'
 
 dummy_doc = {'dummy_key': u'01'*100}
 
-class TestPYMONGA(unittest.TestCase):
+
+class TestPYMONGAConnections(unittest.TestCase):
     """Test the mongoDB asynchronous python driver."""
+
 
     @defer.inlineCallbacks
     def testConnection(self):
@@ -69,7 +71,7 @@ class TestPYMONGA(unittest.TestCase):
 
         ld = []
         for i in xrange(1000):
-            ld.append(test.insert({"x": i}, safe=True ))
+            ld.append(test.insert({"x": i, "y" : u"01"*1024}, safe=True ))
 
         yield defer.DeferredList(ld)
 
@@ -81,3 +83,4 @@ class TestPYMONGA(unittest.TestCase):
 
         yield db.disconnect()	
         print db
+
