@@ -36,6 +36,9 @@ class Database(object):
     def __repr__(self):
         return "<mongodb Database: %s>" % self._database_name
 
+    def __call__(self, database_name):
+        return Database(self._tracker, database_name)
+
     def __getitem__(self, collection_name):
         return Collection(self, collection_name)
 
@@ -54,6 +57,17 @@ class Collection(object):
     def __repr__(self):
         return "<mongodb Collection: %s>" % str(self)
 
+    def __getitem__(self, collection_name):
+        return Collection(self._database,
+            "%s.%s" % (self._collection_name, collection_name))
+
+    def __getattr__(self, collection_name):
+        return self[collection_name]
+
+    def __call__(self, collection_name):
+        return self[collection_name]
+
+
     def _fields_list_to_dict(self, fields):
         """
         transform a list of fields from ["a", "b"] to {"a":1, "b":1}
@@ -64,6 +78,9 @@ class Collection(object):
                 raise TypeError("fields must be a list of key names")
             as_dict[field] = 1
         return as_dict
+
+    def _gen_index_name(self, keys):
+        return u"_".join([u"%s_%s" % item for item in keys])
 
     def _safe_operation(self, proto, safe=False):
         if safe is True:
@@ -162,3 +179,41 @@ class Collection(object):
 
     def drop(self, safe=False):
         return self.remove({}, safe)
+
+    def create_index(self, sort_fields, unique=False, safe=False):
+        if not isinstance(sort_fields, qf.sort):
+            raise TypeError("sort_fields must be an instance of filter.sort")
+
+        index = SON(dict(
+            unique = unique,
+            name = self._gen_index_name(sort_fields["orderby"]),
+            key = SON(dict(sort_fields["orderby"])),
+            ns = str(self),
+        ))
+
+        return self._database.system.indexes.insert(index, safe=safe)
+
+    def drop_index(self, index_identifier):
+        if isinstance(index_identifier, types.StringType):
+            name = index_identifier
+        elif isinstance(index_identifier, qf.sort):
+            name = self._gen_index_name(index_identifier["orderby"])
+        else:
+            raise TypeError("index_identifier must be a name or instance of filter.sort")
+
+        cmd = SON([("deleteIndexes", self._collection_name), ("index", name)])
+        return self._database["$cmd"].find_one(cmd)
+
+    def drop_indexes(self):
+        return self.drop_index(u"*")
+
+    def index_information(self):
+        def wrapper(raw):
+            info = {}
+            for idx in raw:
+                info[idx["name"]] = idx["key"].items()
+            return info
+
+        d = self._database.system.indexes.find({"ns": str(self)})
+        d.addCallback(wrapper)
+        return d
