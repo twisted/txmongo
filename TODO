@@ -2,4 +2,3 @@ documentation
 port gridfs
 implement slave_ok
 implement database level operations
-implement collection level operations (like rename, index management)
