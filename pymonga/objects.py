@@ -217,3 +217,8 @@ class Collection(object):
         d = self._database.system.indexes.find({"ns": str(self)})
         d.addCallback(wrapper)
         return d
+
+    def rename(self, new_name):
+        cmd = SON([("renameCollection", str(self)), ("to", "%s.%s" % \
+            (str(self._database), new_name))])
+        return self._database("admin")["$cmd"].find_one(cmd)
