@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
-# Copyright 2009 Alexandre Fiori, Renzo Sanchez-Silva
+# coding: utf-8
+# Copyright 2009 Alexandre Fiori
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,55 +29,55 @@ dummy_doc = {'dummy_key': u'01'*100}
 
 class TestPYMONGA(unittest.TestCase):
     """Test the mongoDB asynchronous python driver."""
- 
+
     @defer.inlineCallbacks
     def testConnection(self):
-	db = yield pymonga.Connection(host=DB_HOST, port=DB_PORT, reconnect=False) 
-	print db 
-    
-	# db and collection 
-	pymonga_db = db.pymonga_db 
-	test = pymonga_db.test_collection
+        db = yield pymonga.Connection(host=DB_HOST, port=DB_PORT, reconnect=False) 
+        print db 
 
-	# test insert doc and its ObjectId instance
-	yield test.insert(dummy_doc, safe=True) 
-	doc = yield test.find_one() 
-	self.assertEqual(doc.get('dummy_key'), dummy_doc.get('dummy_key'))
-	assert isinstance(doc['_id'], ObjectId)
+        # db and collection 
+        pymonga_db = db.pymonga_db 
+        test = pymonga_db.test_collection
 
-	# test remove doc
-	yield test.remove(doc['_id'], safe=True) 
-    
-	# test drop collection
-	yield test.drop(safe=True) 
+        # test insert doc and its ObjectId instance
+        yield test.insert(dummy_doc, safe=True) 
+        doc = yield test.find_one() 
+        self.assertEqual(doc.get('dummy_key'), dummy_doc.get('dummy_key'))
+        assert isinstance(doc['_id'], ObjectId)
 
-	# test drop db
-	#db.drop_database(pymonga_db)	
-	
-	yield db.disconnect() 
-	print db
+        # test remove doc
+        yield test.remove(doc['_id'], safe=True) 
+
+        # test drop collection
+        yield test.drop(safe=True) 
+
+        # test drop db
+        #db.drop_database(pymonga_db)	
+
+        yield db.disconnect() 
+        print db
 
     @defer.inlineCallbacks
     def testConnectionPool(self):
-	db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
-	print db
+        db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
+        print db
 
-	# db and collection 
-	pymonga_db = db[DB_NAME] 
-	test = pymonga_db.test_collection
-	self.assertEqual(repr(test), "<mongodb Collection: %s.test_collection>" % DB_NAME)
+        # db and collection 
+        pymonga_db = db[DB_NAME] 
+        test = pymonga_db.test_collection
+        self.assertEqual(repr(test), "<mongodb Collection: %s.test_collection>" % DB_NAME)
 
-	ld = []
-	for i in xrange(1000):
+        ld = []
+        for i in xrange(1000):
             ld.append(test.insert({"x": i}, safe=True ))
 
-	yield defer.DeferredList(ld)
-	
-	total = yield test.count()
-	self.assertEqual(total, 1000)
+        yield defer.DeferredList(ld)
 
-	yield test.drop(safe=True) 
-	#db.drop_database(pymonga_db)	
+        total = yield test.count()
+        self.assertEqual(total, 1000)
 
-	yield db.disconnect()	
-	print db
+        yield test.drop(safe=True) 
+        #db.drop_database(pymonga_db)	
+
+        yield db.disconnect()	
+        print db
