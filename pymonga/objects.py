@@ -181,17 +181,23 @@ class Collection(object):
         return self.remove({}, safe)
 
     def create_index(self, sort_fields, unique=False, safe=False):
+        def wrapper(result, name):
+            return name
+
         if not isinstance(sort_fields, qf.sort):
             raise TypeError("sort_fields must be an instance of filter.sort")
 
+        name = self._gen_index_name(sort_fields["orderby"])
         index = SON(dict(
-            unique = unique,
-            name = self._gen_index_name(sort_fields["orderby"]),
-            key = SON(dict(sort_fields["orderby"])),
             ns = str(self),
+            name = name,
+            key = SON(dict(sort_fields["orderby"])),
+            unique = unique,
         ))
 
-        return self._database.system.indexes.insert(index, safe=safe)
+        d = self._database.system.indexes.insert(index, safe=safe)
+        d.addCallback(wrapper, name)
+        return d
 
     def drop_index(self, index_identifier):
         if isinstance(index_identifier, types.StringType):
