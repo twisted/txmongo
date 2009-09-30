@@ -29,45 +29,42 @@ dummy_doc = {'dummy_key': u'01'*100}
 
 base.DelayedCall.debug = True 
 
+def Query(inpool = True, safe = True, cmd = 'insert'):
+    def testWrapper(q):
+        if inpool:
+            db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
+        else:
+            db = yield pymonga.Connection(host=DB_HOST, port=DB_PORT, reconnect=False)
+            
+        pymonga_db = db[DB_NAME]
+        test = pymonga_db.test_collection
+
+        if cmd == 'insert':
+            yield test.insert(dummy_doc, safe=safe)
+        elif cmd == 'update':
+            yield test.update({'dummy_key': u'0'}, dummy_doc, safe=safe)
+        elif cmd == 'save':
+            yield test.save(dummy_doc, safe=safe)
+        
+        test.drop(safe=True)
+        db.disconnect()
+ 
+    return testWrapper       
+
 class TestPYMONGAQueries(unittest.TestCase):
     """Test querying for the mongoDB asynchronous python driver."""
 
-    @defer.inlineCallbacks
-    def testQuerySafe(self):
-        db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
-        pymonga_db = db[DB_NAME]
-        test = pymonga_db.test_collection
-        yield test.insert(dummy_doc, safe=True)
+    testInsertSafe = defer.inlineCallbacks(Query(inpool = False, cmd = 'insert', safe = True))
+    testInsertNonSafe = defer.inlineCallbacks(Query(inpool = False, cmd = 'insert', safe = False))
+    testInsertInPoolSafe = defer.inlineCallbacks(Query(inpool = True, cmd = 'insert', safe = True))
+    testInsertInPoolNonSafe = defer.inlineCallbacks(Query(inpool = True, cmd = 'insert', safe = False))
 
-        test.drop(safe=True)
-        db.disconnect() 
+    testUpdateSafe = defer.inlineCallbacks(Query(inpool = False, cmd = 'update', safe = True))
+    testUpdateNonSafe = defer.inlineCallbacks(Query(inpool = False, cmd = 'update', safe = False))
+    testUpdateInPoolSafe = defer.inlineCallbacks(Query(inpool = True, cmd = 'update', safe = True))
+    testUpdateInPoolNonSafe = defer.inlineCallbacks(Query(inpool = True, cmd = 'update', safe = False))
 
-    @defer.inlineCallbacks
-    def testQueryNonSafe(self):
-        db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
-        pymonga_db = db[DB_NAME]
-        test = pymonga_db.test_collection
-        yield test.insert(dummy_doc, safe=False)
-
-        test.drop(safe=True)
-        db.disconnect() 
-
-    @defer.inlineCallbacks
-    def testQueryInPoolSafe(self):
-        db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
-        pymonga_db = db[DB_NAME]
-        test = pymonga_db.test_collection
-        yield test.insert(dummy_doc, safe=True)
-
-        test.drop(safe=True)
-        db.disconnect() 
-
-    @defer.inlineCallbacks
-    def testQueryInPoolNonSafe(self):
-        db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
-        pymonga_db = db[DB_NAME]
-        test = pymonga_db.test_collection
-        yield test.insert(dummy_doc, safe=False)
-
-        test.drop(safe=True)
-        db.disconnect() 
+    testSaveSafe = defer.inlineCallbacks(Query(inpool = False, cmd = 'save', safe = True))
+    testSaveNonSafe = defer.inlineCallbacks(Query(inpool = False, cmd = 'save', safe = False))
+    testSaveInPoolSafe = defer.inlineCallbacks(Query(inpool = True, cmd = 'save', safe = True))
+    testSaveInPoolNonSafe = defer.inlineCallbacks(Query(inpool = True, cmd = 'save', safe = False))
