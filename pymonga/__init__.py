@@ -16,7 +16,8 @@
 from pymonga import wire
 from pymonga.tracker import Tracker
 from pymonga._pymongo.objectid import ObjectId
-from twisted.internet import defer, reactor, protocol
+from twisted.internet import reactor, protocol
+from twisted.internet.defer import Deferred
 
 """An asynchronous Mongo driver for Python."""
 
@@ -38,18 +39,14 @@ class MongoFactory(protocol.ReconnectingClientFactory):
         return p
 
 
-def Connection(host="localhost", port=27017, reconnect=True):
-    d = defer.Deferred()
-    factory = MongoFactory(d)
-    factory.continueTrying = reconnect
-    reactor.connectTCP(host, port, factory)
-    return d
-
-
-def ConnectionPool(host="localhost", port=27017, reconnect=True, size=5):
-    d = defer.Deferred()
+def ConnectionPool(host="localhost", port=27017, reconnect=True, size=5, defer=True):
+    d = Deferred()
     factory = MongoFactory(d)
     factory.continueTrying = reconnect
     for x in xrange(size):
         reactor.connectTCP(host, port, factory)
-    return d
+    return defer and d or factory.tracker
+
+
+def Connection(host="localhost", port=27017, reconnect=True, defer=True):
+    return ConnectionPool(host, port, reconnect, size=1, defer=defer)
