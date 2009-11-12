@@ -18,7 +18,7 @@ def main():
     yield test.insert({"src":"Wordpress", "content":"some comments"}, safe=True)
 
     result = yield test.group(keys=["src"],
-        initial='{"count":0}', reduce="function(obj,prev){prev.count++;}")
+        initial={"count":0}, reduce="function(obj,prev){prev.count++;}")
 
     print result
     print "%s seconds" % (time.time() - startTime)
