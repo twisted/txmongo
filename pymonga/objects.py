@@ -15,6 +15,7 @@
 
 import types
 from pymonga._pymongo.son import SON
+from pymonga._pymongo.code import Code
 from pymonga._pymongo.objectid import ObjectId
 from pymonga import filter as qf
 from twisted.internet.defer import Deferred
@@ -160,6 +161,21 @@ class Collection(object):
         d.addCallback(wrapper)
         return d
 
+    def group(self, keys, initial, reduce, condition=None, finalize=None):
+        body = {
+            "ns": self._collection_name,
+            "key": self._fields_list_to_dict(keys),
+            "initial": initial,
+            "$reduce": Code(reduce),
+        }
+
+        if condition:
+            body["cond"] = condition
+        if finalize:
+            body["finalize"] = Code(finalize)
+
+        return self._database["$cmd"].find_one({"group":body})
+        
     def insert(self, docs, safe=False):
         if isinstance(docs, types.DictType):
             docs = [docs]
