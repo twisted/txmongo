@@ -16,6 +16,8 @@
 from pymonga.objects import Database
 from twisted.internet.defer import Deferred
 
+"""Connection tracker"""
+
 class disconnected(object):
     def error(self):
         d = Deferred()

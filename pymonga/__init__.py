@@ -40,6 +40,22 @@ class MongoFactory(protocol.ReconnectingClientFactory):
 
 
 def ConnectionPool(host="localhost", port=27017, reconnect=True, size=5, defer=True):
+    """Open a new connection to a Mongo instance at host:port.
+
+    The resulting object is a deferred, which will be fired after the
+    connection is made, unless defer=False is set.
+
+    :Parameters:
+     - `host` (optional, default=localhost): hostname or IPv4 of the Mongo instance
+     - `port` (optional, default=27017): port number on which to connect
+     - `reconnect` (optional, default=True): auto-reconnect when necessary
+     - `size` (optional, default=5): number of connections to Mongo instance
+     - `defer` (optional, default=True): when False, the deferred returned by
+       Connection will be fired immediately, even if not connected.
+       This is useful for using pymonga within web frameworks such as Twisted-web
+       or Cyclone.
+    """
+
     d = Deferred()
     factory = MongoFactory(d)
     factory.continueTrying = reconnect
@@ -49,4 +65,18 @@ def ConnectionPool(host="localhost", port=27017, reconnect=True, size=5, defer=T
 
 
 def Connection(host="localhost", port=27017, reconnect=True, defer=True):
+    """Open a new connection to a Mongo instance at host:port.
+
+    The resulting object is a deferred, which will be fired after the
+    connection is made, unless defer=False is set.
+
+    :Parameters:
+     - `host` (optional, default=localhost): hostname or IPv4 of the Mongo instance
+     - `port` (optional, default=27017): port number on which to connect
+     - `reconnect` (optional, default=True): auto-reconnect when necessary
+     - `defer` (optional, default=True): when False, the deferred returned by
+       Connection will be fired immediately, even if not connected.
+       This is useful for using pymonga within web frameworks such as Twisted-web
+       or Cyclone.
+    """
     return ConnectionPool(host, port, reconnect, size=1, defer=defer)

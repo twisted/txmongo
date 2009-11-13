@@ -25,9 +25,11 @@ def _DIRECTION(keys, direction):
         return tuple([(k, direction) for k in keys])
 
 def ASCENDING(keys):
+    """Ascending sort order"""
     return _DIRECTION(keys, 1)
 
 def DESCENDING(keys):
+    """Descending sort order"""
     return _DIRECTION(keys, -1)
 
 class _QueryFilter(defaultdict):
@@ -60,6 +62,8 @@ class _QueryFilter(defaultdict):
 
 
 class sort(_QueryFilter):
+    """Sorts the results of a query."""
+
     def __init__(self, key_list):
         _QueryFilter.__init__(self)
         try:
@@ -70,6 +74,8 @@ class sort(_QueryFilter):
 
 
 class hint(_QueryFilter):
+    """Adds a `hint`, telling Mongo the proper index to use for the query."""
+
     def __init__(self, index_list):
         _QueryFilter.__init__(self)
         try:
@@ -80,6 +86,8 @@ class hint(_QueryFilter):
 
 
 class explain(_QueryFilter):
+    """Returns an explain plan for the query."""
+
     def __init__(self):
         _QueryFilter.__init__(self)
         self["explain"] = True
