@@ -14,10 +14,10 @@
 # limitations under the License.
 
 import types
+from pymonga import filter as qf
 from pymonga._pymongo.son import SON
 from pymonga._pymongo.code import Code
 from pymonga._pymongo.objectid import ObjectId
-from pymonga import filter as qf
 from twisted.internet.defer import Deferred
 
 """Utilities for dealing with Mongo objects: Database and Collection"""
@@ -45,6 +45,30 @@ class Database(object):
 
     def __getattr__(self, collection_name):
         return Collection(self, collection_name)
+
+    def create_collection(self, name, options={}):
+        def _wrapper(result, deferred, collection):
+            if result.get("ok", 0.0):
+                deferred.callback(collection)
+            else:
+                deferred.errback(RuntimeError(result.get("errmsg", "unknown error")))
+                
+        deferred = Deferred()
+        collection = Collection(self, name)
+
+        if options:
+            if "size" in options:
+                options["size"] = float(options["size"])
+
+            command = SON({"create": name})
+            command.update(options)
+            d = self["$cmd"].find_one(command)
+            d.addCallback(_wrapper, deferred, collection)
+        else:
+            deferred.callback(collection)
+
+        return deferred
+
 
     def collection_names(self):
         def wrapper(results):
