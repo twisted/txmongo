@@ -57,12 +57,12 @@ class Tracker(object):
             return self.disconnected
 
     def disconnect(self):
-        for idx in range(len(self.pool)):
+        while self.size >= 1:
+            self.size -= 1
+            conn = self.pool.pop(0)
+            conn.factory.continueTrying = 0
             try:
-                conn = self.pool.pop(0)
-                conn.factory.continueTrying = 0
                 conn.transport.loseConnection()
-                self.size -= 1
             except:
                 pass
         
