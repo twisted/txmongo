@@ -1,29 +1,23 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import time
-import pymonga
-from twisted.internet import reactor
+import txmongo
+from twisted.internet import defer, reactor
 
-def safe_update(result):
-    print result
-    finish()
+@defer.inlineCallbacks
+def example():
+    mongo = yield txmongo.MongoConnection()
 
-def connectionMade(db):
-    foo = db.foo     # `foo` database
+    foo = mongo.foo  # `foo` database
     test = foo.test  # `test` collection
 
-    # update something
-    test.update({"foo":"bar"}, {"foo":"bar", "name":"john doe"}, upsert=True)
-    deferred = test.update({"foo":"bar"}, {"foo":"bar", "name":"something"}, safe=True)
-    deferred.addCallback(safe_update)
+    # insert
+    yield test.safe_insert({"foo":"bar", "name":"bla"})
 
-def finish():
-    print "%s seconds" % (time.time() - startTime)
-    reactor.stop()
+    # update
+    result = yield test.safe_update({"foo":"bar"}, {"$set": {"name":"john doe"}})
+    print "result:", result
 
 if __name__ == '__main__':
-    startTime = time.time()
-    deferred = pymonga.Connection()
-    deferred.addCallback(connectionMade)
+    example().addCallback(lambda ign: reactor.stop())
     reactor.run()

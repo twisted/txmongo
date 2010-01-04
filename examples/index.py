@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import time
-import pymonga
-from pymonga import filter as qf
+import txmongo
+from txmongo import filter
 from twisted.internet import defer, reactor
 
 @defer.inlineCallbacks
-def connectionMade(db):
-    foo = db.foo     # `foo` database
+def example():
+    mongo = yield txmongo.MongoConnection()
+
+    foo = mongo.foo  # `foo` database
     test = foo.test  # `test` collection
 
-    idx = qf.sort(qf.ASCENDING("something") + qf.DESCENDING("else"))
+    idx = filter.sort(filter.ASCENDING("something") + filter.DESCENDING("else"))
     print "IDX:", idx
 
     result = yield test.create_index(idx)
@@ -23,11 +24,6 @@ def connectionMade(db):
     result = yield test.drop_index(idx)
     print "drop_index:", result
 
-    print "%s seconds" % (time.time() - startTime)
-    reactor.stop()
-
 if __name__ == '__main__':
-    startTime = time.time()
-    deferred = pymonga.Connection()
-    deferred.addCallback(connectionMade)
+    example().addCallback(lambda ign: reactor.stop())
     reactor.run()

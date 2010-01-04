@@ -1,30 +1,27 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import time
-import pymonga
+import txmongo
 from twisted.internet import defer, reactor
 
 @defer.inlineCallbacks
-def main():
-    conn = yield pymonga.Connection()
-    foo = conn.foo # database
-    test = foo.test # collection
+def example():
+    mongo = yield txmongo.MongoConnection()
 
-    yield test.insert({"src":"Twitter", "content":"bla bla"}, safe=True)
-    yield test.insert({"src":"Twitter", "content":"more data"}, safe=True)
-    yield test.insert({"src":"Wordpress", "content":"blog article 1"}, safe=True)
-    yield test.insert({"src":"Wordpress", "content":"blog article 2"}, safe=True)
-    yield test.insert({"src":"Wordpress", "content":"some comments"}, safe=True)
+    foo = mongo.foo  # `foo` database
+    test = foo.test  # `test` collection
+
+    yield test.safe_insert({"src":"Twitter", "content":"bla bla"})
+    yield test.safe_insert({"src":"Twitter", "content":"more data"})
+    yield test.safe_insert({"src":"Wordpress", "content":"blog article 1"})
+    yield test.safe_insert({"src":"Wordpress", "content":"blog article 2"})
+    yield test.safe_insert({"src":"Wordpress", "content":"some comments"})
 
     result = yield test.group(keys=["src"],
         initial={"count":0}, reduce="function(obj,prev){prev.count++;}")
 
-    print result
-    print "%s seconds" % (time.time() - startTime)
-    reactor.stop()
+    print "result:", result
 
 if __name__ == '__main__':
-    startTime = time.time()
-    main()
+    example().addCallback(lambda ign: reactor.stop())
     reactor.run()

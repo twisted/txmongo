@@ -1,34 +1,27 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import time
-import pymonga
-from pymonga import filter
-from twisted.internet import reactor
+import txmongo
+import txmongo.filter
+from twisted.internet import defer, reactor
 
-def show_results(docs, collection):
-    print "got %d results" % len(docs)
-    for n, doc in enumerate(docs):
-        print n, doc
-    finish()
+@defer.inlineCallbacks
+def example():
+    mongo = yield txmongo.MongoConnection()
 
-def connectionMade(db):
-    foo = db.foo     # `foo` database
+    foo = mongo.foo  # `foo` database
     test = foo.test  # `test` collection
 
-    # fetch documents
-    f = filter.sort(filter.DESCENDING("something"))
-    #f += filter.hint(filter.DESCENDING("myindex"))
-    #f += filter.explain()
-    deferred = test.find(limit=10, filter=f)
-    deferred.addCallback(show_results, test)
+    # create the filter
+    f = txmongo.filter.sort(txmongo.filter.DESCENDING("something"))
+    #f += txmongo.filter.hint(txmongo.filter.DESCENDING("myindex"))
+    #f += txmongo.filter.explain()
 
-def finish():
-    print "%s seconds" % (time.time() - startTime)
-    reactor.stop()
+    # fetch some documents
+    docs = yield test.find(limit=10, filter=f)
+    for n, doc in enumerate(docs):
+        print n, doc
 
 if __name__ == '__main__':
-    startTime = time.time()
-    deferred = pymonga.Connection()
-    deferred.addCallback(connectionMade)
+    example().addCallback(lambda ign: reactor.stop())
     reactor.run()
