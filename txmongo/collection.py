@@ -18,7 +18,7 @@ from txmongo import filter as qf
 from txmongo._pymongo.son import SON
 from txmongo._pymongo.code import Code
 from txmongo._pymongo.objectid import ObjectId
-from twistdd.internet.defer import Deferred
+from twisted.internet.defer import Deferred
 
 class Collection(object):
     def __init__(self, database, collection_name):
@@ -54,14 +54,6 @@ class Collection(object):
 
     def _gen_index_name(self, keys):
         return u"_".join([u"%s_%s" % item for item in keys])
-
-    def _safe_operation(self, proto, safe=False):
-        if safe is True:
-            deferred = self._database["$cmd"].find_one({"getlasterror":1}, _proto=proto)
-        else:
-            deferred = Deferred()
-            deferred.callback(None)
-        return deferred
 
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, _proto=None):
         if spec is None: spec = SON()
@@ -136,16 +128,28 @@ class Collection(object):
 
         return self._database["$cmd"].find_one({"group":body})
         
-    def insert(self, docs, safe=False):
+    def __safe_operation(self, proto, safe=False):
+        if safe is True:
+            return self._database["$cmd"].find_one({"getlasterror":1}, _proto=proto)
+        else:
+            return None
+
+    def __insert(self, docs, safe=False):
         if isinstance(docs, types.DictType):
             docs = [docs]
         if not isinstance(docs, types.ListType):
             raise TypeError("insert takes a document or a list of documents")
         proto = self._database._connection
         proto.OP_INSERT(str(self), docs)
-        return self._safe_operation(proto, safe)
+        return self.__safe_operation(proto, safe)
 
-    def update(self, spec, document, upsert=False, safe=False):
+    def insert(self, docs):
+        return self.__insert(docs)
+
+    def safe_insert(self, docs):
+        return self.__insert(docs, safe=True)
+
+    def __update(self, spec, document, upsert=False, safe=False):
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict")
         if not isinstance(document, types.DictType):
@@ -154,9 +158,15 @@ class Collection(object):
             raise TypeError("upsert must be an instance of bool")
         proto = self._database._connection
         proto.OP_UPDATE(str(self), spec, document)
-        return self._safe_operation(proto, safe)
+        return self.__safe_operation(proto, safe)
 
-    def save(self, doc, safe=False):
+    def update(self, spec, document, upsert=False):
+        return self.__update(spec, document, upsert)
+
+    def safe_update(self, spec, document, upsert=False):
+        return self.__update(spec, document, upsert, safe=True)
+
+    def __save(self, doc, safe=False):
         if not isinstance(doc, types.DictType):
             raise TypeError("cannot save objects of type %s" % type(doc))
 
@@ -165,8 +175,14 @@ class Collection(object):
             return self.update({"_id": objid}, doc, safe=safe)
         else:
             return self.insert(doc, safe=safe)
+
+    def save(self, doc):
+        return self.__save(doc)
+
+    def safe_save(self, doc):
+        return self.__save(doc, safe=True)
     
-    def remove(self, spec, safe=False):
+    def __remove(self, spec, safe=False):
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, types.DictType):
@@ -174,10 +190,22 @@ class Collection(object):
 
         proto = self._database._connection
         proto.OP_DELETE(str(self), spec)
-        return self._safe_operation(proto, safe)
+        return self.__safe_operation(proto, safe)
 
-    def drop(self, safe=False):
-        return self.remove({}, safe)
+    def remove(self, spec):
+        return self.__remove(spec)
+
+    def safe_remove(self, spec):
+        return self.__remove(spec, safe=True)
+
+    def __drop(self, safe=False):
+        return self.__remove({}, safe)
+
+    def drop(self):
+        return self.__drop()
+
+    def safe_drop(self):
+        return self.__drop(safe=True)
 
     def create_index(self, sort_fields, unique=False):
         def wrapper(result, name):
@@ -194,7 +222,7 @@ class Collection(object):
             unique = unique,
         ))
 
-        d = self._database.system.indexes.insert(index, safe=True)
+        d = self._database.system.indexes.__insert(index, safe=True)
         d.addCallback(wrapper, name)
         return d
 

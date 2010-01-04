@@ -17,7 +17,7 @@ from txmongo.database import Database
 from txmongo.protocol import MongoProtocol
 from twisted.internet import task, defer, reactor, protocol
 
-class __disconnected(object):
+class _offline(object):
     def OP_INSERT(self, *args, **kwargs):
         pass
 
@@ -77,7 +77,7 @@ class _MongoFactory(protocol.ReconnectingClientFactory):
     protocol = MongoProtocol
 
     def __init__(self, pool_size):
-        self.id = 0
+        self.idx = 0
         self.size = 0
         self.pool = []
         self.pool_size = pool_size
@@ -104,7 +104,7 @@ class _MongoFactory(protocol.ReconnectingClientFactory):
             conn = self.pool[self.idx % self.size]
             self.idx += 1
         except:
-            return __disconnected()
+            return _offline()
         else:
             return conn
 
