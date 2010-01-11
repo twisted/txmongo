@@ -36,6 +36,12 @@ try:
 except ImportError:
     _use_c = False
 
+try:
+    import uuid
+    _use_uuid = True
+except ImportError:
+    _use_uuid = False
+
 
 def _get_int(data):
     try:
@@ -46,22 +52,29 @@ def _get_int(data):
     return (value, data[4:])
 
 
-def _get_c_string(data):
-    try:
-        end = data.index("\x00")
-    except ValueError:
-        raise InvalidBSON()
+def _get_c_string(data, length=None):
+    if length is None:
+        try:
+            length = data.index("\x00")
+        except ValueError:
+            raise InvalidBSON()
 
-    return (unicode(data[:end], "utf-8"), data[end + 1:])
+    return (unicode(data[:length], "utf-8"), data[length + 1:])
 
 
-def _make_c_string(string):
-    if "\x00" in string:
-        raise InvalidStringData("BSON strings must not contain a NULL character")
-    try:
+def _make_c_string(string, check_null=False):
+    if check_null and "\x00" in string:
+        raise InvalidDocument("BSON keys / regex patterns must not "
+                              "contain a NULL character")
+    if isinstance(string, unicode):
         return string.encode("utf-8") + "\x00"
-    except:
-        raise InvalidStringData("strings in documents must be ASCII only")
+    else:
+        try:
+            string.decode("utf-8")
+            return string + "\x00"
+        except:
+            raise InvalidStringData("strings in documents must be valid "
+                                    "UTF-8: %r" % string)
 
 
 def _validate_number(data):
@@ -224,13 +237,13 @@ def _get_number(data):
 
 
 def _get_string(data):
-    return _get_c_string(data[4:])
+    return _get_c_string(data[4:], struct.unpack("<i", data[:4])[0] - 1)
 
 
 def _get_object(data):
     (object, data) = _bson_to_dict(data)
     if "$ref" in object:
-        return (DBRef(object["$ref"], object["$id"]), data)
+        return (DBRef(object["$ref"], object["$id"], object.get("$db", None)), data)
     return (object, data)
 
 
@@ -256,6 +269,8 @@ def _get_binary(data):
         if length2 != length - 4:
             raise InvalidBSON("invalid binary (st 2) - lengths don't match!")
         length = length2
+    if subtype == 3 and _use_uuid:
+        return (uuid.UUID(bytes=data[:length]), data[length:])
     return (Binary(data[:length], subtype), data[length:])
 
 
@@ -365,15 +380,28 @@ _RE_TYPE = type(_valid_array_name)
 
 
 def _element_to_bson(key, value, check_keys):
+    if not isinstance(key, (str, unicode)):
+        raise InvalidDocument("documents must have only string keys, key was %r" % key)
+
     if check_keys:
         if key.startswith("$"):
             raise InvalidName("key %r must not start with '$'" % key)
         if "." in key:
             raise InvalidName("key %r must not contain '.'" % key)
 
-    name = _make_c_string(key)
+    name = _make_c_string(key, True)
     if isinstance(value, float):
         return "\x01" + name + struct.pack("<d", value)
+
+    # Use Binary w/ subtype 3 for UUID instances
+    try:
+        import uuid
+
+        if isinstance(value, uuid.UUID):
+            value = Binary(value.bytes, subtype=3)
+    except ImportError:
+        pass
+
     if isinstance(value, Binary):
         subtype = value.subtype
         if subtype == 2:
@@ -433,12 +461,10 @@ def _element_to_bson(key, value, check_keys):
             flags += "u"
         if value.flags & re.VERBOSE:
             flags += "x"
-        return "\x0B" + name + _make_c_string(pattern) + _make_c_string(flags)
+        return "\x0B" + name + _make_c_string(pattern, True) + _make_c_string(flags)
     if isinstance(value, DBRef):
-        return _element_to_bson(key,
-                                SON([("$ref", value.collection),
-                                     ("$id", value.id)]),
-                                False)
+        return _element_to_bson(key, value.as_doc(), False)
+
     raise InvalidDocument("cannot convert value of type %s to bson" %
                           type(value))
 
@@ -446,12 +472,18 @@ def _element_to_bson(key, value, check_keys):
 def _dict_to_bson(dict, check_keys):
     try:
         elements = ""
+        if "_id" in dict:
+            elements += _element_to_bson("_id", dict["_id"], False)
         for (key, value) in dict.iteritems():
-            elements += _element_to_bson(key, value, check_keys)
+            if key != "_id":
+                elements += _element_to_bson(key, value, check_keys)
     except AttributeError:
         raise TypeError("encoder expected a mapping type but got: %r" % dict)
 
     length = len(elements) + 5
+    if length > 4 * 1024 * 1024:
+        raise InvalidDocument("document too large - BSON documents are limited "
+                              "to 4 MB")
     return struct.pack("<i", length) + elements + "\x00"
 if _use_c:
     _dict_to_bson = _cbson._dict_to_bson
@@ -490,6 +522,10 @@ def is_valid(bson):
     """
     if not isinstance(bson, types.StringType):
         raise TypeError("BSON data must be an instance of a subclass of str")
+
+    # 4 MB limit
+    if len(bson) > 4 * 1024 * 1024:
+        raise InvalidBSON("BSON documents are limited to 4MB")
 
     try:
         remainder = _validate_document(bson)

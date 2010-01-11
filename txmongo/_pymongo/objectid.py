@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Representation of an ObjectId for Mongo."""
+"""Tools for working with MongoDB `ObjectIds
+<http://www.mongodb.org/display/DOCS/Object+IDs>`_.
+"""
 
+import warnings
+import datetime
 import threading
-import types
 import time
 import socket
 import os
@@ -30,6 +33,14 @@ except: # for Python < 2.5
 from txmongo._pymongo.errors import InvalidId
 
 
+def _machine_bytes():
+    """Get the machine portion of an ObjectId.
+    """
+    machine_hash = _md5func()
+    machine_hash.update(socket.gethostname())
+    return machine_hash.digest()[0:3]
+
+
 class ObjectId(object):
     """A Mongo ObjectId.
     """
@@ -37,22 +48,31 @@ class ObjectId(object):
     _inc = 0
     _inc_lock = threading.Lock()
 
-    def __init__(self, id=None):
-        """Initialize a new ObjectId.
+    _machine_bytes = _machine_bytes()
 
-        If no value of id is given, create a new (unique) ObjectId. If given id
-        is an instance of (string, ObjectId) validate it and use that.
-        Otherwise, a TypeError is raised. If given an invalid id, InvalidId is
-        raised.
+    def __init__(self, oid=None):
+        """Initialize a new ObjectId_.
+
+        If `oid` is ``None``, create a new (unique)
+        ObjectId_. If `oid` is an instance of (``basestring``,
+        :class:`ObjectId`) validate it and use that.  Otherwise, a
+        :class:`TypeError` is raised. If `oid` is invalid,
+        :class:`~pymongo.errors.InvalidId` is raised.
 
         :Parameters:
-          - `id` (optional): a valid ObjectId (12 byte binary or 24 character
+          - `oid` (optional): a valid ObjectId_ (12 byte binary or 24 character
             hex string)
+
+        .. versionadded:: 1.2.1
+           The `oid` parameter can be a ``unicode`` instance (that contains only
+           hexadecimal digits).
+
+        .. _ObjectId: http://www.mongodb.org/display/DOCS/Object+IDs
         """
-        if id is None:
+        if oid is None:
             self.__generate()
         else:
-            self.__validate(id)
+            self.__validate(oid)
 
     def __generate(self):
         """Generate a new value for this ObjectId.
@@ -63,9 +83,7 @@ class ObjectId(object):
         oid += struct.pack(">i", int(time.time()))
 
         # 3 bytes machine
-        machine_hash = _md5func()
-        machine_hash.update(socket.gethostname())
-        oid += machine_hash.digest()[0:3]
+        oid += ObjectId._machine_bytes
 
         # 2 bytes pid
         oid += struct.pack(">H", os.getpid() % 0xFFFF)
@@ -89,69 +107,52 @@ class ObjectId(object):
         """
         if isinstance(oid, ObjectId):
             self.__id = oid.__id
-        elif isinstance(oid, types.StringType):
+        elif isinstance(oid, basestring):
             if len(oid) == 12:
                 self.__id = oid
             elif len(oid) == 24:
-                self.__id = oid.decode("hex")
+                try:
+                    self.__id = oid.decode("hex")
+                except TypeError:
+                    raise InvalidId("%s is not a valid ObjectId" % oid)
             else:
                 raise InvalidId("%s is not a valid ObjectId" % oid)
         else:
             raise TypeError("id must be an instance of (str, ObjectId), "
                             "not %s" % type(oid))
 
-    def url_encode(self, legacy=False):
-        """Get a string representation of this ObjectId safe for use in a url.
+    # DEPRECATED - use str(oid) instead, which returns a hex encoded string
+    def url_encode(self):
+        warnings.warn("oid.url_encode is deprecated and will be removed. "
+                      "Please use str(oid) instead.", DeprecationWarning)
+        return self.__id.encode("hex")
 
-        The `legacy` parameter is for backwards compatibility only and should
-        almost always be kept False. It might eventually be removed.
-
-        The reverse can be achieved using `url_decode()`.
-
-        :Parameters:
-          - `legacy` (optional): use the legacy byte ordering to represent the
-            ObjectId. if you aren't positive you need this it is probably best
-            left as False.
-        """
-        if legacy:
-            return self.legacy_str().encode("hex")
-        else:
-            return self.__id.encode("hex")
-
-    def url_decode(cls, encoded_oid, legacy=False):
-        """Create an ObjectId from an encoded hex string.
-
-        The `legacy` parameter is for backwards compatibility only and should
-        almost always be kept False. It might eventually be removed.
-
-        The reverse can be achieved using `url_encode()`.
-
-        :Parameters:
-          - `encoded_oid`: string encoding of an ObjectId (as created
-            by `url_encode()`)
-          - `legacy` (optional): use the legacy byte ordering to represent the
-            ObjectId. if you aren't positive you need this it is probably best
-            left as False.
-        """
-        if legacy:
-            oid = encoded_oid.decode("hex")
-            return cls.from_legacy_str(oid)
-        else:
-            return cls(encoded_oid.decode("hex"))
+    # DEPRECATED - use ObjectId(encoded_oid) instead,
+    # which takes a hex encoded string
+    def url_decode(cls, encoded_oid):
+        warnings.warn("ObjectId.url_decode is deprecated and will be removed. "
+                      "Please use ObjectId(...) instead.", DeprecationWarning)
+        return cls(encoded_oid.decode("hex"))
     url_decode = classmethod(url_decode)
 
-    def legacy_str(self):
-        return self.__id[7::-1] + self.__id[:7:-1]
-
-    def from_legacy_str(cls, legacy_str):
-        return cls(legacy_str[7::-1] + legacy_str[:7:-1])
-    from_legacy_str = classmethod(from_legacy_str)
-
-    @property
     def binary(self):
-        """Get the binary representation of this ObjectId.
+        """12-byte binary representation of this ObjectId.
         """
         return self.__id
+    binary = property(binary)
+
+    def generation_time(self):
+        """A :class:`datetime.datetime` instance representing the time of
+        generation for this :class:`ObjectId`.
+
+        The :class:`datetime.datetime` is always naive and represents the
+        generation time in UTC. It is precise to the second.
+
+        .. versionadded:: 1.2
+        """
+        t = struct.unpack(">i", self.__id[0:4])[0]
+        return datetime.datetime.utcfromtimestamp(t)
+    generation_time = property(generation_time)
 
     def __str__(self):
         return self.__id.encode("hex")
@@ -163,3 +164,12 @@ class ObjectId(object):
         if isinstance(other, ObjectId):
             return cmp(self.__id, other.__id)
         return NotImplemented
+
+    def __hash__(self):
+        """Get a hash value for this :class:`ObjectId`.
+
+        .. versionadded:: 1.1
+        """
+        return hash(self.__id)
+
+

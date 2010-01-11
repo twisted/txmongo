@@ -14,5 +14,5 @@
 
 """A Mongo driver for Python."""
 
-version = "0.15.2"
+version = "1.3+"
 """Current version of PyMongo."""

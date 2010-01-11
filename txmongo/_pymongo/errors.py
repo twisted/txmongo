@@ -23,6 +23,12 @@ class ConnectionFailure(IOError):
 class AutoReconnect(ConnectionFailure):
     """Raised when a connection to the database is lost and an attempt to
     auto-reconnect will be made.
+
+    In order to auto-reconnect you must handle this exception, recognizing that
+    the operation which caused it has not necessarily succeeded. Future
+    operations will attempt to open a new connection to the database (and
+    will continue to raise this exception until the first successful
+    connection is made).
     """
 
 
@@ -55,18 +61,14 @@ class InvalidBSON(ValueError):
     """Raised when trying to create a BSON object from invalid data.
     """
 
+
 class InvalidStringData(ValueError):
-    """Raised when trying to encode a string containing non-ASCII data.
+    """Raised when trying to encode a string containing non-UTF8 data.
     """
 
 
 class InvalidDocument(ValueError):
     """Raised when trying to create a BSON object from an invalid document.
-    """
-
-
-class UnsupportedTag(ValueError):
-    """Raised when trying to parse an unsupported tag in an XML document.
     """
 
 

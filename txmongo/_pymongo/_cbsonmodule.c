@@ -18,18 +18,21 @@
  * This file contains C implementations of some of the functions needed by the
  * bson module. If possible, these implementations should be used to speed up
  * BSON encoding and decoding.
+ *
+ * TODO The filename is a bit of a misnomer now - probably should be something
+ * like _cspeedupsmodule - we do more than just BSON stuff in this C module.
  */
 
 
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <time.h>
-#undef _GNU_SOURCE // avoid multiple define from Python.h
 
 #include <Python.h>
 #include <datetime.h>
 
-static PyObject* CBSONError;
+#include "time_helpers.h"
+#include "encoding_helpers.h"
+
 static PyObject* InvalidName;
 static PyObject* InvalidDocument;
 static PyObject* InvalidStringData;
@@ -49,182 +52,41 @@ typedef int Py_ssize_t;
 
 #define INITIAL_BUFFER_SIZE 256
 
+/* Maximum number of regex flags */
+#define FLAGS_SIZE 7
 
-/* TODO we ought to check that the malloc or asprintf was successful
- * and raise an exception if not. */
 #if defined(WIN32) || defined(_MSC_VER)
-
-/* no mkgmtime on MSVC before VS 2005. this is terribly gross */
+/* This macro is basically an implementation of asprintf for win32
+ * We get the length of the int as string and malloc a buffer for it,
+ * returning -1 if that malloc fails. We then actually print to the
+ * buffer to get the string value as an int. Like asprintf, the result
+ * must be explicitly free'd when done being used.
+ */
 #if defined(_MSC_VER) && (_MSC_VER >= 1400)
-#define GMTIME_INVERSE(time_struct) _mkgmtime64(time_struct)
+#define INT2STRING(buffer, i)                                           \
+    *(buffer) = malloc(_scprintf("%d", (i)) + 1),                       \
+        (!(buffer) ?                                                    \
+         -1 :                                                           \
+         _snprintf_s(*(buffer),                                         \
+                     _scprintf("%d", (i)) + 1,                          \
+                     _scprintf("%d", (i)) + 1,                          \
+                     "%d",                                              \
+                     (i)))
+#define STRCAT(dest, n, src) strcat_s((dest), (n), (src))
 #else
-/* Copyright (c) 1998-2003 Carnegie Mellon University.  All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *
- * 3. The name "Carnegie Mellon University" must not be used to
- *    endorse or promote products derived from this software without
- *    prior written permission. For permission or any other legal
- *    details, please contact
- *      Office of Technology Transfer
- *      Carnegie Mellon University
- *      5000 Forbes Avenue
- *      Pittsburgh, PA  15213-3890
- *      (412) 268-4387, fax: (412) 268-7395
- *      tech-transfer@andrew.cmu.edu
- *
- * 4. Redistributions of any form whatsoever must retain the following
- *    acknowledgment:
- *    "This product includes software developed by Computing Services
- *     at Carnegie Mellon University (http://www.cmu.edu/computing/)."
- *
- * CARNEGIE MELLON UNIVERSITY DISCLAIMS ALL WARRANTIES WITH REGARD TO
- * THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
- * AND FITNESS, IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY BE LIABLE
- * FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
- * AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
- * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
- *
- */
-/*
- * Copyright (c) 1987, 1989, 1993
- *    The Regents of the University of California.  All rights reserved.
- *
- * This code is derived from software contributed to Berkeley by
- * Arthur David Olson of the National Cancer Institute.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *    This product includes software developed by the University of
- *    California, Berkeley and its contributors.
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
-
-/*
-** Adapted from code provided by Robert Elz, who writes:
-**    The "best" way to do mktime I think is based on an idea of Bob
-**    Kridle's (so its said...) from a long time ago. (mtxinu!kridle now).
-**    It does a binary search of the time_t space.  Since time_t's are
-**    just 32 bits, its a max of 32 iterations (even at 64 bits it
-**    would still be very reasonable).
-*/
-#ifndef WRONG
-#define WRONG     (-1)
-#endif /* !defined WRONG */
-
-static int tmcomp(atmp, btmp)
-     register const struct tm * const atmp;
-     register const struct tm * const btmp;
-{
-    register int      result;
-
-    if ((result = (atmp->tm_year - btmp->tm_year)) == 0 &&
-        (result = (atmp->tm_mon - btmp->tm_mon)) == 0 &&
-        (result = (atmp->tm_mday - btmp->tm_mday)) == 0 &&
-        (result = (atmp->tm_hour - btmp->tm_hour)) == 0 &&
-        (result = (atmp->tm_min - btmp->tm_min)) == 0)
-        result = atmp->tm_sec - btmp->tm_sec;
-    return result;
-}
-
-time_t mkgmtime(tmp)
-struct tm * const tmp;
-{
-    register int                  dir;
-    register int                  bits;
-    register int                  saved_seconds;
-    time_t                        t;
-    struct tm               yourtm, *mytm;
-
-    yourtm = *tmp;
-    saved_seconds = yourtm.tm_sec;
-    yourtm.tm_sec = 0;
-
-    /*
-    ** Calculate the number of magnitude bits in a time_t
-    ** (this works regardless of whether time_t is
-    ** signed or unsigned, though lint complains if unsigned).
-    */
-    for (bits = 0, t = 1; t > 0; ++bits, t <<= 1)
-        ;
-    /*
-    ** If time_t is signed, then 0 is the median value,
-    ** if time_t is unsigned, then 1 << bits is median.
-    */
-    t = (t < 0) ? 0 : ((time_t) 1 << bits);
-
-    /* Some gmtime() implementations are broken and will return
-     * NULL for time_ts larger than 40 bits even on 64-bit platforms
-     * so we'll just cap it at 40 bits */
-    if(bits > 40) bits = 40;
-
-    for ( ; ; ) {
-        mytm = gmtime(&t);
-
-        if(!mytm) return WRONG;
-
-        dir = tmcomp(mytm, &yourtm);
-        if (dir != 0) {
-            if (bits-- < 0)
-                return WRONG;
-            if (bits < 0)
-                --t;
-            else if (dir > 0)
-                t -= (time_t) 1 << bits;
-            else  t += (time_t) 1 << bits;
-            continue;
-        }
-        break;
-    }
-    t += saved_seconds;
-    return t;
-}
-#define GMTIME_INVERSE(time_struct) mkgmtime(time_struct)
+#define INT2STRING(buffer, i)                                           \
+    *(buffer) = malloc(_scprintf("%d", (i)) + 1),                       \
+        (!(buffer) ?                                                    \
+         -1 :                                                           \
+         _snprintf(*(buffer),                                           \
+                     _scprintf("%d", (i)) + 1,                          \
+                     "%d",                                              \
+                     (i)))
+#define STRCAT(dest, n, src) strcat((dest), (src))
 #endif
-
-#define INT2STRING(buffer, i)                   \
-    {                                           \
-        int vslength = _scprintf("%d", i) + 1;  \
-        *buffer = malloc(vslength);             \
-        _snprintf(*buffer, vslength, "%d", i);  \
-    }
 #else
-#define GMTIME_INVERSE(time_struct) timegm(time_struct)
-#define INT2STRING(buffer, i) asprintf(buffer, "%d", i);
+#define INT2STRING(buffer, i) asprintf((buffer), "%d", (i))
+#define STRCAT(dest, n, src) strcat((dest), (src))
 #endif
 
 /* A buffer representing some data being encoded to BSON. */
@@ -312,7 +174,6 @@ static int buffer_write_bytes(bson_buffer* buffer, const char* bytes, int size) 
 
 /* returns 0 on failure */
 static int write_string(bson_buffer* buffer, PyObject* py_string) {
-    int i;
     Py_ssize_t string_length;
     const char* string = PyString_AsString(py_string);
     if (!string) {
@@ -320,29 +181,11 @@ static int write_string(bson_buffer* buffer, PyObject* py_string) {
     }
     string_length = PyString_Size(py_string) + 1;
 
-    for (i = 0; i < string_length - 1; i++) {
-        if (string[i] == 0) {
-            PyErr_SetString(InvalidStringData, "BSON strings must not contain a NULL character");
-            return 0;
-        }
-    }
-
     if (!buffer_write_bytes(buffer, (const char*)&string_length, 4)) {
         return 0;
     }
     if (!buffer_write_bytes(buffer, string, string_length)) {
         return 0;
-    }
-    return 1;
-}
-
-/* returns 0 on invalid ascii */
-static int validate_ascii(const char* data, int length) {
-    int i;
-    for (i = 0; i < length; i++) {
-        if (data[i] & 0x80) {
-            return 0;
-        }
     }
     return 1;
 }
@@ -414,8 +257,7 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
             if (type_byte == -1) {
                 return 0;
             }
-            INT2STRING(&name, i);
-            if (!name) {
+            if (INT2STRING(&name, i) < 0 || !name) {
                 PyErr_NoMemory();
                 return 0;
             }
@@ -543,10 +385,14 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
         return 1;
     } else if (PyString_Check(value)) {
         int result;
+        result_t status;
 
         *(buffer->buffer + type_byte) = 0x02;
-        if (!validate_ascii(PyString_AsString(value), PyString_Size(value))) {
-            PyErr_SetString(InvalidStringData, "strings in documents must be ASCII only");
+        status = check_string((const unsigned char*)PyString_AsString(value),
+                              PyString_Size(value), 1, 0);
+        if (status == NOT_UTF_8) {
+            PyErr_SetString(InvalidStringData,
+                            "strings in documents must be valid UTF-8");
             return 0;
         }
         result = write_string(buffer, value);
@@ -565,18 +411,20 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
         return result;
     } else if (PyDateTime_CheckExact(value)) {
         time_t rawtime;
-        struct tm* timeinfo;
+        struct tm timeinfo;
         long long time_since_epoch;
 
         time(&rawtime);
-        timeinfo = localtime(&rawtime);
-        timeinfo->tm_year = PyDateTime_GET_YEAR(value) - 1900;
-        timeinfo->tm_mon = PyDateTime_GET_MONTH(value) - 1;
-        timeinfo->tm_mday = PyDateTime_GET_DAY(value);
-        timeinfo->tm_hour = PyDateTime_DATE_GET_HOUR(value);
-        timeinfo->tm_min = PyDateTime_DATE_GET_MINUTE(value);
-        timeinfo->tm_sec = PyDateTime_DATE_GET_SECOND(value);
-        time_since_epoch = GMTIME_INVERSE(timeinfo);
+        if (LOCALTIME(&timeinfo, &rawtime)) {
+            return 0;
+        }
+        timeinfo.tm_year = PyDateTime_GET_YEAR(value) - 1900;
+        timeinfo.tm_mon = PyDateTime_GET_MONTH(value) - 1;
+        timeinfo.tm_mday = PyDateTime_GET_DAY(value);
+        timeinfo.tm_hour = PyDateTime_DATE_GET_HOUR(value);
+        timeinfo.tm_min = PyDateTime_DATE_GET_MINUTE(value);
+        timeinfo.tm_sec = PyDateTime_DATE_GET_SECOND(value);
+        time_since_epoch = GMTIME_INVERSE(&timeinfo);
         time_since_epoch = time_since_epoch * 1000;
         time_since_epoch += PyDateTime_DATE_GET_MICROSECOND(value) / 1000;
 
@@ -602,96 +450,29 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
         }
         return 1;
     } else if (PyObject_IsInstance(value, DBRef)) {
-        int start_position,
-            length_location,
-            collection_length,
-            type_pos,
-            length;
-        PyObject* collection_object;
-        PyObject* encoded_collection;
-        PyObject* id_object;
-        char zero = 0;
-
+        PyObject* as_doc = PyObject_CallMethod(value, "as_doc", NULL);
+        if (!as_doc) {
+            return 0;
+        }
+        if (!write_dict(buffer, as_doc, 0)) {
+            Py_DECREF(as_doc);
+            return 0;
+        }
+        Py_DECREF(as_doc);
         *(buffer->buffer + type_byte) = 0x03;
-        start_position = buffer->position;
-
-        /* save space for length */
-        length_location = buffer_save_bytes(buffer, 4);
-        if (length_location == -1) {
-            return 0;
-        }
-
-        collection_object = PyObject_GetAttrString(value, "collection");
-        if (!collection_object) {
-            return 0;
-        }
-        encoded_collection = PyUnicode_AsUTF8String(collection_object);
-        Py_DECREF(collection_object);
-        if (!encoded_collection) {
-            return 0;
-        }
-        {
-            const char* collection = PyString_AsString(encoded_collection);
-            if (!collection) {
-                Py_DECREF(encoded_collection);
-                return 0;
-            }
-            id_object = PyObject_GetAttrString(value, "id");
-            if (!id_object) {
-                Py_DECREF(encoded_collection);
-                return 0;
-            }
-
-            if (!buffer_write_bytes(buffer, "\x02$ref\x00", 6)) {
-                Py_DECREF(encoded_collection);
-                Py_DECREF(id_object);
-                return 0;
-            }
-            collection_length = strlen(collection) + 1;
-            if (!buffer_write_bytes(buffer, (const char*)&collection_length, 4)) {
-                Py_DECREF(encoded_collection);
-                Py_DECREF(id_object);
-                return 0;
-            }
-            if (!buffer_write_bytes(buffer, collection, collection_length)) {
-                Py_DECREF(encoded_collection);
-                Py_DECREF(id_object);
-                return 0;
-            }
-        }
-        Py_DECREF(encoded_collection);
-
-        type_pos = buffer_save_bytes(buffer, 1);
-        if (type_pos == -1) {
-            Py_DECREF(id_object);
-            return 0;
-        }
-        if (!buffer_write_bytes(buffer, "$id\x00", 4)) {
-            Py_DECREF(id_object);
-            return 0;
-        }
-        if (!write_element_to_buffer(buffer, type_pos, id_object, check_keys)) {
-            Py_DECREF(id_object);
-            return 0;
-        }
-        Py_DECREF(id_object);
-
-        /* write null byte and fill in length */
-        if (!buffer_write_bytes(buffer, &zero, 1)) {
-            return 0;
-        }
-        length = buffer->position - start_position;
-        memcpy(buffer->buffer + length_location, &length, 4);
         return 1;
     }
     else if (PyObject_HasAttrString(value, "pattern") &&
              PyObject_HasAttrString(value, "flags")) { /* TODO just a proxy for checking if it is a compiled re */
         PyObject* py_flags = PyObject_GetAttrString(value, "flags");
         PyObject* py_pattern;
+        PyObject* encoded_pattern;
         long int_flags;
-        char flags[7];
+        char flags[FLAGS_SIZE];
+        char check_utf8 = 0;
         int pattern_length,
             flags_length;
+        result_t status;
 
         if (!py_flags) {
             return 0;
@@ -702,36 +483,60 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
         if (!py_pattern) {
             return 0;
         }
+
+        if (PyUnicode_Check(py_pattern)) {
+            encoded_pattern = PyUnicode_AsUTF8String(py_pattern);
+            Py_DECREF(py_pattern);
+            if (!encoded_pattern) {
+                return 0;
+            }
+        } else {
+            encoded_pattern = py_pattern;
+            check_utf8 = 1;
+        }
+
+        status = check_string((const unsigned char*)PyString_AsString(encoded_pattern),
+                              PyString_Size(encoded_pattern), check_utf8, 1);
+        if (status == NOT_UTF_8) {
+            PyErr_SetString(InvalidStringData,
+                            "regex patterns must be valid UTF-8");
+            return 0;
+        } else if (status == HAS_NULL) {
+            PyErr_SetString(InvalidDocument,
+                            "regex patterns must not contain the NULL byte");
+            return 0;
+        }
+
         {
-            const char* pattern =  PyString_AsString(py_pattern);
+            const char* pattern =  PyString_AsString(encoded_pattern);
             pattern_length = strlen(pattern) + 1;
 
             if (!buffer_write_bytes(buffer, pattern, pattern_length)) {
-                Py_DECREF(py_pattern);
+                Py_DECREF(encoded_pattern);
                 return 0;
             }
         }
-        Py_DECREF(py_pattern);
+        Py_DECREF(encoded_pattern);
 
         flags[0] = 0;
         /* TODO don't hardcode these */
         if (int_flags & 2) {
-            strcat(flags, "i");
+            STRCAT(flags, FLAGS_SIZE, "i");
         }
         if (int_flags & 4) {
-            strcat(flags, "l");
+            STRCAT(flags, FLAGS_SIZE, "l");
         }
         if (int_flags & 8) {
-            strcat(flags, "m");
+            STRCAT(flags, FLAGS_SIZE, "m");
         }
         if (int_flags & 16) {
-            strcat(flags, "s");
+            STRCAT(flags, FLAGS_SIZE, "s");
         }
         if (int_flags & 32) {
-            strcat(flags, "u");
+            STRCAT(flags, FLAGS_SIZE, "u");
         }
         if (int_flags & 64) {
-            strcat(flags, "x");
+            STRCAT(flags, FLAGS_SIZE, "x");
         }
         flags_length = strlen(flags) + 1;
         if (!buffer_write_bytes(buffer, flags, flags_length)) {
@@ -746,28 +551,28 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
          * without the c extension being reloaded. */
         PyObject* module;
 
-        module = PyImport_ImportModule("pymonga._pymongo.binary");
+        module = PyImport_ImportModule("txmongo._pymongo.binary");
         if (!module) {
             return 0;
         }
         Binary = PyObject_GetAttrString(module, "Binary");
         Py_DECREF(module);
 
-        module = PyImport_ImportModule("pymonga._pymongo.code");
+        module = PyImport_ImportModule("txmongo._pymongo.code");
         if (!module) {
             return 0;
         }
         Code = PyObject_GetAttrString(module, "Code");
         Py_DECREF(module);
 
-        module = PyImport_ImportModule("pymonga._pymongo.objectid");
+        module = PyImport_ImportModule("txmongo._pymongo.objectid");
         if (!module) {
             return 0;
         }
         ObjectId = PyObject_GetAttrString(module, "ObjectId");
         Py_DECREF(module);
 
-        module = PyImport_ImportModule("pymonga._pymongo.dbref");
+        module = PyImport_ImportModule("txmongo._pymongo.dbref");
         if (!module) {
             return 0;
         }
@@ -801,7 +606,7 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
         PyObject* errmsg = PyString_FromString("Cannot encode object: ");
         PyObject* repr = PyObject_Repr(value);
         PyString_ConcatAndDel(&errmsg, repr);
-        PyErr_SetString(CBSONError, PyString_AsString(errmsg));
+        PyErr_SetString(InvalidDocument, PyString_AsString(errmsg));
         Py_DECREF(errmsg);
         return 0;
     }
@@ -834,7 +639,7 @@ static int write_pair(bson_buffer* buffer, const char* name, Py_ssize_t name_len
     int type_byte;
 
     /* Don't write any _id elements unless we're explicitly told to -
-     * _id has to be written first so we write do so, but don't bother
+     * _id has to be written first so we do so, but don't bother
      * deleting it from the dictionary being written. */
     if (!allow_id && strcmp(name, "_id") == 0) {
         return 1;
@@ -856,6 +661,60 @@ static int write_pair(bson_buffer* buffer, const char* name, Py_ssize_t name_len
     return 1;
 }
 
+static int decode_and_write_pair(bson_buffer* buffer, PyObject* key,
+                                 PyObject* value, unsigned char check_keys) {
+    PyObject* encoded;
+    if (PyUnicode_Check(key)) {
+        result_t status;
+        encoded = PyUnicode_AsUTF8String(key);
+        if (!encoded) {
+            return 0;
+        }
+        status = check_string((const unsigned char*)PyString_AsString(encoded),
+                              PyString_Size(encoded), 0, 1);
+
+        if (status == HAS_NULL) {
+            PyErr_SetString(InvalidDocument,
+                            "Key names must not contain the NULL byte");
+            return 0;
+        }
+    } else if (PyString_Check(key)) {
+        result_t status;
+        encoded = key;
+        Py_INCREF(encoded);
+
+        status = check_string((const unsigned char*)PyString_AsString(encoded),
+                                       PyString_Size(encoded), 1, 1);
+
+        if (status == NOT_UTF_8) {
+            PyErr_SetString(InvalidStringData,
+                            "strings in documents must be valid UTF-8");
+            return 0;
+        } else if (status == HAS_NULL) {
+            PyErr_SetString(InvalidDocument,
+                            "Key names must not contain the NULL byte");
+            return 0;
+        }
+    } else {
+        PyObject* errmsg = PyString_FromString("documents must have only string keys, key was ");
+        PyObject* repr = PyObject_Repr(key);
+        PyString_ConcatAndDel(&errmsg, repr);
+        PyErr_SetString(InvalidDocument, PyString_AsString(errmsg));
+        Py_DECREF(errmsg);
+        return 0;
+    }
+
+    /* Don't allow writing _id here - it was already written. */
+    if (!write_pair(buffer, PyString_AsString(encoded),
+                    PyString_Size(encoded), value, check_keys, 0)) {
+        Py_DECREF(encoded);
+        return 0;
+    }
+
+    Py_DECREF(encoded);
+    return 1;
+}
+
 static int write_son(bson_buffer* buffer, PyObject* dict, int start_position,
                      int length_location, unsigned char check_keys) {
     PyObject* keys = PyObject_CallMethod(dict, "keys", NULL);
@@ -868,7 +727,6 @@ static int write_son(bson_buffer* buffer, PyObject* dict, int start_position,
     for(i = 0; i < items; i++) {
         PyObject* key;
         PyObject* value;
-        PyObject* encoded;
 
         key = PyList_GetItem(keys, i);
         if (!key) {
@@ -876,25 +734,9 @@ static int write_son(bson_buffer* buffer, PyObject* dict, int start_position,
             return 0;
         }
         value = PyDict_GetItem(dict, key);
-        if (!value) {
+        if (!value ||
+            !decode_and_write_pair(buffer, key, value, check_keys)) {
             Py_DECREF(keys);
-            return 0;
-        }
-        if (PyUnicode_CheckExact(key)) {
-            encoded = PyUnicode_AsUTF8String(key);
-            if (!encoded) {
-                Py_DECREF(keys);
-                return 0;
-            }
-        } else {
-            encoded = key;
-            Py_INCREF(encoded);
-        }
-        /* Don't allow writing _id here - it was written above. */
-        if (!write_pair(buffer, PyString_AsString(encoded),
-                        PyString_Size(encoded), value, check_keys, 0)) {
-            Py_DECREF(keys);
-            Py_DECREF(encoded);
             return 0;
         }
     }
@@ -938,20 +780,7 @@ static int write_dict(bson_buffer* buffer, PyObject* dict, unsigned char check_k
         Py_ssize_t pos = 0;
 
         while (PyDict_Next(dict, &pos, &key, &value)) {
-            PyObject* encoded;
-            if (PyUnicode_CheckExact(key)) {
-                encoded = PyUnicode_AsUTF8String(key);
-                if (!encoded) {
-                    return 0;
-                }
-            } else {
-                encoded = key;
-                Py_INCREF(encoded);
-            }
-            /* Don't allow writing _id here - it was written above. */
-            if (!write_pair(buffer, PyString_AsString(encoded),
-                            PyString_Size(encoded), value, check_keys, 0)) {
-                Py_DECREF(encoded);
+            if (!decode_and_write_pair(buffer, key, value, check_keys)) {
                 return 0;
             }
         }
@@ -969,6 +798,11 @@ static int write_dict(bson_buffer* buffer, PyObject* dict, unsigned char check_k
         return 0;
     }
     length = buffer->position - start_position;
+    if (length > 4 * 1024 * 1024) {
+        PyErr_SetString(InvalidDocument, "document too large - "
+                        "BSON documents are limited to 4 MB");
+        return 0;
+    }
     memcpy(buffer->buffer + length_location, &length, 4);
     return 1;
 }
@@ -995,6 +829,163 @@ static PyObject* _cbson_dict_to_bson(PyObject* self, PyObject* args) {
 
     /* objectify buffer */
     result = Py_BuildValue("s#", buffer->buffer, buffer->position);
+    buffer_free(buffer);
+    return result;
+}
+
+/* add a lastError message on the end of the buffer.
+ * returns 0 on failure */
+static int add_last_error(bson_buffer* buffer, int request_id) {
+                                 /* message length: 62 */
+    if (!buffer_write_bytes(buffer, "\x3E\x00\x00\x00", 4) ||
+        !buffer_write_bytes(buffer, (const char*)&request_id, 4) ||
+        !buffer_write_bytes(buffer,
+                            "\x00\x00\x00\x00" /* responseTo */
+                            "\xd4\x07\x00\x00" /* opcode */
+                            "\x00\x00\x00\x00" /* options */
+                            "admin.$cmd\x00"   /* collection name */
+                            "\x00\x00\x00\x00" /* skip */
+                            "\xFF\xFF\xFF\xFF" /* limit (-1) */
+                            "\x17\x00\x00\x00" /* {getlasterror: 1} */
+                            "\x10getlasterror" /* ... */
+                            "\x00\x01\x00\x00" /* ... */
+                            "\x00\x00",        /* ... */
+                            54)) {
+        return 0;
+    }
+    return 1;
+}
+
+static PyObject* _cbson_insert_message(PyObject* self, PyObject* args) {
+    /* NOTE just using a random number as the request_id */
+    int request_id = rand();
+    char* collection_name;
+    int collection_name_length;
+    PyObject* docs;
+    int i;
+    unsigned char check_keys;
+    unsigned char safe;
+    bson_buffer* buffer;
+    int length_location;
+    PyObject* result;
+
+    if (!PyArg_ParseTuple(args, "s#Obb",
+                          &collection_name,
+                          &collection_name_length,
+                          &docs, &check_keys, &safe)) {
+        return NULL;
+    }
+
+    buffer = buffer_new();
+    if (!buffer) {
+        return NULL;
+    }
+
+    // save space for message length
+    length_location = buffer_save_bytes(buffer, 4);
+    if (length_location == -1 ||
+        !buffer_write_bytes(buffer, (const char*)&request_id, 4) ||
+        !buffer_write_bytes(buffer,
+                            "\x00\x00\x00\x00"
+                            "\xd2\x07\x00\x00"
+                            "\x00\x00\x00\x00",
+                            12) ||
+        !buffer_write_bytes(buffer,
+                            collection_name,
+                            collection_name_length + 1)) {
+        buffer_free(buffer);
+        return NULL;
+    }
+
+    for (i = 0; i < PyList_Size(docs); i++) {
+        PyObject* doc = PyList_GetItem(docs, i);
+        if (!write_dict(buffer, doc, check_keys)) {
+            buffer_free(buffer);
+            return NULL;
+        }
+    }
+
+    memcpy(buffer->buffer + length_location, &buffer->position, 4);
+
+    if (safe) {
+        if (!add_last_error(buffer, request_id)) {
+            buffer_free(buffer);
+            return NULL;
+        }
+    }
+
+    /* objectify buffer */
+    result = Py_BuildValue("is#", request_id,
+                           buffer->buffer, buffer->position);
+    buffer_free(buffer);
+    return result;
+}
+
+static PyObject* _cbson_update_message(PyObject* self, PyObject* args) {
+    /* NOTE just using a random number as the request_id */
+    int request_id = rand();
+    char* collection_name;
+    int collection_name_length;
+    PyObject* doc;
+    PyObject* spec;
+    unsigned char multi;
+    unsigned char upsert;
+    unsigned char safe;
+    int options;
+    bson_buffer* buffer;
+    int length_location;
+    PyObject* result;
+
+    if (!PyArg_ParseTuple(args, "s#bbOOb",
+                          &collection_name,
+                          &collection_name_length,
+                          &upsert, &multi, &spec, &doc, &safe)) {
+        return NULL;
+    }
+
+    options = 0;
+    if (upsert) {
+        options += 1;
+    }
+    if (multi) {
+        options += 2;
+    }
+    buffer = buffer_new();
+    if (!buffer) {
+        return NULL;
+    }
+
+    // save space for message length
+    length_location = buffer_save_bytes(buffer, 4);
+    if (length_location == -1 ||
+        !buffer_write_bytes(buffer, (const char*)&request_id, 4) ||
+        !buffer_write_bytes(buffer,
+                            "\x00\x00\x00\x00"
+                            "\xd1\x07\x00\x00"
+                            "\x00\x00\x00\x00",
+                            12) ||
+        !buffer_write_bytes(buffer,
+                            collection_name,
+                            collection_name_length + 1) ||
+        !buffer_write_bytes(buffer, (const char*)&options, 4) ||
+        !write_dict(buffer, spec, 0) ||
+        !write_dict(buffer, doc, 0)) {
+        buffer_free(buffer);
+        return NULL;
+    }
+
+    memcpy(buffer->buffer + length_location, &buffer->position, 4);
+
+    if (safe) {
+        if (!add_last_error(buffer, request_id)) {
+            buffer_free(buffer);
+            return NULL;
+        }
+    }
+
+    /* objectify buffer */
+    result = Py_BuildValue("is#", request_id,
+                           buffer->buffer, buffer->position);
     buffer_free(buffer);
     return result;
 }
@@ -1030,33 +1021,22 @@ static PyObject* get_value(const char* buffer, int* position, int type) {
         {
             int size;
             memcpy(&size, buffer + *position, 4);
-            if (strcmp(buffer + *position + 5, "$ref") == 0) { /* DBRef */
-                char id_type;
-                PyObject* id;
-
-                int offset = *position + 14;
-                int collection_length = strlen(buffer + offset);
-                PyObject* collection = PyUnicode_DecodeUTF8(buffer + offset, collection_length, "strict");
-                if (!collection) {
-                    return NULL;
-                }
-                offset += collection_length + 1;
-                id_type = buffer[offset];
-                offset += 5;
-                id = get_value(buffer, &offset, (int)id_type);
-                if (!id) {
-                    Py_DECREF(collection);
-                    return NULL;
-                }
-                value = PyObject_CallFunctionObjArgs(DBRef, collection, id, NULL);
-                Py_DECREF(collection);
-                Py_DECREF(id);
-            } else {
-                value = elements_to_dict(buffer + *position + 4, size - 5);
-                if (!value) {
-                    return NULL;
-                }
+            value = elements_to_dict(buffer + *position + 4, size - 5);
+            if (!value) {
+                return NULL;
             }
+
+            /* Decoding for DBRefs */
+            if (strcmp(buffer + *position + 5, "$ref") == 0) { /* DBRef */
+                PyObject* id = PyDict_GetItemString(value, "$id");
+                PyObject* collection = PyDict_GetItemString(value, "$ref");
+                PyObject* database = PyDict_GetItemString(value, "$db");
+
+                /* This works even if there is no $db since database will be NULL and
+                   the call will be as if there were only two arguments specified. */
+                value = PyObject_CallFunctionObjArgs(DBRef, collection, id, database, NULL);
+            }
+
             *position += size;
             break;
         }
@@ -1177,19 +1157,21 @@ static PyObject* get_value(const char* buffer, int* position, int type) {
             long long millis;
             int microseconds;
             time_t seconds;
-            struct tm* timeinfo;
+            struct tm timeinfo;
 
             memcpy(&millis, buffer + *position, 8);
             microseconds = (millis % 1000) * 1000;
             seconds = millis / 1000;
-            timeinfo = gmtime(&seconds);
+            if (GMTIME(&timeinfo, &seconds)) {
+                return NULL;
+            }
 
-            value = PyDateTime_FromDateAndTime(timeinfo->tm_year + 1900,
-                                               timeinfo->tm_mon + 1,
-                                               timeinfo->tm_mday,
-                                               timeinfo->tm_hour,
-                                               timeinfo->tm_min,
-                                               timeinfo->tm_sec,
+            value = PyDateTime_FromDateAndTime(timeinfo.tm_year + 1900,
+                                               timeinfo.tm_mon + 1,
+                                               timeinfo.tm_mday,
+                                               timeinfo.tm_hour,
+                                               timeinfo.tm_min,
+                                               timeinfo.tm_sec,
                                                microseconds);
             *position += 8;
             break;
@@ -1316,7 +1298,7 @@ static PyObject* get_value(const char* buffer, int* position, int type) {
             break;
         }
     default:
-        PyErr_SetString(CBSONError, "no c decoder for this type yet");
+        PyErr_SetString(InvalidDocument, "no c decoder for this type yet");
         return NULL;
     }
     return value;
@@ -1425,6 +1407,10 @@ static PyMethodDef _CBSONMethods[] = {
      "convert a BSON string to a SON object."},
     {"_to_dicts", _cbson_to_dicts, METH_O,
      "convert binary data to a sequence of SON objects."},
+    {"_insert_message", _cbson_insert_message, METH_VARARGS,
+     "create an insert message to be sent to MongoDB"},
+    {"_update_message", _cbson_update_message, METH_VARARGS,
+     "create an update message to be sent to MongoDB"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -1438,45 +1424,44 @@ PyMODINIT_FUNC init_cbson(void) {
         return;
     }
 
-    module = PyImport_ImportModule("pymonga._pymongo.errors");
+    module = PyImport_ImportModule("txmongo._pymongo.errors");
     if (!module) {
         return;
     }
-    CBSONError = PyObject_GetAttrString(module, "InvalidDocument");
     InvalidName = PyObject_GetAttrString(module, "InvalidName");
     InvalidDocument = PyObject_GetAttrString(module, "InvalidDocument");
     InvalidStringData = PyObject_GetAttrString(module, "InvalidStringData");
     Py_DECREF(module);
 
-    module = PyImport_ImportModule("pymonga._pymongo.son");
+    module = PyImport_ImportModule("txmongo._pymongo.son");
     if (!module) {
         return;
     }
     SON = PyObject_GetAttrString(module, "SON");
     Py_DECREF(module);
 
-    module = PyImport_ImportModule("pymonga._pymongo.binary");
+    module = PyImport_ImportModule("txmongo._pymongo.binary");
     if (!module) {
         return;
     }
     Binary = PyObject_GetAttrString(module, "Binary");
     Py_DECREF(module);
 
-    module = PyImport_ImportModule("pymonga._pymongo.code");
+    module = PyImport_ImportModule("txmongo._pymongo.code");
     if (!module) {
         return;
     }
     Code = PyObject_GetAttrString(module, "Code");
     Py_DECREF(module);
 
-    module = PyImport_ImportModule("pymonga._pymongo.objectid");
+    module = PyImport_ImportModule("txmongo._pymongo.objectid");
     if (!module) {
         return;
     }
     ObjectId = PyObject_GetAttrString(module, "ObjectId");
     Py_DECREF(module);
 
-    module = PyImport_ImportModule("pymonga._pymongo.dbref");
+    module = PyImport_ImportModule("txmongo._pymongo.dbref");
     if (!module) {
         return;
     }
