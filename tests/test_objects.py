@@ -13,74 +13,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import txmongo
+from txmongo import database
+from txmongo import collection
 from twisted.trial import unittest
-from twisted.internet import reactor, defer, base
+from twisted.internet import base, defer, reactor
 
-import pymonga
-from pymonga._pymongo.objectid import ObjectId
+mongo_host="localhost"
+mongo_port=27017
+base.DelayedCall.debug = False
 
-# mongoDB connection configuration.
-# Change this accordingly.
-DB_HOST = 'localhost'
-DB_PORT = 27017
-DB_NAME = 'pymonga_test'
-
-dummy_doc = {'dummy_key': u'01'*100}
-
-
-class TestPYMONGAConnections(unittest.TestCase):
-    """Test the mongoDB asynchronous python driver."""
-
+class TestMongoObjects(unittest.TestCase):
+    @defer.inlineCallbacks
+    def test_MongoObjects(self):
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        mydb = conn.mydb
+        self.assertEqual(isinstance(mydb, database.Database), True)
+        mycol = mydb.mycol
+        self.assertEqual(isinstance(mycol, collection.Collection), True)
+        yield conn.disconnect()
 
     @defer.inlineCallbacks
-    def testConnection(self):
-        db = yield pymonga.Connection(host=DB_HOST, port=DB_PORT, reconnect=False) 
-        print db 
+    def test_MongoOperations(self):
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        test = conn.foo.test
+        
+        # insert
+        doc = {"foo":"bar", "items":[1, 2, 3]}
+        yield test.safe_insert(doc)
+        result = yield test.find_one(doc)
+        self.assertEqual(result.has_key("_id"), True)
+        self.assertEqual(result["foo"], "bar")
+        self.assertEqual(result["items"], [1, 2, 3])
 
-        # db and collection 
-        pymonga_db = db.pymonga_db 
-        test = pymonga_db.test_collection
+        # update
+        yield test.safe_update({"_id":result["_id"]}, {"$set":{"one":"two"}})
+        result = yield test.find_one({"_id":result["_id"]})
+        self.assertEqual(result["one"], "two")
 
-        # test insert doc and its ObjectId instance
-        yield test.insert(dummy_doc, safe=True) 
-        doc = yield test.find_one() 
-        self.assertEqual(doc.get('dummy_key'), dummy_doc.get('dummy_key'))
-        assert isinstance(doc['_id'], ObjectId)
+        # delete
+        yield test.safe_remove(result["_id"])
 
-        # test remove doc
-        yield test.remove(doc['_id'], safe=True) 
-
-        # test drop collection
-        yield test.drop(safe=True) 
-
-        # test drop db
-        #db.drop_database(pymonga_db)	
-
-        yield db.disconnect() 
-        print db
-
-    @defer.inlineCallbacks
-    def testConnectionPool(self):
-        db = yield pymonga.ConnectionPool(host=DB_HOST, port=DB_PORT, reconnect=False)
-        print db
-
-        # db and collection 
-        pymonga_db = db[DB_NAME] 
-        test = pymonga_db.test_collection
-        self.assertEqual(repr(test), "<mongodb Collection: %s.test_collection>" % DB_NAME)
-
-        ld = []
-        for i in xrange(1000):
-            ld.append(test.insert({"x": i, "y" : u"01"*1024}, safe=True ))
-
-        yield defer.DeferredList(ld)
-
-        total = yield test.count()
-        self.assertEqual(total, 1000)
-
-        yield test.drop(safe=True) 
-        #db.drop_database(pymonga_db)	
-
-        yield db.disconnect()	
-        print db
-
+        # disconnect
+        yield conn.disconnect()

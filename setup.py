@@ -2,15 +2,8 @@
 
 import sys
 import os
-try:
-    import subprocess
-    has_subprocess = True
-except:
-    has_subprocess = False
 import shutil
 
-#from ez_setup import use_setuptools
-#use_setuptools()
 from setuptools import setup
 from setuptools import Feature
 from distutils.cmd import Command
@@ -85,15 +78,14 @@ else:
     features = {"c-ext": c_ext}
 
 setup(
-    name="pymonga",
-    version="0.2",
-    description="Python driver for MongoDB <http://www.mongodb.org>",
-    long_description="bla bla",
+    name="txmongo",
+    version="0.3",
+    description="Asynchronous Python driver for MongoDB <http://www.mongodb.org>",
     author="Alexandre Fiori",
-    author_email="mongodb-user@googlegroups.com",
-    url="http://github.com/mongodb/mongo-python-driver",
-    keywords=["mongo", "mongodb", "pymongo", "gridfs", "pymonga"],
-    packages=["pymonga", "pymonga._pymongo"],
+    author_email="fiorix@gmail.com",
+    url="http://github.com/fiorix/mongo-async-python-driver",
+    keywords=["mongo", "mongodb", "pymongo", "gridfs", "txmongo"],
+    packages=["txmongo", "txmongo._pymongo"],
     install_requires=requirements,
     features=features,
     license="Apache License, Version 2.0",
@@ -108,5 +100,4 @@ setup(
         "Programming Language :: Python",
         "Topic :: Database"],
     cmdclass={"build_ext": custom_build_ext,
-              "doc": "bla bla"})
-
+              "doc": ""})
