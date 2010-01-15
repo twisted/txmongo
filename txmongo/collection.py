@@ -89,12 +89,11 @@ class Collection(object):
 
     def find_one(self, spec=None, fields=None, _proto=None):
         def wrapper(docs):
-            if docs:
-                doc = docs[0]
-                if doc.get("ok") != 1.0:
-                    raise errors.OperationFailure(doc)
+            doc = docs and docs[0] or {}
+            if doc.get("err") is not None:
+                raise errors.OperationFailure(doc)
+            else:
                 return doc
-            return {}
 
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
@@ -177,7 +176,7 @@ class Collection(object):
         if not isinstance(upsert, types.BooleanType):
             raise TypeError("upsert must be an instance of bool")
         proto = self._database._connection
-        proto.OP_UPDATE(str(self), spec, document)
+        proto.OP_UPDATE(str(self), spec, document, upsert)
         return self.__safe_operation(proto, safe)
 
     def update(self, spec, document, upsert=False):
