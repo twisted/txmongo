@@ -15,6 +15,7 @@
 
 import types
 from txmongo import filter as qf
+from txmongo._pymongo import errors
 from txmongo._pymongo.son import SON
 from txmongo._pymongo.code import Code
 from txmongo._pymongo.objectid import ObjectId
@@ -88,7 +89,12 @@ class Collection(object):
 
     def find_one(self, spec=None, fields=None, _proto=None):
         def wrapper(docs):
-            return docs and docs[0] or {}
+            if docs:
+                doc = docs[0]
+                if doc.get("ok") != 1.0:
+                    raise errors.OperationFailure(doc)
+                return doc
+            return {}
 
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
@@ -128,20 +134,34 @@ class Collection(object):
 
         return self._database["$cmd"].find_one({"group":body})
         
-    def __safe_operation(self, proto, safe=False):
+    def __safe_operation(self, proto, safe=False, ids=None):
         if safe is True:
-            return self._database["$cmd"].find_one({"getlasterror":1}, _proto=proto)
+            d = self._database["$cmd"].find_one({"getlasterror":1}, _proto=proto)
+            if ids:
+                d.addCallback(lambda r:ids)
+            return d
         else:
-            return None
+            return ids
 
     def __insert(self, docs, safe=False):
         if isinstance(docs, types.DictType):
+            ids = ObjectId()
+            docs["_id"] = ids
             docs = [docs]
-        if not isinstance(docs, types.ListType):
+        elif isinstance(docs, types.ListType):
+            ids = []
+            for doc in docs:
+                if isinstance(doc, types.DictType):
+                    id = ObjectId()
+                    ids.append(id)
+                    doc["_id"] = id
+                else:
+                    raise TypeError("insert takes a document or a list of documents")
+        else:
             raise TypeError("insert takes a document or a list of documents")
         proto = self._database._connection
         proto.OP_INSERT(str(self), docs)
-        return self.__safe_operation(proto, safe)
+        return self.__safe_operation(proto, safe, ids)
 
     def insert(self, docs):
         return self.__insert(docs)

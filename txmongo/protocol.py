@@ -97,8 +97,8 @@ class MongoProtocol(protocol.Protocol):
         self.__id += 1
 
     def OP_INSERT(self, collection, docs):
-        self.sendMessage(2002, collection,
-            "".join([bson.BSON.from_dict(doc) for doc in docs]))
+        docs = [bson.BSON.from_dict(doc) for doc in docs]
+        self.sendMessage(2002, collection, "".join(docs))
 
     def OP_UPDATE(self, collection, spec, document, upsert=False):
         message = (upsert and _ONE or _ZERO) + \
