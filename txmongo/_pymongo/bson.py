@@ -22,10 +22,10 @@ import re
 import datetime
 import calendar
 
+from txmongo.dbref import DBRef
 from txmongo._pymongo.binary import Binary
 from txmongo._pymongo.code import Code
 from txmongo._pymongo.objectid import ObjectId
-from txmongo._pymongo.dbref import DBRef
 from txmongo._pymongo.son import SON
 from txmongo._pymongo.errors import InvalidBSON, InvalidDocument
 from txmongo._pymongo.errors import InvalidName, InvalidStringData

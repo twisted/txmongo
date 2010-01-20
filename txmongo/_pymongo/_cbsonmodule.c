@@ -572,7 +572,7 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
         ObjectId = PyObject_GetAttrString(module, "ObjectId");
         Py_DECREF(module);
 
-        module = PyImport_ImportModule("txmongo._pymongo.dbref");
+        module = PyImport_ImportModule("txmongo.dbref");
         if (!module) {
             return 0;
         }
@@ -1461,7 +1461,7 @@ PyMODINIT_FUNC init_cbson(void) {
     ObjectId = PyObject_GetAttrString(module, "ObjectId");
     Py_DECREF(module);
 
-    module = PyImport_ImportModule("txmongo._pymongo.dbref");
+    module = PyImport_ImportModule("txmongo.dbref");
     if (!module) {
         return;
     }

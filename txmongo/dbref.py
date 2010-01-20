@@ -17,6 +17,7 @@
 import types
 
 from txmongo._pymongo.son import SON
+from txmongo.collection import Collection
 
 
 class DBRef(object):
@@ -38,6 +39,9 @@ class DBRef(object):
         .. versionadded:: 1.1.1
            The `database` parameter.
         """
+        if isinstance(collection, Collection):
+            collection = collection._collection_name
+
         if not isinstance(collection, types.StringTypes):
             raise TypeError("collection must be an instance of (str, unicode)")
         if not isinstance(database, (types.StringTypes, types.NoneType)):
