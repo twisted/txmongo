@@ -11,7 +11,7 @@ def example():
     foo = mongo.foo  # `foo` database
     test = foo.test  # `test` collection
 
-    result = yield test.safe_drop()
+    result = yield test.drop(safe=True)
     print result
 
 if __name__ == '__main__':

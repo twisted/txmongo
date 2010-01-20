@@ -134,15 +134,21 @@ class Collection(object):
         return self._database["$cmd"].find_one({"group":body})
         
     def __safe_operation(self, proto, safe=False, ids=None):
+        callit = False
         if safe is True:
             d = self._database["$cmd"].find_one({"getlasterror":1}, _proto=proto)
-            if ids:
-                d.addCallback(lambda r:ids)
-            return d
         else:
-            return ids
+            callit = True
+            d = Deferred()
 
-    def __insert(self, docs, safe=False):
+        if ids is not None:
+            d.addCallback(lambda ign:ids)
+
+        if callit is True:
+            d.callback(None)
+        return d
+
+    def insert(self, docs, safe=False):
         if isinstance(docs, types.DictType):
             ids = ObjectId()
             docs["_id"] = ids
@@ -162,13 +168,7 @@ class Collection(object):
         proto.OP_INSERT(str(self), docs)
         return self.__safe_operation(proto, safe, ids)
 
-    def insert(self, docs):
-        return self.__insert(docs)
-
-    def safe_insert(self, docs):
-        return self.__insert(docs, safe=True)
-
-    def __update(self, spec, document, upsert=False, safe=False):
+    def update(self, spec, document, upsert=False, safe=False):
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict")
         if not isinstance(document, types.DictType):
@@ -179,13 +179,7 @@ class Collection(object):
         proto.OP_UPDATE(str(self), spec, document, upsert)
         return self.__safe_operation(proto, safe)
 
-    def update(self, spec, document, upsert=False):
-        return self.__update(spec, document, upsert)
-
-    def safe_update(self, spec, document, upsert=False):
-        return self.__update(spec, document, upsert, safe=True)
-
-    def __save(self, doc, safe=False):
+    def save(self, doc, safe=False):
         if not isinstance(doc, types.DictType):
             raise TypeError("cannot save objects of type %s" % type(doc))
 
@@ -195,13 +189,7 @@ class Collection(object):
         else:
             return self.insert(doc, safe=safe)
 
-    def save(self, doc):
-        return self.__save(doc)
-
-    def safe_save(self, doc):
-        return self.__save(doc, safe=True)
-    
-    def __remove(self, spec, safe=False):
+    def remove(self, spec, safe=False):
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, types.DictType):
@@ -211,20 +199,8 @@ class Collection(object):
         proto.OP_DELETE(str(self), spec)
         return self.__safe_operation(proto, safe)
 
-    def remove(self, spec):
-        return self.__remove(spec)
-
-    def safe_remove(self, spec):
-        return self.__remove(spec, safe=True)
-
-    def __drop(self, safe=False):
-        return self.__remove({}, safe)
-
-    def drop(self):
-        return self.__drop()
-
-    def safe_drop(self):
-        return self.__drop(safe=True)
+    def drop(self, safe=False):
+        return self.remove({}, safe)
 
     def create_index(self, sort_fields, unique=False):
         def wrapper(result, name):
@@ -241,7 +217,7 @@ class Collection(object):
             unique = unique,
         ))
 
-        d = self._database.system.indexes.__insert(index, safe=True)
+        d = self._database.system.indexes.insert(index, safe=True)
         d.addCallback(wrapper, name)
         return d
 

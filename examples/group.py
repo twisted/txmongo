@@ -11,11 +11,11 @@ def example():
     foo = mongo.foo  # `foo` database
     test = foo.test  # `test` collection
 
-    yield test.safe_insert({"src":"Twitter", "content":"bla bla"})
-    yield test.safe_insert({"src":"Twitter", "content":"more data"})
-    yield test.safe_insert({"src":"Wordpress", "content":"blog article 1"})
-    yield test.safe_insert({"src":"Wordpress", "content":"blog article 2"})
-    yield test.safe_insert({"src":"Wordpress", "content":"some comments"})
+    yield test.insert({"src":"Twitter", "content":"bla bla"}, safe=True)
+    yield test.insert({"src":"Twitter", "content":"more data"}, safe=True)
+    yield test.insert({"src":"Wordpress", "content":"blog article 1"}, safe=True)
+    yield test.insert({"src":"Wordpress", "content":"blog article 2"}, safe=True)
+    yield test.insert({"src":"Wordpress", "content":"some comments"}, safe=True)
 
     result = yield test.group(keys=["src"],
         initial={"count":0}, reduce="function(obj,prev){prev.count++;}")

@@ -74,12 +74,12 @@ class XmlrpcHandler(BaseHandler, xmlrpc.XMLRPC):
 
     @defer.inlineCallbacks
     def xmlrpc_insert(self, doc):
-        result = yield self.db.safe_insert(doc)
+        result = yield self.db.insert(doc, safe=True)
         defer.returnValue(repr(result))
 
     @defer.inlineCallbacks
     def xmlrpc_update(self, spec, doc):
-        result = yield self.db.safe_update(spec, doc)
+        result = yield self.db.update(spec, doc, safe=True)
         defer.returnValue(repr(result))
 
 

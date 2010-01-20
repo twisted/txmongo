@@ -14,7 +14,7 @@ def example():
 
     # insert some data
     for x in xrange(10000):
-        result = yield test.safe_insert({"something":x*time.time()})
+        result = yield test.insert({"something":x*time.time()}, safe=True)
         print result
 
 if __name__ == '__main__':

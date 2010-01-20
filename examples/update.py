@@ -12,10 +12,10 @@ def example():
     test = foo.test  # `test` collection
 
     # insert
-    yield test.safe_insert({"foo":"bar", "name":"bla"})
+    yield test.insert({"foo":"bar", "name":"bla"}, safe=True)
 
     # update
-    result = yield test.safe_update({"foo":"bar"}, {"$set": {"name":"john doe"}})
+    result = yield test.update({"foo":"bar"}, {"$set": {"name":"john doe"}}, safe=True)
     print "result:", result
 
 if __name__ == '__main__':

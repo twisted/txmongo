@@ -53,13 +53,13 @@ class XmlrpcHandler(cyclone.web.XmlrpcRequestHandler):
     @defer.inlineCallbacks
     @cyclone.web.asynchronous
     def xmlrpc_insert(self, doc):
-        result = yield self.settings.db.safe_insert(doc)
+        result = yield self.settings.db.insert(doc, safe=True)
         defer.returnValue(repr(result))
 
     @defer.inlineCallbacks
     @cyclone.web.asynchronous
     def xmlrpc_update(self, spec, doc):
-        result = yield self.settings.db.safe_update(spec, doc)
+        result = yield self.settings.db.update(spec, doc, safe=True)
         defer.returnValue(repr(result))
 
 

@@ -40,19 +40,19 @@ class TestMongoObjects(unittest.TestCase):
         
         # insert
         doc = {"foo":"bar", "items":[1, 2, 3]}
-        yield test.safe_insert(doc)
+        yield test.insert(doc, safe=True)
         result = yield test.find_one(doc)
         self.assertEqual(result.has_key("_id"), True)
         self.assertEqual(result["foo"], "bar")
         self.assertEqual(result["items"], [1, 2, 3])
 
         # update
-        yield test.safe_update({"_id":result["_id"]}, {"$set":{"one":"two"}})
+        yield test.update({"_id":result["_id"]}, {"$set":{"one":"two"}}, safe=True)
         result = yield test.find_one({"_id":result["_id"]})
         self.assertEqual(result["one"], "two")
 
         # delete
-        yield test.safe_remove(result["_id"])
+        yield test.remove(result["_id"], safe=True)
 
         # disconnect
         yield conn.disconnect()
