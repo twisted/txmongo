@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 # requires cyclone:
-#  http://github.com/fiorix/tornado
+#  http://github.com/fiorix/cyclone
 # run:
 #  twistd -ny cyclone_server.tac
 
