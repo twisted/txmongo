@@ -16,8 +16,6 @@ network servers using the Twisted framework.
 Instead of deferring database operations to threads, now it's possible
 to do it asynchronously, as easy as using the original API.
 
-It's still a work in progress and should NOT be used for production systems.
-
 Installation
 ============
 You need `setuptools <http://peak.telecommunity.com/DevCenter/setuptools>`_
