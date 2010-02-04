@@ -56,6 +56,19 @@ class Collection(object):
     def _gen_index_name(self, keys):
         return u"_".join([u"%s_%s" % item for item in keys])
 
+    def options(self):
+        def wrapper(result):
+            if result:
+                options = result.get("options", {})
+                if "create" in options:
+                    del options["create"]
+                return options
+            return {}
+
+        d = self._database.system.namespaces.find_one({"name":str(self)})
+        d.addCallback(wrapper)
+        return d
+
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, _proto=None):
         if spec is None: spec = SON()
 
@@ -168,7 +181,7 @@ class Collection(object):
         proto.OP_INSERT(str(self), docs)
         return self.__safe_operation(proto, safe, ids)
 
-    def update(self, spec, document, upsert=False, safe=False):
+    def update(self, spec, document, upsert=False, multi=False, safe=False):
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict")
         if not isinstance(document, types.DictType):
@@ -176,7 +189,7 @@ class Collection(object):
         if not isinstance(upsert, types.BooleanType):
             raise TypeError("upsert must be an instance of bool")
         proto = self._database._connection
-        proto.OP_UPDATE(str(self), spec, document, upsert)
+        proto.OP_UPDATE(str(self), spec, document, upsert, multi)
         return self.__safe_operation(proto, safe)
 
     def save(self, doc, safe=False):
@@ -250,3 +263,30 @@ class Collection(object):
         cmd = SON([("renameCollection", str(self)), ("to", "%s.%s" % \
             (str(self._database), new_name))])
         return self._database("admin")["$cmd"].find_one(cmd)
+
+    def distinct(self, key, spec=None):
+        def wrapper(result):
+            if result:
+                return result.get("values")
+            return {}
+
+        cmd = SON([("distinct", self._collection_name), ("key", key)])
+        if spec:
+            cmd["query"] = spec
+
+        d = self._database["$cmd"].find_one(cmd)
+        d.addCallback(wrapper)
+        return d
+
+    def map_reduce(self, map, reduce, full_response=False, **kwargs):
+        def wrapper(result, full_response):
+            if full_response:
+                return result
+            return result.get("result")
+
+        cmd = SON([("mapreduce", self._collection_name),
+                       ("map", map), ("reduce", reduce)])
+        cmd.update(**kwargs)
+        d = self._database["$cmd"].find_one(cmd)
+        d.addCallback(wrapper, full_response)
+        return d
