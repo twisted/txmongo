@@ -100,8 +100,14 @@ class MongoProtocol(protocol.Protocol):
         docs = [bson.BSON.from_dict(doc) for doc in docs]
         self.sendMessage(2002, collection, "".join(docs))
 
-    def OP_UPDATE(self, collection, spec, document, upsert=False):
-        message = (upsert and _ONE or _ZERO) + \
+    def OP_UPDATE(self, collection, spec, document, upsert=False, multi=False):
+        options = 0
+        if upsert:
+            options += 1
+        if multi:
+            options += 2
+
+        message = struct.pack("<i", options) + \
             bson.BSON.from_dict(spec) + bson.BSON.from_dict(document)
         self.sendMessage(2001, collection, message)
 
