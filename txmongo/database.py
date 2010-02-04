@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from twisted.internet import defer
+from txmongo._pymongo.son import SON
 from txmongo.collection import Collection
 
 class Database(object):
@@ -40,13 +42,13 @@ class Database(object):
         return self[collection_name]
 
     def create_collection(self, name, options={}):
-        def _wrapper(result, deferred, collection):
+        def wrapper(result, deferred, collection):
             if result.get("ok", 0.0):
                 deferred.callback(collection)
             else:
                 deferred.errback(RuntimeError(result.get("errmsg", "unknown error")))
                 
-        deferred = Deferred()
+        deferred = defer.Deferred()
         collection = Collection(self, name)
 
         if options:
@@ -56,11 +58,17 @@ class Database(object):
             command = SON({"create": name})
             command.update(options)
             d = self["$cmd"].find_one(command)
-            d.addCallback(_wrapper, deferred, collection)
+            d.addCallback(wrapper, deferred, collection)
         else:
             deferred.callback(collection)
 
         return deferred
+
+    def drop_collection(self, name_or_collection):
+        if isinstance(name_or_collection, Collection):
+            name = name_or_collection._collection_name
+
+        return self["$cmd"].find_one({"drop":unicode(name)})
 
     def collection_names(self):
         def wrapper(results):
