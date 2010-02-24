@@ -15,6 +15,7 @@
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol
+from txmongo._pymongo.objectid import ObjectId
 from twisted.internet import task, defer, reactor, protocol
 
 class _offline(object):
