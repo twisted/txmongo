@@ -12,7 +12,7 @@ from distutils.errors import CCompilerError
 from distutils.errors import DistutilsPlatformError, DistutilsExecError
 from distutils.core import Extension
 
-requirements = []
+requirements = ["twisted"]
 try:
     import xml.etree.ElementTree
 except ImportError:
