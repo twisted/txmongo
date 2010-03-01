@@ -37,3 +37,7 @@ Thanks to (in no particular order):
 - Renzo Sanchez-Silva (rnz0)
  
   - Initial twisted trial unit tests.
+
+- Vanderson Mota (chunda)
+
+  - Patching setup.py and PyPi maintenance
