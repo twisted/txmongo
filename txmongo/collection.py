@@ -215,7 +215,7 @@ class Collection(object):
     def drop(self, safe=False):
         return self.remove({}, safe)
 
-    def create_index(self, sort_fields, unique=False):
+    def create_index(self, sort_fields, unique=False, dropDups=False):
         def wrapper(result, name):
             return name
 
@@ -228,6 +228,7 @@ class Collection(object):
             name = name,
             key = SON(dict(sort_fields["orderby"])),
             unique = unique,
+            dropDups = dropDups,
         ))
 
         d = self._database.system.indexes.insert(index, safe=True)
