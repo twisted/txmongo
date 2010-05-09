@@ -12,11 +12,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from StringIO import StringIO
 
 import txmongo
 from txmongo import database
 from txmongo import collection
+from txmongo import gridfs
+from txmongo._pymongo import objectid
+from txmongo._gridfs import GridIn, GridOut
 from twisted.trial import unittest
+from twisted.trial import runner
 from twisted.internet import base, defer, reactor
 
 mongo_host="localhost"
@@ -26,6 +31,7 @@ base.DelayedCall.debug = False
 class TestMongoObjects(unittest.TestCase):
     @defer.inlineCallbacks
     def test_MongoObjects(self):
+        """ Tests creating mongo objects """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         mydb = conn.mydb
         self.assertEqual(isinstance(mydb, database.Database), True)
@@ -35,6 +41,7 @@ class TestMongoObjects(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_MongoOperations(self):
+        """ Tests mongo operations """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         test = conn.foo.test
         
@@ -43,6 +50,14 @@ class TestMongoObjects(unittest.TestCase):
         yield test.insert(doc, safe=True)
         result = yield test.find_one(doc)
         self.assertEqual(result.has_key("_id"), True)
+        self.assertEqual(result["foo"], "bar")
+        self.assertEqual(result["items"], [1, 2, 3])
+        
+        # insert preserves object id
+        doc.update({'_id': objectid.ObjectId()})
+        yield test.insert(doc, safe=True)
+        result = yield test.find_one(doc)
+        self.assertEqual(result.get('_id'), doc.get('_id'))
         self.assertEqual(result["foo"], "bar")
         self.assertEqual(result["items"], [1, 2, 3])
 
@@ -56,3 +71,64 @@ class TestMongoObjects(unittest.TestCase):
 
         # disconnect
         yield conn.disconnect()
+
+
+class TestGridFsObjects(unittest.TestCase):
+    """ Test the GridFS operations from txmongo._gridfs """
+    
+    @defer.inlineCallbacks
+    def test_GridFsObjects(self):
+        """ Tests gridfs objects """
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        db = conn.test
+        collection = db.fs
+        
+        gfs = gridfs.GridFS(db) # Default collection
+        
+        gridin = GridIn(collection, filename='test', contentType="text/plain",
+                        chunk_size=2**2**2**2)
+        new_file = gfs.new_file(filename='test2', contentType="text/plain",
+                        chunk_size=2**2**2**2)
+        # disconnect
+        yield conn.disconnect()
+        
+    @defer.inlineCallbacks
+    def test_GridFsOperations(self):
+        """ Tests gridfs operations """
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        db = conn.test
+        collection = db.fs
+        try:
+            in_file = StringIO("Test input string")
+            out_file = StringIO()
+        except Exception, e:
+            self.fail("Failed to create memory files for testing: %s" % e)
+        
+        try:
+            # Tests writing to a new gridfs file
+            gfs = gridfs.GridFS(db) # Default collection
+            g_in = gfs.new_file(filename='optest', contentType="text/plain",
+                            chunk_size=2**2**2**2)
+            g_in.write(in_file.read())
+            yield g_in.close()
+            
+            # Tests reading from an existing gridfs file
+            g_out = yield gfs.get_last_version('optest')
+            data = yield g_out.read()
+            out_file.write(data)
+            g_out.close()
+        except Exception,e:
+            self.fail("Failed to communicate with the GridFS. " +
+                      "Is MongoDB running? %s" % e)
+        else:
+            self.assertEqual(input.getvalue(), output.getvalue(),
+                         "Could not read the value from writing an input")        
+        finally:
+            in_file.close()
+            out_file.close()
+            # disconnect
+            yield conn.disconnect()
+
+if __name__ == "__main__":
+    suite = runner.TrialSuite((TestMongoObjects, TestGridFsObjects))
+    suite.run()

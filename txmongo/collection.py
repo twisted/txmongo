@@ -145,6 +145,21 @@ class Collection(object):
             body["finalize"] = Code(finalize)
 
         return self._database["$cmd"].find_one({"group":body})
+    
+    def filemd5(self, spec):
+        def wrapper(result):
+            return result.get('md5')
+        
+        if not isinstance(spec, ObjectId):
+            raise ValueError(_("filemd5 expected an objectid for its "
+                               "on-keyword argument"))
+        
+        spec = SON([("filemd5", spec),
+                    ("root", self._collection_name)])
+        
+        d = self._database['$cmd'].find_one(spec)
+        d.addCallback(wrapper)
+        return d
         
     def __safe_operation(self, proto, safe=False, ids=None):
         callit = False
@@ -159,18 +174,18 @@ class Collection(object):
 
         if callit is True:
             d.callback(None)
-        return d
+        return d    
 
     def insert(self, docs, safe=False):
         if isinstance(docs, types.DictType):
-            ids = ObjectId()
+            ids = docs.get('_id', ObjectId())
             docs["_id"] = ids
             docs = [docs]
         elif isinstance(docs, types.ListType):
             ids = []
             for doc in docs:
                 if isinstance(doc, types.DictType):
-                    id = ObjectId()
+                    id = doc.get('_id', ObjectId())
                     ids.append(id)
                     doc["_id"] = id
                 else:
