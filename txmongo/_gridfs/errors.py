@@ -14,10 +14,7 @@
 
 """Exceptions raised by the :mod:`gridfs` package"""
 
-from pymongo.errors import PyMongoError
-
-
-class GridFSError(PyMongoError):
+class GridFSError(Exception):
     """Base class for all GridFS exceptions.
 
     .. versionadded:: 1.5

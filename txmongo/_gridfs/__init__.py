@@ -143,7 +143,6 @@ class GridFS(object):
     
     def _cb_get_last_version(self, docs, filename):
         try:
-            print 'docs; ', filename, docs
             grid_file = docs[0]
             return GridOut(self.__collection, grid_file)
         except IndexError:
