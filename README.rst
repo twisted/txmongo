@@ -41,3 +41,7 @@ Thanks to (in no particular order):
 - Vanderson Mota (chunda)
 
   - Patching setup.py and PyPi maintenance
+
+- flanked
+
+  - For porting GridFS to txmongo
