@@ -89,7 +89,7 @@ setup(
     author_email="fiorix@gmail.com",
     url="http://github.com/fiorix/mongo-async-python-driver",
     keywords=["mongo", "mongodb", "pymongo", "gridfs", "txmongo"],
-    packages=["txmongo", "txmongo._pymongo"],
+    packages=["txmongo", "txmongo._pymongo", "txmongo._gridfs"],
     #install_requires=requirements,
     features=features,
     license="Apache License, Version 2.0",
