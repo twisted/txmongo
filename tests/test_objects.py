@@ -28,6 +28,70 @@ mongo_host="localhost"
 mongo_port=27017
 base.DelayedCall.debug = False
 
+class TestMongoQueries(unittest.TestCase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        self.coll = self.conn.mydb.mycol
+
+    @defer.inlineCallbacks
+    def test_SingleCursorIteration(self):
+        yield self.coll.insert([{'v':i} for i in xrange(10)], safe=True)
+        res = yield self.coll.find()
+        self.assertEqual(len(res), 10)
+
+    @defer.inlineCallbacks
+    def test_MultipleCursorIterations(self):
+        yield self.coll.insert([{'v':i} for i in xrange(200)], safe=True)
+        res = yield self.coll.find()
+        self.assertEqual(len(res), 200)
+        print len(res)
+
+    @defer.inlineCallbacks
+    def test_LargeData(self):
+        yield self.coll.insert([{'v':' '*(2**19)} for i in xrange(4)], safe=True)
+        res = yield self.coll.find()
+        self.assertEqual(len(res), 4)
+        print len(res)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+
+class TestMongoQueriesEdgeCases(unittest.TestCase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        self.coll = self.conn.mydb.mycol
+
+    @defer.inlineCallbacks
+    def test_BelowBatchThreshold(self):
+        yield self.coll.insert([{'v':i} for i in xrange(100)], safe=True)
+        res = yield self.coll.find()
+        self.assertEqual(len(res), 100)
+
+    @defer.inlineCallbacks
+    def test_EqualToBatchThreshold(self):
+        yield self.coll.insert([{'v':i} for i in xrange(101)], safe=True)
+        res = yield self.coll.find()
+        self.assertEqual(len(res), 101)
+
+    @defer.inlineCallbacks
+    def test_AboveBatchThreshold(self):
+        yield self.coll.insert([{'v':i} for i in xrange(102)], safe=True)
+        res = yield self.coll.find()
+        self.assertEqual(len(res), 102)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+
 class TestMongoObjects(unittest.TestCase):
     @defer.inlineCallbacks
     def test_MongoObjects(self):
