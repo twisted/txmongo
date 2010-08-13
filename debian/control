@@ -3,7 +3,7 @@ Section: python
 Priority: optional
 XS-Python-Version: 2.5
 Maintainer: Andre Ferraz
-Build-Depends: debhelper (>=7.0.50~), python-support (>= 0.6), cdbs (>= 0.4.49), python-dev
+Build-Depends: debhelper (>=7.0.50~), python-support (>= 0.6), cdbs (>= 0.4.49), python-dev, python-setuptools
 Standards-Version: 3.8.4
 
 Package: python-txmongo
