@@ -23,6 +23,8 @@ mongo_port = 27017
 
 class TestMongoQueries(unittest.TestCase):
 
+    timeout = 5
+
     @defer.inlineCallbacks
     def setUp(self):
         self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
@@ -53,6 +55,8 @@ class TestMongoQueries(unittest.TestCase):
 
 
 class TestMongoQueriesEdgeCases(unittest.TestCase):
+
+    timeout = 5
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -127,6 +131,63 @@ class TestLimit(unittest.TestCase):
         yield self.coll.insert([{'v':' '*(2**20)} for i in xrange(8)], safe=True)
         res = yield self.coll.find(limit=5)
         self.assertEqual(len(res), 5)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop(safe=True)
+        yield self.conn.disconnect()
+
+
+class TestSkip(unittest.TestCase):
+
+    timeout = 5
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        self.coll = self.conn.mydb.mycol
+
+    @defer.inlineCallbacks
+    def test_Skip(self):
+        yield self.coll.insert([{'v':i} for i in xrange(5)], safe=True)
+        res = yield self.coll.find(skip=3)
+        self.assertEqual(len(res), 2)
+
+        yield self.coll.drop(safe=True)
+
+        yield self.coll.insert([{'v':i} for i in xrange(5)], safe=True)
+        res = yield self.coll.find(skip=5)
+        self.assertEqual(len(res), 0)
+
+        yield self.coll.drop(safe=True)
+
+        yield self.coll.insert([{'v':i} for i in xrange(5)], safe=True)
+        res = yield self.coll.find(skip=6)
+        self.assertEqual(len(res), 0)
+
+    @defer.inlineCallbacks
+    def test_SkipWithLimit(self):
+        yield self.coll.insert([{'v':i} for i in xrange(5)], safe=True)
+        res = yield self.coll.find(skip=3, limit=1)
+        self.assertEqual(len(res), 1)
+
+        yield self.coll.drop(safe=True)
+
+        yield self.coll.insert([{'v':i} for i in xrange(5)], safe=True)
+        res = yield self.coll.find(skip=4, limit=2)
+        self.assertEqual(len(res), 1)
+
+        yield self.coll.drop(safe=True)
+
+        yield self.coll.insert([{'v':i} for i in xrange(5)], safe=True)
+        res = yield self.coll.find(skip=4, limit=1)
+        self.assertEqual(len(res), 1)
+
+        yield self.coll.drop(safe=True)
+
+        yield self.coll.insert([{'v':i} for i in xrange(5)], safe=True)
+        res = yield self.coll.find(skip=5, limit=1)
+        self.assertEqual(len(res), 0)
 
     @defer.inlineCallbacks
     def tearDown(self):
