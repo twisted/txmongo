@@ -43,7 +43,8 @@ class TestQuerySuccess(unittest.TestCase):
         self.protocol.querySuccess(0, 0, [])
         self.assertEqual(len(self.protocol._MongoProtocol__queries), 0)
         self.assertEqual(self.protocol._MongoProtocol__id, 1)
-        self.failUnless(self.query.deferred.called)
+        self.failUnless(self.query.deferred.called,
+                        "The required number of documents was retrieved, the deferred should fire")
 
     def test_CursorNotExhausted(self):
         self.protocol.querySuccess(0, 1, [{}, {}])
@@ -63,7 +64,7 @@ class TestQuerySuccess(unittest.TestCase):
         self.failIf(len(self.protocol._MongoProtocol__queries),
                     "We are done with the query, there should be nothing in __queries")
         self.failUnless(self.query.deferred.called,
-                    "Didn't get all the desired data, so the deferred should not fire")
+                    "The required number of documents was retrieved, the deferred should fire")
         self.assertEqual(len(self.query.documents), 2)
 
     def test_CursorNotExhaustedAndLimitWasNotHit(self):

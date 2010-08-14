@@ -38,9 +38,9 @@ class TestMongoQueries(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_MultipleCursorIterations(self):
-        yield self.coll.insert([{'v':i} for i in xrange(200)], safe=True)
+        yield self.coll.insert([{'v':i} for i in xrange(450)], safe=True)
         res = yield self.coll.find()
-        self.assertEqual(len(res), 200)
+        self.assertEqual(len(res), 450)
 
     @defer.inlineCallbacks
     def test_LargeData(self):
@@ -131,6 +131,18 @@ class TestLimit(unittest.TestCase):
         yield self.coll.insert([{'v':' '*(2**20)} for i in xrange(8)], safe=True)
         res = yield self.coll.find(limit=5)
         self.assertEqual(len(res), 5)
+
+    @defer.inlineCallbacks
+    def test_HardLimit(self):
+        yield self.coll.insert([{'v':i} for i in xrange(200)], safe=True)
+        res = yield self.coll.find(limit=-150)
+        self.assertEqual(len(res), 150)
+
+    @defer.inlineCallbacks
+    def test_HardLimitAboveMessageSizeThreshold(self):
+        yield self.coll.insert([{'v':' '*(2**20)} for i in xrange(8)], safe=True)
+        res = yield self.coll.find(limit=-6)
+        self.assertEqual(len(res), 4)
 
     @defer.inlineCallbacks
     def tearDown(self):
