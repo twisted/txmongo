@@ -45,3 +45,7 @@ Thanks to (in no particular order):
 - flanked
 
   - For porting GridFS to txmongo
+
+- Andre Ferraz
+
+  - For creating and maintaining the debian package
