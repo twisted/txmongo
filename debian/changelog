@@ -1,0 +1,11 @@
+python-txmongo (0.3-1) stable; urgency=low
+
+  * Backporting to Stable
+
+ -- Andre Ferraz <andre.ferraz@locaweb.com.br>  Fri, 13 Aug 2010 17:11:12 +0000
+
+python-txmongo (0.3) unstable; urgency=low
+
+  * Initial release.
+
+ -- Andre Ferraz <andre.ferraz@locaweb.com.br>  Fri, 13 Aug 2010 11:48:15 +0000
