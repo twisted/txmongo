@@ -80,14 +80,14 @@ class MongoProtocol(protocol.Protocol):
                 self.__buffer = ""
                 if extra:
                     self.dataReceived(extra)
-	
+
     def messageReceived(self, request_id, packet):
         response_flag, cursor_id, start, length = struct.unpack("<iqii", packet[:20])
         if response_flag:
             self.queryFailure(request_id, cursor_id, response_flag, packet[20:])
             return
         self.querySuccess(request_id, cursor_id, bson._to_dicts(packet[20:]))
-	    
+
     def sendMessage(self, operation, collection, message, query_opts=_ZERO):
         #print "sending %d to %s" % (operation, self)
         fullname = collection and bson._make_c_string(collection) or ""
@@ -141,17 +141,26 @@ class MongoProtocol(protocol.Protocol):
             del(queryObj)
 
     def querySuccess(self, request_id, cursor_id, documents):
-        queryObj = self.__queries.get(request_id, None)
-        if queryObj:
-            ndocs = len(documents)
-            queryObj.documents += documents
-
-            if cursor_id and ndocs < queryObj.limit:
-                queryObj.limit -= ndocs
-                queryObj.id = self.__id
-                self.OP_GET_MORE(queryObj.collection, 0, cursor_id)
-            else:
-                if cursor_id:
+        try:
+            queryObj = self.__queries.pop(request_id)
+        except KeyError:
+            return
+        queryObj.documents += documents
+        if cursor_id:
+            queryObj.id = self.__id
+            next_batch = 0
+            if queryObj.limit:
+                next_batch = queryObj.limit - len(queryObj.documents)
+                # Assert, because according to the protocol spec and my observations
+                # there should be no problems with this, but who knows? At least it will
+                # be noticed, if something unexpected happens. And it is definitely
+                # better, than silently returning a wrong number of documents
+                assert next_batch >= 0, "Unexpected number of documents received!"
+                if not next_batch:
                     self.OP_KILL_CURSORS([cursor_id])
-                queryObj.deferred.callback(queryObj.documents)
-                del(self.__queries[request_id])
+                    queryObj.deferred.callback(queryObj.documents)
+                    return
+            self.__queries[self.__id] = queryObj
+            self.OP_GET_MORE(queryObj.collection, next_batch, cursor_id)
+        else:
+            queryObj.deferred.callback(queryObj.documents)

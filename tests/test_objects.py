@@ -28,6 +28,7 @@ mongo_host="localhost"
 mongo_port=27017
 base.DelayedCall.debug = False
 
+
 class TestMongoObjects(unittest.TestCase):
     @defer.inlineCallbacks
     def test_MongoObjects(self):
