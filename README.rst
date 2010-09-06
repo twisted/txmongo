@@ -49,3 +49,7 @@ Thanks to (in no particular order):
 - Andre Ferraz
 
   - For creating and maintaining the debian package
+
+- Mark L
+
+  - Bugfixes and Unit Tests
