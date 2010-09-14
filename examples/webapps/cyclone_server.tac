@@ -26,7 +26,6 @@ from twisted.application import service, internet
 
 class IndexHandler(cyclone.web.RequestHandler):
     @defer.inlineCallbacks
-    @cyclone.web.asynchronous
     def get(self):
         name = self.get_argument("name")
         try:
