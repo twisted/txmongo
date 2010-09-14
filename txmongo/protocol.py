@@ -83,7 +83,7 @@ class MongoProtocol(protocol.Protocol):
 
     def messageReceived(self, request_id, packet):
         response_flag, cursor_id, start, length = struct.unpack("<iqii", packet[:20])
-        if response_flag:
+        if response_flag == 1:
             self.queryFailure(request_id, cursor_id, response_flag, packet[20:])
             return
         self.querySuccess(request_id, cursor_id, bson._to_dicts(packet[20:]))
@@ -137,7 +137,7 @@ class MongoProtocol(protocol.Protocol):
     def queryFailure(self, request_id, cursor_id, response, raw_error):
         queryObj = self.__queries.pop(request_id, None)
         if queryObj:
-            queryObj.deferred.errback((response, raw_error))
+            queryObj.deferred.errback(ValueError("mongo error=%s"%repr(raw_error)))
             del(queryObj)
 
     def querySuccess(self, request_id, cursor_id, documents):
