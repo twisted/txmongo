@@ -2,3 +2,8 @@
 *.pyc
 *.so
 build
+
+.download_cache
+env
+docs
+_trial_temp

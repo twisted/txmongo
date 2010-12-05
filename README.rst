@@ -22,9 +22,15 @@ You need `setuptools <http://peak.telecommunity.com/DevCenter/setuptools>`_
 in order to get ``txmongo`` installed.
 Just run **python setup.py install**
 
-Examples
-========
+Docs and examples
+=================
+Generate them with **make docs**. You will need `epydoc` installed.
 There are some examples in the *examples/* directory.
+
+Hacking
+=======
+Run **make env** to create clean hacking environment with `virtualenv`.
+Run **make** to torture your code with tests and code style tools.
 
 Credits
 =======
