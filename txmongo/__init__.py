@@ -18,6 +18,7 @@ from txmongo.protocol import MongoProtocol
 from txmongo._pymongo.objectid import ObjectId
 from twisted.internet import task, defer, reactor, protocol
 
+
 class _offline(object):
     def OP_INSERT(self, *args, **kwargs):
         pass
@@ -117,14 +118,18 @@ def _Connection(host, port, reconnect, pool_size, lazy):
         reactor.connectTCP(host, port, factory)
     return (lazy is True) and factory.API or factory.deferred
 
+
 def MongoConnection(host="localhost", port=27017, reconnect=True):
     return _Connection(host, port, reconnect, pool_size=1, lazy=False)
+
 
 def lazyMongoConnection(host="localhost", port=27017, reconnect=True):
     return _Connection(host, port, reconnect, pool_size=1, lazy=True)
 
+
 def MongoConnectionPool(host="localhost", port=27017, reconnect=True, pool_size=5):
     return _Connection(host, port, reconnect, pool_size, lazy=False)
+
 
 def lazyMongoConnectionPool(host="localhost", port=27017, reconnect=True, pool_size=5):
     return _Connection(host, port, reconnect, pool_size, lazy=True)

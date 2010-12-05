@@ -31,7 +31,7 @@ flakes:
 	$(PYFLAKES) txmongo
 
 pep8:
-	$(PEP8) txmongo
+	$(PEP8) --ignore=E501 -r txmongo
 
 
 .PHONY: env docs

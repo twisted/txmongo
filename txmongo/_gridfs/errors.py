@@ -14,6 +14,7 @@
 
 """Exceptions raised by the :mod:`gridfs` package"""
 
+
 class GridFSError(Exception):
     """Base class for all GridFS exceptions.
 
@@ -31,6 +32,7 @@ class NoFile(GridFSError):
 
     .. versionadded:: 1.6
     """
+
 
 class UnsupportedAPI(GridFSError):
     """Raised when trying to use the old GridFS API.

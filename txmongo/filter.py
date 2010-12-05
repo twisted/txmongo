@@ -18,19 +18,23 @@ from collections import defaultdict
 
 """Query filters"""
 
+
 def _DIRECTION(keys, direction):
     if isinstance(keys, types.StringType):
         return (keys, direction),
     elif isinstance(keys, (types.ListType, types.TupleType)):
         return tuple([(k, direction) for k in keys])
 
+
 def ASCENDING(keys):
     """Ascending sort order"""
     return _DIRECTION(keys, 1)
 
+
 def DESCENDING(keys):
     """Descending sort order"""
     return _DIRECTION(keys, -1)
+
 
 class _QueryFilter(defaultdict):
     def __init__(self):
@@ -50,11 +54,11 @@ class _QueryFilter(defaultdict):
             assert isinstance(index_list, (types.ListType, types.TupleType))
             for key, direction in index_list:
                 if not isinstance(key, types.StringTypes):
-                    raise TypeError("Invalid %sing key: %s" % (name, repr(k)))
+                    raise TypeError("Invalid %sing key: %s" % (name, repr(key)))
                 if direction not in (1, -1):
                     raise TypeError("Invalid %sing direction: %s" % (name, direction))
                 self[operation] += tuple(((key, direction),))
-        except Exception, e:
+        except Exception:
             raise TypeError("Invalid list of keys for %s: %s" % (name, repr(index_list)))
 
     def __repr__(self):

@@ -17,6 +17,7 @@ from twisted.internet import defer
 from txmongo._pymongo.son import SON
 from txmongo.collection import Collection
 
+
 class Database(object):
     def __init__(self, factory, database_name):
         self.__factory = factory
@@ -47,7 +48,7 @@ class Database(object):
                 deferred.callback(collection)
             else:
                 deferred.errback(RuntimeError(result.get("errmsg", "unknown error")))
-                
+
         deferred = defer.Deferred()
         collection = Collection(self, name)
 
@@ -68,7 +69,7 @@ class Database(object):
         if isinstance(name_or_collection, Collection):
             name = name_or_collection._collection_name
 
-        return self["$cmd"].find_one({"drop":unicode(name)})
+        return self["$cmd"].find_one({"drop": unicode(name)})
 
     def collection_names(self):
         def wrapper(results):

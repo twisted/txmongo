@@ -30,6 +30,7 @@ from txmongo.filter import (ASCENDING,
                             DESCENDING)
 from txmongo.database import Database
 
+
 class GridFS(object):
     """An instance of GridFS on top of a single Database.
     """
@@ -55,7 +56,7 @@ class GridFS(object):
         self.__collection = database[collection]
         self.__files = self.__collection.files
         self.__chunks = self.__collection.chunks
-        self.__chunks.create_index(filter.sort(ASCENDING("files_id") +ASCENDING("n")),
+        self.__chunks.create_index(filter.sort(ASCENDING("files_id") + ASCENDING("n")),
                                    unique=True)
 
     def new_file(self, **kwargs):
@@ -140,15 +141,14 @@ class GridFS(object):
         d.addCallback(self._cb_get_last_version, filename)
         return d
 #        cursor.limit(-1).sort("uploadDate", -1)#DESCENDING)
-    
+
     def _cb_get_last_version(self, docs, filename):
         try:
             grid_file = docs[0]
             return GridOut(self.__collection, grid_file)
         except IndexError:
             raise NoFile("no file in gridfs with filename %r" % filename)
-    
-    
+
     # TODO add optional safe mode for chunk removal?
     def delete(self, file_id):
         """Delete a file from GridFS by ``"_id"``.

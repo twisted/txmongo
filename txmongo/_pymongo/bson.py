@@ -167,6 +167,7 @@ def _validate_timestamp(data):
     assert len(data) >= 8
     return data[8:]
 
+
 def _validate_number_long(data):
     assert len(data) >= 8
     return data[8:]
@@ -328,6 +329,7 @@ def _get_timestamp(data):
     (inc, data) = _get_int(data)
     return ((timestamp, inc), data)
 
+
 def _get_long(data):
     return (struct.unpack("<q", data[:8])[0], data[8:])
 
@@ -337,17 +339,17 @@ _element_getter = {
     "\x03": _get_object,
     "\x04": _get_array,
     "\x05": _get_binary,
-    "\x06": _get_null, # undefined
+    "\x06": _get_null,  # undefined
     "\x07": _get_oid,
     "\x08": _get_boolean,
     "\x09": _get_date,
     "\x0A": _get_null,
     "\x0B": _get_regex,
     "\x0C": _get_ref,
-    "\x0D": _get_string, # code
-    "\x0E": _get_string, # symbol
+    "\x0D": _get_string,  # code
+    "\x0E": _get_string,  # symbol
     "\x0F": _get_code_w_scope,
-    "\x10": _get_int, # number_int
+    "\x10": _get_int,  # number_int
     "\x11": _get_timestamp,
     "\x12": _get_long,
 }
@@ -435,9 +437,9 @@ def _element_to_bson(key, value, check_keys):
         return "\x08" + name + "\x00"
     if isinstance(value, (int, long)):
         # TODO this is a really ugly way to check for this...
-        if value > 2**64 / 2 - 1 or value < -2**64 / 2:
+        if value > 2 ** 64 / 2 - 1 or value < -2 ** 64 / 2:
             raise OverflowError("MongoDB can only handle up to 8-byte ints")
-        if value > 2**32 / 2 - 1 or value < -2**32 / 2:
+        if value > 2 ** 32 / 2 - 1 or value < -2 ** 32 / 2:
             return "\x12" + name + struct.pack("<q", value)
         return "\x10" + name + struct.pack("<i", value)
     if isinstance(value, datetime.datetime):

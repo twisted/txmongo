@@ -26,7 +26,7 @@ import struct
 try:
     import hashlib
     _md5func = hashlib.md5
-except: # for Python < 2.5
+except:  # for Python < 2.5
     import md5
     _md5func = md5.new
 
@@ -171,5 +171,3 @@ class ObjectId(object):
         .. versionadded:: 1.1
         """
         return hash(self.__id)
-
-

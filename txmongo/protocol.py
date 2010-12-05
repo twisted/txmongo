@@ -23,6 +23,7 @@ _ZERO = "\x00\x00\x00\x00"
 
 """Low level connection to Mongo."""
 
+
 class _MongoQuery(object):
     def __init__(self, id, collection, limit):
         self.id = id
@@ -71,7 +72,7 @@ class MongoProtocol(protocol.Protocol):
                 self.__datalen -= len(data)
             else:
                 extra = ""
-        
+
             self.__buffer += data
             if self.__datalen == 0:
                 self.messageReceived(self.__response, self.__buffer)
@@ -92,8 +93,8 @@ class MongoProtocol(protocol.Protocol):
         #print "sending %d to %s" % (operation, self)
         fullname = collection and bson._make_c_string(collection) or ""
         message = query_opts + fullname + message
-        header = struct.pack("<iiii", 16+len(message), self.__id, 0, operation)
-        self.transport.write(header+message)
+        header = struct.pack("<iiii", 16 + len(message), self.__id, 0, operation)
+        self.transport.write(header + message)
         self.__id += 1
 
     def OP_INSERT(self, collection, docs):
@@ -137,7 +138,7 @@ class MongoProtocol(protocol.Protocol):
     def queryFailure(self, request_id, cursor_id, response, raw_error):
         queryObj = self.__queries.pop(request_id, None)
         if queryObj:
-            queryObj.deferred.errback(ValueError("mongo error=%s"%repr(raw_error)))
+            queryObj.deferred.errback(ValueError("mongo error=%s" % repr(raw_error)))
             del(queryObj)
 
     def querySuccess(self, request_id, cursor_id, documents):

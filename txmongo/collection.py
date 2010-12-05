@@ -21,6 +21,7 @@ from txmongo._pymongo.code import Code
 from txmongo._pymongo.objectid import ObjectId
 from twisted.internet.defer import Deferred
 
+
 class Collection(object):
     def __init__(self, database, collection_name):
         self._database = database
@@ -65,12 +66,13 @@ class Collection(object):
                 return options
             return {}
 
-        d = self._database.system.namespaces.find_one({"name":str(self)})
+        d = self._database.system.namespaces.find_one({"name": str(self)})
         d.addCallback(wrapper)
         return d
 
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, _proto=None):
-        if spec is None: spec = SON()
+        if spec is None:
+            spec = SON()
 
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict")
@@ -144,37 +146,37 @@ class Collection(object):
         if finalize:
             body["finalize"] = Code(finalize)
 
-        return self._database["$cmd"].find_one({"group":body})
-    
+        return self._database["$cmd"].find_one({"group": body})
+
     def filemd5(self, spec):
         def wrapper(result):
             return result.get('md5')
-        
+
         if not isinstance(spec, ObjectId):
             raise ValueError(_("filemd5 expected an objectid for its "
                                "on-keyword argument"))
-        
+
         spec = SON([("filemd5", spec),
                     ("root", self._collection_name)])
-        
+
         d = self._database['$cmd'].find_one(spec)
         d.addCallback(wrapper)
         return d
-        
+
     def __safe_operation(self, proto, safe=False, ids=None):
         callit = False
         if safe is True:
-            d = self._database["$cmd"].find_one({"getlasterror":1}, _proto=proto)
+            d = self._database["$cmd"].find_one({"getlasterror": 1}, _proto=proto)
         else:
             callit = True
             d = Deferred()
 
         if ids is not None:
-            d.addCallback(lambda ign:ids)
+            d.addCallback(lambda _: ids)
 
         if callit is True:
             d.callback(None)
-        return d    
+        return d
 
     def insert(self, docs, safe=False):
         if isinstance(docs, types.DictType):
@@ -239,11 +241,11 @@ class Collection(object):
 
         name = self._gen_index_name(sort_fields["orderby"])
         index = SON(dict(
-            ns = str(self),
-            name = name,
-            key = SON(dict(sort_fields["orderby"])),
-            unique = unique,
-            dropDups = dropDups,
+            ns=str(self),
+            name=name,
+            key=SON(dict(sort_fields["orderby"])),
+            unique=unique,
+            dropDups=dropDups,
         ))
 
         d = self._database.system.indexes.insert(index, safe=True)

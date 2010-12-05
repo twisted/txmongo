@@ -35,7 +35,7 @@ try:
     _SEEK_SET = os.SEEK_SET
     _SEEK_CUR = os.SEEK_CUR
     _SEEK_END = os.SEEK_END
-except AttributeError: # before 2.5
+except AttributeError:  # before 2.5
     _SEEK_SET = 0
     _SEEK_CUR = 1
     _SEEK_END = 2
@@ -54,6 +54,7 @@ def _create_property(field_name, docstring,
             raise AttributeError("can only get %r on a closed file" %
                                  field_name)
         return self._file.get(field_name, None)
+
     def setter(self, value):
         if self._closed:
             raise AttributeError("cannot set %r on a closed file" %
@@ -165,18 +166,17 @@ class GridIn(object):
     def __flush_data(self, data):
         """Flush `data` to a chunk.
         """
-        if data:            
+        if data:
             assert(len(data) <= self.chunk_size)
-            _id = self._id
             chunk = {"files_id": self._file["_id"],
                      "n": self._chunk_number,
                      "data": Binary(data)}
-            
+
             # Continue writing after the insert completes (non-blocking)
             yield self._chunks.insert(chunk)
             self._chunk_number += 1
             self._position += len(data)
-    
+
     @defer.inlineCallbacks
     def __flush_buffer(self):
         """Flush the buffer contents out to a chunk.
@@ -184,20 +184,20 @@ class GridIn(object):
         yield self.__flush_data(self._buffer.getvalue())
         self._buffer.close()
         self._buffer = StringIO()
-    
+
     @defer.inlineCallbacks
     def __flush(self):
         """Flush the file to the database.
         """
         yield self.__flush_buffer()
-        
+
         md5 = yield self._coll.filemd5(self._id)
 
         self._file["md5"] = md5
         self._file["length"] = self._position
         self._file["uploadDate"] = datetime.datetime.utcnow()
         yield self._coll.files.insert(self._file)
-    
+
     @defer.inlineCallbacks
     def close(self):
         """Flush the file and close it.
@@ -229,13 +229,13 @@ class GridIn(object):
         """
         if self._closed:
             raise ValueError("cannot write to a closed file")
-        
+
         #NC: Reverse the order of string and file-like from pymongo 1.6.
-        #    It is more likely to call write several times when writing 
+        #    It is more likely to call write several times when writing
         #    strings than to write multiple file-like objects to a
-        #    single concatenated file. 
-        
-        try: # string
+        #    single concatenated file.
+
+        try:  # string
             while data:
                 space = self.chunk_size - self._buffer.tell()
                 if len(data) <= space:
@@ -245,8 +245,8 @@ class GridIn(object):
                     self._buffer.write(data[:space])
                     self.__flush_buffer()
                     data = data[space:]
-        except AttributeError: 
-            try: # file-like
+        except AttributeError:
+            try:  # file-like
                 if self._buffer.tell() > 0:
                     space = self.chunk_size - self._buffer.tell()
                     self._buffer.write(data.read(space))
@@ -258,7 +258,6 @@ class GridIn(object):
                 self._buffer.write(to_write)
             except AttributeError:
                 raise TypeError("can only write strings or file-like objects")
-            
 
     def writelines(self, sequence):
         """Write a sequence of strings to the file.
@@ -279,7 +278,7 @@ class GridIn(object):
         Close the file and allow exceptions to propogate.
         """
         self.close()
-        return False # untrue will propogate exceptions
+        return False  # untrue will propogate exceptions
 
 
 class GridOut(object):
@@ -325,12 +324,12 @@ class GridOut(object):
                                  True)
     md5 = _create_property("md5", "MD5 of the contents of this file "
                             "(generated on the server).", True)
-    
+
     def __getattr__(self, name):
         if name in self._file:
             return self._file[name]
         raise AttributeError("GridOut object has no attribute '%s'" % name)
-    
+
     @defer.inlineCallbacks
     def read(self, size=-1):
         """Read at most `size` bytes from the file (less if there
@@ -338,36 +337,35 @@ class GridOut(object):
 
         The bytes are returned as an instance of :class:`str`. If
         `size` is negative or omitted all data is read.
-        
+
         :Parameters:
-          - `size` (optional): the number of bytes to read        
+          - `size` (optional): the number of bytes to read
         """
         if size:
             remainder = int(self.length) - self.__position
             if size < 0 or size > remainder:
                 size = remainder
-    
+
             data = self.__buffer
             chunk_number = (len(data) + self.__position) / self.chunk_size
-    
+
             while len(data) < size:
                 chunk = yield self.__chunks.find_one({"files_id": self._id,
                                                       "n": chunk_number})
                 if not chunk:
                     raise CorruptGridFile("no chunk #%d" % chunk_number)
-    
+
                 if not data:
                     data += chunk["data"][self.__position % self.chunk_size:]
                 else:
                     data += chunk["data"]
-    
+
                 chunk_number += 1
-    
+
             self.__position += size
             to_return = data[:size]
             self.__buffer = data[size:]
             defer.returnValue(to_return)
-  
 
     def tell(self):
         """Return the current position of this file.
@@ -399,21 +397,15 @@ class GridOut(object):
             raise IOError(22, "Invalid value for `pos` - must be positive")
 
         self.__position = new_pos
-        
+
     def close(self):
         self.__buffer = ''
         self.__current_chunk = -1
-        
-    def __iter__(self):
-        """Return an iterator over all of this file's data.
 
-        The iterator will return chunk-sized instances of
-        :class:`str`. This can be useful when serving files using a
-        webserver that handles such an iterator efficiently.
-        """
-        raise NotSupportedError("Iterating is deprecated for iterated reading")
-        #return GridOutIterator(self, self.__chunks)
-    
+    def __iter__(self):
+        """Deprecated."""
+        raise UnsupportedAPI("Iterating is deprecated for iterated reading")
+
     def __repr__(self):
         return str(self._file)
 
@@ -428,7 +420,7 @@ class GridOutIterator(object):
 
     def __iter__(self):
         return self
-    
+
     @defer.inlineCallbacks
     def next(self):
         if self.__current_chunk >= self.__max_chunk:
@@ -439,6 +431,7 @@ class GridOutIterator(object):
             raise CorruptGridFile("no chunk #%d" % self.__current_chunk)
         self.__current_chunk += 1
         defer.returnValue(str(chunk["data"]))
+
 
 class GridFile(object):
     """No longer supported.
