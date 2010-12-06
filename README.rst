@@ -59,3 +59,7 @@ Thanks to (in no particular order):
 - Mark L
 
   - Bugfixes and Unit Tests
+
+- AlekSi
+
+  - Code clean up and hacking environment
