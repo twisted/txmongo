@@ -60,6 +60,6 @@ Thanks to (in no particular order):
 
   - Bugfixes and Unit Tests
 
-- AlekSi
+- Alexey Palazhchenko (AlekSi)
 
   - Code clean up and hacking environment
