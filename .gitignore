@@ -7,3 +7,4 @@ build
 env
 docs
 _trial_temp
+txmongo.egg-info

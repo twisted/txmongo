@@ -19,6 +19,9 @@ from txmongo._pymongo.objectid import ObjectId
 from twisted.internet import task, defer, reactor, protocol
 
 
+DISCONNECT_INTERVAL = .5
+
+
 class _offline(object):
     def OP_INSERT(self, *args, **kwargs):
         pass
@@ -55,7 +58,7 @@ class MongoAPI(object):
 
         d = defer.Deferred()
         self.__task = task.LoopingCall(self.__connection_lost, d)
-        self.__task.start(1)
+        self.__task.start(DISCONNECT_INTERVAL, True)
         return d
 
     def __repr__(self):
