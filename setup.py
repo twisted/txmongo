@@ -69,7 +69,7 @@ although they do result in significant speed improvements.
 c_ext = Feature(
     "optional C extension",
     standard=True,
-    ext_modules=[Extension('pymonga._pymongo._cbson',
+    ext_modules=[Extension('txmongo._pymongo._cbson',
                             include_dirs=['txmongo/_pymongo'],
                             sources=['txmongo/_pymongo/_cbsonmodule.c',
                                      'txmongo/_pymongo/time_helpers.c',
