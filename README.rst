@@ -63,3 +63,7 @@ Thanks to (in no particular order):
 - Alexey Palazhchenko (AlekSi)
 
   - Code clean up and hacking environment
+
+- `Silas Sewell <https://github.com/silas>`_
+
+  - Minor build and type fixes

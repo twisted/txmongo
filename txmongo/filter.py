@@ -20,7 +20,7 @@ from collections import defaultdict
 
 
 def _DIRECTION(keys, direction):
-    if isinstance(keys, types.StringType):
+    if isinstance(keys, types.StringTypes):
         return (keys, direction),
     elif isinstance(keys, (types.ListType, types.TupleType)):
         return tuple([(k, direction) for k in keys])

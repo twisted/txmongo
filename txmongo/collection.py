@@ -49,7 +49,7 @@ class Collection(object):
         """
         as_dict = {}
         for field in fields:
-            if not isinstance(field, types.StringType):
+            if not isinstance(field, types.StringTypes):
                 raise TypeError("fields must be a list of key names")
             as_dict[field] = 1
         return as_dict
@@ -253,7 +253,7 @@ class Collection(object):
         return d
 
     def drop_index(self, index_identifier):
-        if isinstance(index_identifier, types.StringType):
+        if isinstance(index_identifier, types.StringTypes):
             name = index_identifier
         elif isinstance(index_identifier, qf.sort):
             name = self._gen_index_name(index_identifier["orderby"])
