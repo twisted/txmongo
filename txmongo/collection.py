@@ -215,7 +215,7 @@ class Collection(object):
 
         objid = doc.get("_id")
         if objid:
-            return self.update({"_id": objid}, doc, safe=safe)
+            return self.update({"_id": objid}, doc, safe=safe, upsert=True)
         else:
             return self.insert(doc, safe=safe)
 
