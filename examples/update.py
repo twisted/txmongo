@@ -18,6 +18,16 @@ def example():
     result = yield test.update({"foo":"bar"}, {"$set": {"name":"john doe"}}, safe=True)
     print "result:", result
 
+    # find and modify
+    spec = {
+        #"findAndModify": "things",
+        "query": {"foo":"bar"},
+        "update": {"$set": {"name": "findAndModify name"}},
+        "new": True,
+        }
+    result = yield things.runCommand("findAndModify", **spec)
+    print "findAndModify result:", result
+
 if __name__ == '__main__':
     example().addCallback(lambda ign: reactor.stop())
     reactor.run()
