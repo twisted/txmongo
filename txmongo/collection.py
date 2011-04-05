@@ -117,8 +117,9 @@ class Collection(object):
         d.addCallback(wrapper)
         return d
 
-    def runCommand(self, command, **kwargs):
-        cmd = SON([ (command, self._collection_name) ])
+    def runCommand(self, command, value, **kwargs):
+        '''@see: http://www.mongodb.org/display/DOCS/Commands'''
+        cmd = SON([ (command, value) ])
         cmd.update(**kwargs)
         d = self._database["$cmd"].find_one(cmd)
         return d
