@@ -20,13 +20,15 @@ def example():
 
     # find and modify
     spec = {
-        #"findAndModify": "things",
         "query": {"foo":"bar"},
         "update": {"$set": {"name": "findAndModify name"}},
         "new": True,
         }
-    result = yield things.runCommand("findAndModify", **spec)
-    print "findAndModify result:", result
+    result = yield test.runCommand("findAndModify", "test", **spec)
+    print "findAndModify updated doc:", result
+
+    result = yield test.runCommand("profile", -1)
+    print "profile level:", result
 
 if __name__ == '__main__':
     example().addCallback(lambda ign: reactor.stop())
