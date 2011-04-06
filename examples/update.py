@@ -24,11 +24,14 @@ def example():
         "update": {"$set": {"name": "findAndModify name"}},
         "new": True,
         }
-    result = yield test.runCommand("findAndModify", "test", **spec)
+    result = yield test.runCommand("findAndModify", test.name, **spec)
     print "findAndModify updated doc:", result
 
     result = yield test.runCommand("profile", -1)
     print "profile level:", result
+
+    result = yield test.runCommand("ping")
+    print "ping:", result
 
 if __name__ == '__main__':
     example().addCallback(lambda ign: reactor.stop())
