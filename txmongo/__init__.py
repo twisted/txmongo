@@ -15,11 +15,7 @@
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol
-from txmongo._pymongo.objectid import ObjectId
-from twisted.internet import task, defer, reactor, protocol
-
-
-DISCONNECT_INTERVAL = .5
+from twisted.internet import defer, reactor, protocol
 
 
 class _offline(object):
@@ -43,23 +39,8 @@ class MongoAPI(object):
         self.__factory = factory
         self._connected = factory.deferred
 
-    def __connection_lost(self, deferred):
-        if self.__factory.size == 0:
-            self.__task.stop()
-            deferred.callback(True)
-
     def disconnect(self):
-        self.__factory.continueTrying = 0
-        for conn in self.__factory.pool:
-            try:
-                conn.transport.loseConnection()
-            except:
-                pass
-
-        d = defer.Deferred()
-        self.__task = task.LoopingCall(self.__connection_lost, d)
-        self.__task.start(DISCONNECT_INTERVAL, True)
-        return d
+        return self.__factory.disconnectPool()
 
     def __repr__(self):
         try:
@@ -78,6 +59,7 @@ class MongoAPI(object):
 
 
 class _MongoFactory(protocol.ReconnectingClientFactory):
+    disconnecting = False
     maxDelay = 10
     protocol = MongoProtocol
 
@@ -102,6 +84,8 @@ class _MongoFactory(protocol.ReconnectingClientFactory):
         except:
             pass
         self.size = len(self.pool)
+        if self.size == 0 and self.disconnecting:
+            self.disconnecting.callback(True)
 
     def connection(self):
         try:
@@ -112,6 +96,16 @@ class _MongoFactory(protocol.ReconnectingClientFactory):
             return _offline()
         else:
             return conn
+
+    def disconnectPool(self):
+        if self.disconnecting is not False:
+            return self.disconnecting
+
+        self.stopTrying()
+        self.disconnecting = defer.Deferred()
+        for conn in self.pool:
+            conn.transport.loseConnection()
+        return self.disconnecting
 
 
 def _Connection(host, port, reconnect, pool_size, lazy):
