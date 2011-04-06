@@ -170,8 +170,7 @@ class Collection(object):
             return result.get('md5')
 
         if not isinstance(spec, ObjectId):
-            raise ValueError(_("filemd5 expected an objectid for its "
-                               "on-keyword argument"))
+            raise ValueError("filemd5 expected an objectid for its on-keyword argument")
 
         spec = SON([("filemd5", spec),
                     ("root", self._collection_name)])
