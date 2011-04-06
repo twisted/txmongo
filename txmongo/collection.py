@@ -57,6 +57,16 @@ class Collection(object):
     def _gen_index_name(self, keys):
         return u"_".join([u"%s_%s" % item for item in keys])
 
+    @property
+    def name(self):
+        """The name of this collection"""
+        return self._collection_name
+    
+    @property
+    def full_name(self):
+        '''The full name of this Collection (database_name.collection_name).'''
+        return "%s.%s" % (str(self._database), self._collection_name)
+
     def options(self):
         def wrapper(result):
             if result:
@@ -117,7 +127,7 @@ class Collection(object):
         d.addCallback(wrapper)
         return d
 
-    def runCommand(self, command, value, **kwargs):
+    def runCommand(self, command, value=1, **kwargs):
         '''@see: http://www.mongodb.org/display/DOCS/Commands'''
         cmd = SON([ (command, value) ])
         cmd.update(**kwargs)
