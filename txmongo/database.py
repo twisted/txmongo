@@ -82,3 +82,15 @@ class Database(object):
         d = self["system.namespaces"].find()
         d.addCallback(wrapper)
         return d
+    
+    def command(self, command, value=1, **kwargs):
+        '''
+        @see: http://www.mongodb.org/display/DOCS/Commands
+        @see: http://api.mongodb.org/python/1.10.1%2B/api/pymongo/database.html#pymongo.database.Database.command
+        '''
+        
+        if isinstance(command, basestring):
+            command = SON([(command, value)])
+        command.update(kwargs)
+        d = self["$cmd"].find_one(command)
+        return d

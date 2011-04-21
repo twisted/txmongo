@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import types
+import warnings
 from txmongo import filter as qf
 from txmongo._pymongo import errors
 from txmongo._pymongo.son import SON
@@ -128,8 +129,23 @@ class Collection(object):
         return d
 
     def runCommand(self, command, value=1, **kwargs):
-        '''@see: http://www.mongodb.org/display/DOCS/Commands'''
+        '''
+        @see: http://www.mongodb.org/display/DOCS/Commands
+        @deprecated: use database.command() instead, as in pymongo
+        http://api.mongodb.org/python/1.10.1%2B/api/pymongo/database.html#pymongo.database.Database.command
+        '''
+        warnings.warn("collection.runCommand: use database.command() instead", DeprecationWarning)
         cmd = SON([ (command, value) ])
+        cmd.update(**kwargs)
+        d = self._database["$cmd"].find_one(cmd)
+        return d
+    
+    def findAndModify(self, query={}, update=None, upsert=False, **kwargs):
+        '''@see: http://api.mongodb.org/python/1.10.1%2B/api/pymongo/collection.html#pymongo.collection.Collection.find_and_modify'''
+        cmd = SON([("findAndModify", self._collection_name),
+                   ("query", query),
+                   ("update", update),
+                   ("upsert", upsert), ])
         cmd.update(**kwargs)
         d = self._database["$cmd"].find_one(cmd)
         return d
