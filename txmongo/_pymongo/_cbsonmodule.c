@@ -43,6 +43,7 @@ static PyObject* ObjectId;
 static PyObject* DBRef;
 static PyObject* RECompile;
 static PyObject* UUID;
+static PyObject* Timestamp;
 
 #if PY_VERSION_HEX < 0x02050000 && !defined(PY_SSIZE_T_MIN)
 typedef int Py_ssize_t;
@@ -461,6 +462,32 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
         Py_DECREF(as_doc);
         *(buffer->buffer + type_byte) = 0x03;
         return 1;
+    } else if (PyObject_IsInstance(value, Timestamp)) {
+        PyObject* obj;
+        long i;
+
+        obj = PyObject_GetAttrString(value, "inc");
+        if (!obj) {
+            return 0;
+        }
+        i = PyInt_AsLong(obj);
+        Py_DECREF(obj);
+        if (!buffer_write_bytes(buffer, (const char*)&i, 4)) {
+            return 0;
+        }
+
+        obj = PyObject_GetAttrString(value, "time");
+        if (!obj) {
+            return 0;
+        }
+        i = PyInt_AsLong(obj);
+        Py_DECREF(obj);
+        if (!buffer_write_bytes(buffer, (const char*)&i, 4)) {
+            return 0;
+        }
+ 
+        *(buffer->buffer + type_byte) = 0x11;
+        return 1;
     }
     else if (PyObject_HasAttrString(value, "pattern") &&
              PyObject_HasAttrString(value, "flags")) { /* TODO just a proxy for checking if it is a compiled re */
@@ -588,11 +615,19 @@ static int write_element_to_buffer(bson_buffer* buffer, int type_byte, PyObject*
             Py_DECREF(module);
         }
 
+        module = PyImport_ImportModule("txmongo._pymongo.timestamp");
+        if (!module) {
+            return 0;
+        }
+        Timestamp = PyObject_GetAttrString(module, "Timestamp");
+        Py_DECREF(module);
+
         if (PyObject_IsInstance(value, Binary) ||
             PyObject_IsInstance(value, Code) ||
             PyObject_IsInstance(value, ObjectId) ||
             PyObject_IsInstance(value, DBRef) ||
-            (UUID && PyObject_IsInstance(value, UUID))) {
+            (UUID && PyObject_IsInstance(value, UUID)) ||
+            PyObject_IsInstance(value, Timestamp)) {
 
             PyErr_SetString(PyExc_RuntimeError,
                             "A python module was reloaded without the C extension being reloaded.\n"
@@ -1275,11 +1310,10 @@ static PyObject* get_value(const char* buffer, int* position, int type) {
         }
     case 17:
         {
-            int i,
-                j;
-            memcpy(&i, buffer + *position, 4);
-            memcpy(&j, buffer + *position + 4, 4);
-            value = Py_BuildValue("(ii)", i, j);
+            unsigned int time, inc;
+            memcpy(&inc, buffer + *position, 4);
+            memcpy(&time, buffer + *position + 4, 4);
+            value = PyObject_CallFunction(Timestamp, "II", time, inc);
             if (!value) {
                 return NULL;
             }
@@ -1483,4 +1517,11 @@ PyMODINIT_FUNC init_cbson(void) {
         UUID = PyObject_GetAttrString(module, "UUID");
         Py_DECREF(module);
     }
+
+    module = PyImport_ImportModule("txmongo._pymongo.timestamp");
+    if (!module) {
+        return;
+    }
+    Timestamp = PyObject_GetAttrString(module, "Timestamp");
+    Py_DECREF(module);
 }

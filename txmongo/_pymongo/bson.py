@@ -27,6 +27,7 @@ from txmongo._pymongo.binary import Binary
 from txmongo._pymongo.code import Code
 from txmongo._pymongo.objectid import ObjectId
 from txmongo._pymongo.son import SON
+from txmongo._pymongo.timestamp import Timestamp
 from txmongo._pymongo.errors import InvalidBSON, InvalidDocument
 from txmongo._pymongo.errors import InvalidName, InvalidStringData
 
@@ -325,9 +326,9 @@ def _get_ref(data):
 
 
 def _get_timestamp(data):
-    (timestamp, data) = _get_int(data)
     (inc, data) = _get_int(data)
-    return ((timestamp, inc), data)
+    (timestamp, data) = _get_int(data)
+    return (Timestamp(timestamp, inc), data)
 
 
 def _get_long(data):
@@ -466,6 +467,10 @@ def _element_to_bson(key, value, check_keys):
         return "\x0B" + name + _make_c_string(pattern, True) + _make_c_string(flags)
     if isinstance(value, DBRef):
         return _element_to_bson(key, value.as_doc(), False)
+    if isinstance(value, Timestamp):
+        inc = struct.pack("<i", value.inc)
+        timestamp = struct.pack("<i", value.time)
+        return "\x11" + name + inc + timestamp
 
     raise InvalidDocument("cannot convert value of type %s to bson" %
                           type(value))
