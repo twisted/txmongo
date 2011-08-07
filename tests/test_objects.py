@@ -12,17 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import time
 from StringIO import StringIO
 
 import txmongo
 from txmongo import database
 from txmongo import collection
 from txmongo import gridfs
-from txmongo._pymongo import objectid
-from txmongo._gridfs import GridIn, GridOut
+from txmongo import filter as qf
+from txmongo._pymongo import objectid, timestamp
+from txmongo._gridfs import GridIn
 from twisted.trial import unittest
 from twisted.trial import runner
-from twisted.internet import base, defer, reactor
+from twisted.internet import base, defer
 
 mongo_host="localhost"
 mongo_port=27017
@@ -69,6 +71,50 @@ class TestMongoObjects(unittest.TestCase):
 
         # delete
         yield test.remove(result["_id"], safe=True)
+
+        # disconnect
+        yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_Timestamps(self):
+        """Tests mongo operations with Timestamps"""
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        test = conn.foo.test_ts
+
+        # insert with specific timestamp
+        doc1 = {'_id':objectid.ObjectId(),
+                'ts':timestamp.Timestamp(1, 2)}
+        yield test.insert(doc1, safe=True)
+
+        result = yield test.find_one(doc1)
+        self.assertEqual(result.get('ts').time, 1)
+        self.assertEqual(result.get('ts').inc, 2)
+
+        # insert with specific timestamp
+        doc2 = {'_id':objectid.ObjectId(),
+                'ts':timestamp.Timestamp(2, 1)}
+        yield test.insert(doc2, safe=True)
+
+        # the objects come back sorted by ts correctly.
+        # (test that we stored inc/time in the right fields)
+        result = yield test.find(filter=qf.sort(qf.ASCENDING('ts')))
+        self.assertEqual(result[0]['_id'], doc1['_id'])
+        self.assertEqual(result[1]['_id'], doc2['_id'])
+
+        # insert with null timestamp
+        doc3 = {'_id':objectid.ObjectId(),
+                'ts':timestamp.Timestamp(0, 0)}
+        yield test.insert(doc3, safe=True)
+
+        # time field loaded correctly
+        result = yield test.find_one(doc3['_id'])
+        now = time.time()
+        self.assertTrue(now - 2 <= result['ts'].time <= now)
+
+        # delete
+        yield test.remove(doc1["_id"], safe=True)
+        yield test.remove(doc2["_id"], safe=True)
+        yield test.remove(doc3["_id"], safe=True)
 
         # disconnect
         yield conn.disconnect()
