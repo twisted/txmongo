@@ -308,3 +308,36 @@ class Collection(object):
         d = self._database["$cmd"].find_one(cmd)
         d.addCallback(wrapper, full_response)
         return d
+
+    def find_and_modify(self, query={}, update=None, upsert=False, **kwargs):
+        def wrapper(result):
+            no_obj_error = "No matching object found"
+            if not result['ok']:
+                if result["errmsg"] == no_obj_error:
+                    return None
+                else:
+                    raise ValueError("Unexpected Error: %s" % (result,))
+            return result.get('value')
+
+        if (not update and not kwargs.get('remove', None)):
+            raise ValueError("Must either update or remove")
+
+        if (update and kwargs.get('remove', None)):
+            raise ValueError("Can't do both update and remove")
+
+        cmd = SON([("findAndModify", self._collection_name)])
+        cmd.update(kwargs)
+        # No need to include empty args
+        if query:
+            cmd['query'] = query
+        if update:
+            cmd['update'] = update
+        if upsert:
+            cmd['upsert'] = upsert
+
+        no_obj_error = "No matching object found"
+
+        d = self._database["$cmd"].find_one(cmd)
+        d.addCallback(wrapper)
+
+        return d
