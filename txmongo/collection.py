@@ -76,17 +76,18 @@ class Collection(object):
 
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict")
-        if not isinstance(fields, (types.ListType, types.NoneType)):
-            raise TypeError("fields must be an istance of list")
+        if not isinstance(fields, (types.DictType, types.ListType, types.NoneType)):
+            raise TypeError("fields must be an instance of dict or list")
         if not isinstance(skip, types.IntType):
             raise TypeError("skip must be an instance of int")
         if not isinstance(limit, types.IntType):
             raise TypeError("limit must be an instance of int")
 
         if fields is not None:
-            if not fields:
-                fields = ["_id"]
-            fields = self._fields_list_to_dict(fields)
+            if not isinstance(fields, types.DictType):
+                if not fields:
+                    fields = ["_id"]
+                fields = self._fields_list_to_dict(fields)
 
         if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
             spec = SON(dict(query=spec))
