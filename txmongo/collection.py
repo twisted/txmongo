@@ -233,7 +233,7 @@ class Collection(object):
     def drop(self, safe=False):
         return self.remove({}, safe)
 
-    def create_index(self, sort_fields, unique=False, dropDups=False):
+    def create_index(self, sort_fields, **kwargs):
         def wrapper(result, name):
             return name
 
@@ -241,15 +241,22 @@ class Collection(object):
             raise TypeError("sort_fields must be an instance of filter.sort")
 
         name = self._gen_index_name(sort_fields["orderby"])
-        index = SON(dict(
-            ns=str(self),
-            name=name,
-            key=SON(dict(sort_fields["orderby"])),
-            unique=unique,
-            dropDups=dropDups,
-        ))
+        
+        index = dict(
+          ns=str(self),
+          name=name,
+          key=SON(dict(sort_fields["orderby"])),
+        )
 
-        d = self._database.system.indexes.insert(index, safe=True)
+        if "drop_dups" in kwargs:
+            kwargs["dropDups"] = kwargs.pop("drop_dups")
+
+        if "bucket_size" in kwargs:
+            kwargs["bucketSize"] = kwargs.pop("bucket_size")
+
+        index.update(kwargs)
+
+        d = self._database.system.indexes.insert(SON(index), safe=True)
         d.addCallback(wrapper, name)
         return d
 
