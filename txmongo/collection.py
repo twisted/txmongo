@@ -262,8 +262,11 @@ class Collection(object):
         if not isinstance(sort_fields, qf.sort):
             raise TypeError("sort_fields must be an instance of filter.sort")
 
-        name = self._gen_index_name(sort_fields["orderby"])
-        
+        if "name" not in kwargs:
+            name = self._gen_index_name(sort_fields["orderby"])
+        else:
+            name = kwargs.pop("name")
+
         index = dict(
           ns=str(self),
           name=name,
