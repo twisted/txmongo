@@ -129,7 +129,10 @@ class Collection(object):
         def wrapper(docs):
             doc = docs and docs[0] or {}
             if doc.get("err") is not None:
-                raise errors.OperationFailure(doc)
+                if doc.get("code") == 11000:
+                    raise errors.DuplicateKeyError
+                else: 
+                    raise errors.OperationFailure(doc)
             else:
                 return doc
 
