@@ -24,6 +24,25 @@ def example():
     result = yield test.drop_index(idx)
     print "drop_index:", result
 
+    # Geohaystack example
+    geoh_idx = filter.sort(filter.GEOHAYSTACK("loc") + filter.ASCENDING("type"))
+    print "IDX:", geoh_idx
+    result = yield test.create_index(geoh_idx, **{'bucketSize':1})
+    print "index_information:", result
+    
+    result = yield test.drop_index(geoh_idx)
+    print "drop_index:", result
+
+    # 2D geospatial index
+    geo_idx = filter.sort(filter.GEO2D("pos"))
+    print "IDX:", geo_idx
+    result = yield test.create_index(geo_idx, **{ 'min':-100, 'max':100 })
+    print "index_information:", result
+
+    result = yield test.drop_index(geo_idx)
+    print "drop_index:", result
+
+
 if __name__ == '__main__':
     example().addCallback(lambda ign: reactor.stop())
     reactor.run()
