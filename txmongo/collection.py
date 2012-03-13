@@ -53,6 +53,12 @@ class Collection(object):
         return Collection(self._database,
             "%s.%s" % (self._collection_name, collection_name))
 
+    def __cmp__(self, other):
+        if isinstance(other, Collection):
+            return cmp((self._database, self._collection_name),
+                       (other._database, other._collection_name))
+        return NotImplemented
+
     def __getattr__(self, collection_name):
         return self[collection_name]
 
