@@ -23,9 +23,25 @@ from twisted.internet.defer import Deferred
 
 
 class Collection(object):
-    def __init__(self, database, collection_name):
+    def __init__(self, database, name):
+        if not isinstance(name, basestring):
+            raise TypeError("name must be an instance of basestring")
+
+        if not name or ".." in name:
+            raise errors.InvalidName("collection names cannot be empty")
+        if "$" in name and not (name.startswith("oplog.$main") or
+                                name.startswith("$cmd")):
+            raise errors.InvalidName("collection names must not "
+                              "contain '$': %r" % name)
+        if name[0] == "." or name[-1] == ".":
+            raise errors.InvalidName("collection names must not start "
+                              "or end with '.': %r" % name)
+        if "\x00" in name:
+            raise errors.InvalidName("collection names must not contain the "
+                              "null character")
+
         self._database = database
-        self._collection_name = collection_name
+        self._collection_name = name
 
     def __str__(self):
         return "%s.%s" % (str(self._database), self._collection_name)
@@ -36,6 +52,12 @@ class Collection(object):
     def __getitem__(self, collection_name):
         return Collection(self._database,
             "%s.%s" % (self._collection_name, collection_name))
+
+    def __cmp__(self, other):
+        if isinstance(other, Collection):
+            return cmp((self._database, self._collection_name),
+                       (other._database, other._collection_name))
+        return NotImplemented
 
     def __getattr__(self, collection_name):
         return self[collection_name]
@@ -107,7 +129,10 @@ class Collection(object):
         def wrapper(docs):
             doc = docs and docs[0] or {}
             if doc.get("err") is not None:
-                raise errors.OperationFailure(doc)
+                if doc.get("code") == 11000:
+                    raise errors.DuplicateKeyError
+                else: 
+                    raise errors.OperationFailure(doc)
             else:
                 return doc
 
@@ -233,23 +258,33 @@ class Collection(object):
     def drop(self, safe=False):
         return self.remove({}, safe)
 
-    def create_index(self, sort_fields, unique=False, dropDups=False):
+    def create_index(self, sort_fields, **kwargs):
         def wrapper(result, name):
             return name
 
         if not isinstance(sort_fields, qf.sort):
             raise TypeError("sort_fields must be an instance of filter.sort")
 
-        name = self._gen_index_name(sort_fields["orderby"])
-        index = SON(dict(
-            ns=str(self),
-            name=name,
-            key=SON(dict(sort_fields["orderby"])),
-            unique=unique,
-            dropDups=dropDups,
-        ))
+        if "name" not in kwargs:
+            name = self._gen_index_name(sort_fields["orderby"])
+        else:
+            name = kwargs.pop("name")
 
-        d = self._database.system.indexes.insert(index, safe=True)
+        index = dict(
+          ns=str(self),
+          name=name,
+          key=SON(dict(sort_fields["orderby"])),
+        )
+
+        if "drop_dups" in kwargs:
+            kwargs["dropDups"] = kwargs.pop("drop_dups")
+
+        if "bucket_size" in kwargs:
+            kwargs["bucketSize"] = kwargs.pop("bucket_size")
+
+        index.update(kwargs)
+
+        d = self._database.system.indexes.insert(SON(index), safe=True)
         d.addCallback(wrapper, name)
         return d
 

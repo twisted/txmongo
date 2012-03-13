@@ -69,6 +69,10 @@ class Database(object):
     def drop_collection(self, name_or_collection):
         if isinstance(name_or_collection, Collection):
             name = name_or_collection._collection_name
+        elif isinstance(name_or_collection, basestring):
+            name = name_or_collection
+        else:
+            raise TypeError("name must be an instance of basestring or txmongo.Collection")
 
         return self["$cmd"].find_one({"drop": unicode(name)})
 

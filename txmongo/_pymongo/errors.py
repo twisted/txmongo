@@ -75,3 +75,7 @@ class InvalidDocument(ValueError):
 class InvalidId(ValueError):
     """Raised when trying to create an ObjectId from invalid data.
     """
+
+class DuplicateKeyError(OperationFailure):
+    """Raised when a safe insert or update fails due to a duplicate key error.
+    """
