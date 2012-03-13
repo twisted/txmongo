@@ -23,9 +23,25 @@ from twisted.internet.defer import Deferred
 
 
 class Collection(object):
-    def __init__(self, database, collection_name):
+    def __init__(self, database, name):
+        if not isinstance(name, basestring):
+            raise TypeError("name must be an instance of basestring")
+
+        if not name or ".." in name:
+            raise errors.InvalidName("collection names cannot be empty")
+        if "$" in name and not (name.startswith("oplog.$main") or
+                                name.startswith("$cmd")):
+            raise errors.InvalidName("collection names must not "
+                              "contain '$': %r" % name)
+        if name[0] == "." or name[-1] == ".":
+            raise errors.InvalidName("collection names must not start "
+                              "or end with '.': %r" % name)
+        if "\x00" in name:
+            raise errors.InvalidName("collection names must not contain the "
+                              "null character")
+
         self._database = database
-        self._collection_name = collection_name
+        self._collection_name = name
 
     def __str__(self):
         return "%s.%s" % (str(self._database), self._collection_name)
