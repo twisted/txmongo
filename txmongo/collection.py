@@ -270,23 +270,31 @@ class Collection(object):
         else:
             name = kwargs.pop("name")
 
-        index = dict(
+        key = SON()
+        for k,v in sort_fields["orderby"]:
+            key.update({k:v})
+
+        index = SON(dict(
           ns=str(self),
           name=name,
-          key=SON(dict(sort_fields["orderby"])),
-        )
+          key=key
+        ))
 
         if "drop_dups" in kwargs:
             kwargs["dropDups"] = kwargs.pop("drop_dups")
 
         if "bucket_size" in kwargs:
             kwargs["bucketSize"] = kwargs.pop("bucket_size")
-
+        
         index.update(kwargs)
-
-        d = self._database.system.indexes.insert(SON(index), safe=True)
+        d = self._database.system.indexes.insert(index, safe=True)
         d.addCallback(wrapper, name)
         return d
+
+    def ensure_index(self, sort_fields, **kwargs):
+        # ensure_index is an alias of create_index since we are not 
+        # keep an index cache same way pymongo does
+        return self.create_index(sort_fields, **kwargs)
 
     def drop_index(self, index_identifier):
         if isinstance(index_identifier, types.StringTypes):
