@@ -92,7 +92,7 @@ class MongoProtocol(protocol.Protocol):
         QUERY_FAILURE = 1 << 1
         response_flag, cursor_id, start, length = struct.unpack("<iqii", packet[:20])
         if response_flag == QUERY_FAILURE:
-            self.queryFailure(request_id, cursor_id, response_flag, packet[20:])
+            self.queryFailure(request_id, cursor_id, response_flag, bson._to_dicts(packet[20:]))
             return
         self.querySuccess(request_id, cursor_id, bson._to_dicts(packet[20:]))
 
