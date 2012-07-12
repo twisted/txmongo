@@ -13,12 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from bson import ObjectId
 import types
+from pymongo import errors
+from pymongo.son import SON
+from pymongo.code import Code
 from txmongo import filter as qf
-from txmongo._pymongo import errors
-from txmongo._pymongo.son import SON
-from txmongo._pymongo.code import Code
-from txmongo._pymongo.objectid import ObjectId
 from twisted.internet.defer import Deferred
 
 
@@ -129,10 +129,12 @@ class Collection(object):
         def wrapper(docs):
             doc = docs and docs[0] or {}
             if doc.get("err") is not None:
-                if doc.get("code") == 11000:
-                    raise errors.DuplicateKeyError
+                code = doc.get("code")
+                err = doc.get("err")
+                if code == 11000:
+                    raise errors.DuplicateKeyError(err, code)
                 else: 
-                    raise errors.OperationFailure(doc)
+                    raise errors.OperationFailure(err, code)
             else:
                 return doc
 

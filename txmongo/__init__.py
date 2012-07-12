@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from bson import ObjectId
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol
-from txmongo._pymongo.objectid import ObjectId
 from twisted.internet import task, defer, reactor, protocol
 
 

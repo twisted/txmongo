@@ -42,7 +42,7 @@ class TestFindAndModify(unittest.TestCase):
         self.assertEqual(res, None)
 
         res = yield self.coll.find_and_modify({'oh':'hai'},{'$inc':{'lulz':1}})
-        print res
+        #print res
         self.assertEqual(res['lulz'], 123)
         res = yield self.coll.find_and_modify({'oh':'hai'},{'$inc':{'lulz':1}},new=True)
         self.assertEqual(res['lulz'], 125)

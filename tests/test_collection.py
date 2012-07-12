@@ -18,15 +18,16 @@
 Based on pymongo driver's test_collection.py
 """
 
+from bson.son import SON
+from pymongo import errors 
+
 from twisted.internet import defer
 from twisted.trial import unittest
 
 import txmongo
 
-from txmongo._pymongo.son import SON
 from txmongo import filter
 from txmongo.collection import Collection
-from txmongo._pymongo import errors 
 
 mongo_host="localhost"
 mongo_port=27017

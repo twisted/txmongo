@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import bson
 import struct
-from txmongo._pymongo import bson
 from twisted.internet import defer, protocol
 
 _ONE = "\x01\x00\x00\x00"

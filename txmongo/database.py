@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pymongo.son import SON
+from pymongo import helpers
 from twisted.internet import defer
-from txmongo._pymongo.son import SON
-from txmongo._pymongo import helpers
 from txmongo.collection import Collection
 
 
