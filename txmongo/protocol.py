@@ -34,6 +34,8 @@ class _MongoQuery(object):
 
 class MongoProtocol(protocol.Protocol):
     def __init__(self):
+        self.__connection_made = False
+        self.__connection_ready = []
         self.__id = 0
         self.__queries = {}
         self.__buffer = ""
@@ -42,12 +44,26 @@ class MongoProtocol(protocol.Protocol):
         self.__waiting_header = True
 
     def connectionMade(self):
+        self.__connection_made = True
         self.factory.append(self)
+        deferreds, self.__connection_ready = self.__connection_ready, []
+        for df in deferreds:
+            df.callback(self)
 
     def connectionLost(self, reason):
         self.connected = 0
         self.factory.remove(self)
         protocol.Protocol.connectionLost(self, reason)
+        deferreds, self.__connection_ready = self.__connection_ready, []
+        for df in deferreds:
+            df.errback(reason)
+
+    def connectionReady(self):
+        if self.__connection_made:
+            return defer.succeed(self)
+        df = defer.Deferred()
+        self.__connection_ready.append(df)
+        return df
 
     def dataReceived(self, data):
         while self.__waiting_header:
