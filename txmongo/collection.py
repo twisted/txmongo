@@ -179,8 +179,8 @@ class Collection(object):
             return result.get('md5')
 
         if not isinstance(spec, ObjectId):
-            raise ValueError(_("filemd5 expected an objectid for its "
-                               "on-keyword argument"))
+            raise ValueError("filemd5 expected an objectid for its "
+                             "on-keyword argument")
 
         spec = SON([("filemd5", spec),
                     ("root", self._collection_name)])
@@ -378,8 +378,6 @@ class Collection(object):
             cmd['update'] = update
         if upsert:
             cmd['upsert'] = upsert
-
-        no_obj_error = "No matching object found"
 
         d = self._database["$cmd"].find_one(cmd)
         d.addCallback(wrapper)
