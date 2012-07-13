@@ -19,8 +19,7 @@ from pymongo import errors
 from pymongo.son import SON
 from pymongo.code import Code
 from txmongo import filter as qf
-from twisted.internet.defer import Deferred
-
+from twisted.internet import defer
 
 class Collection(object):
     def __init__(self, database, name):
@@ -41,17 +40,17 @@ class Collection(object):
                               "null character")
 
         self._database = database
-        self._collection_name = name
+        self._collection_name = unicode(name)
 
     def __str__(self):
         return "%s.%s" % (str(self._database), self._collection_name)
 
     def __repr__(self):
-        return "<mongodb Collection: %s>" % str(self)
+        return "Collection(%r, %r)" % (self._database, str(self),)
 
     def __getitem__(self, collection_name):
         return Collection(self._database,
-            "%s.%s" % (self._collection_name, collection_name))
+                          "%s.%s" % (self._collection_name, collection_name))
 
     def __cmp__(self, other):
         if isinstance(other, Collection):
@@ -116,14 +115,15 @@ class Collection(object):
             for k, v in filter.items():
                 spec[k] = isinstance(v, types.TupleType) and SON(v) or v
 
-        # send the command through a specific connection
-        # this is required for the connection pool to work
-        # when safe=True
-        if _proto is None:
-            proto = self._database._connection
+        runQuery = lambda p: p.OP_QUERY(str(self), spec, skip, limit, fields)
+
+        if not _proto:
+            df = self._database.connection.getprotocol()
+            df.addCallback(runQuery)
         else:
-            proto = _proto
-        return proto.OP_QUERY(str(self), spec, skip, limit, fields)
+            df = runQuery(_proto)
+
+        return df
 
     def find_one(self, spec=None, fields=None, _proto=None):
         def wrapper(docs):
@@ -191,21 +191,7 @@ class Collection(object):
         d.addCallback(wrapper)
         return d
 
-    def __safe_operation(self, proto, safe=False, ids=None):
-        callit = False
-        if safe is True:
-            d = self._database["$cmd"].find_one({"getlasterror": 1}, _proto=proto)
-        else:
-            callit = True
-            d = Deferred()
-
-        if ids is not None:
-            d.addCallback(lambda _: ids)
-
-        if callit is True:
-            d.callback(None)
-        return d
-
+    @defer.inlineCallbacks
     def insert(self, docs, safe=False):
         if isinstance(docs, types.DictType):
             ids = docs.get('_id', ObjectId())
@@ -222,10 +208,16 @@ class Collection(object):
                     raise TypeError("insert takes a document or a list of documents")
         else:
             raise TypeError("insert takes a document or a list of documents")
-        proto = self._database._connection
-        proto.OP_INSERT(str(self), docs)
-        return self.__safe_operation(proto, safe, ids)
 
+        proto = yield self._database.connection.getprotocol()
+        proto.OP_INSERT(str(self), docs)
+
+        if safe:
+            yield proto.getlasterror(str(self))
+
+        defer.returnValue(ids)
+
+    @defer.inlineCallbacks
     def update(self, spec, document, upsert=False, multi=False, safe=False):
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict")
@@ -233,9 +225,12 @@ class Collection(object):
             raise TypeError("document must be an instance of dict")
         if not isinstance(upsert, types.BooleanType):
             raise TypeError("upsert must be an instance of bool")
-        proto = self._database._connection
+
+        proto = yield self._database.connection.getprotocol()
         proto.OP_UPDATE(str(self), spec, document, upsert, multi)
-        return self.__safe_operation(proto, safe)
+
+        if safe:
+            yield proto.getlasterror(str(self))
 
     def save(self, doc, safe=False):
         if not isinstance(doc, types.DictType):
@@ -247,15 +242,18 @@ class Collection(object):
         else:
             return self.insert(doc, safe=safe)
 
+    @defer.inlineCallbacks
     def remove(self, spec, safe=False):
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict, not %s" % type(spec))
 
-        proto = self._database._connection
+        proto = yield self._database.connection.getprotocol()
         proto.OP_DELETE(str(self), spec)
-        return self.__safe_operation(proto, safe)
+
+        if safe:
+            yield proto.getlasterror(str(self))
 
     def drop(self, safe=False):
         return self.remove({}, safe)
@@ -277,9 +275,9 @@ class Collection(object):
             key.update({k:v})
 
         index = SON(dict(
-          ns=str(self),
-          name=name,
-          key=key
+            ns=str(self),
+            name=name,
+            key=key
         ))
 
         if "drop_dups" in kwargs:

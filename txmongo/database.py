@@ -20,19 +20,17 @@ from txmongo.collection import Collection
 
 
 class Database(object):
+    __factory = None
+
     def __init__(self, factory, database_name):
         self.__factory = factory
-        self._database_name = database_name
-
-    @property
-    def _connection(self):
-        return self.__factory.connection()
+        self._database_name = unicode(database_name)
 
     def __str__(self):
         return self._database_name
 
     def __repr__(self):
-        return "<mongodb Database: %s>" % self._database_name
+        return "Database(%r, %r)" % (self.__factory, self._database_name,)
 
     def __call__(self, database_name):
         return Database(self._factory, database_name)
@@ -42,6 +40,10 @@ class Database(object):
 
     def __getattr__(self, collection_name):
         return self[collection_name]
+
+    @property
+    def connection(self):
+        return self.__factory
 
     def create_collection(self, name, options={}):
         def wrapper(result, deferred, collection):
@@ -100,11 +102,9 @@ class Database(object):
 
         d = defer.Deferred()
         # First get the nonce
-        self["$cmd"].find_one({"getnonce": 1}
-                ).addCallback(self.authenticate_with_nonce, name, password, d
-                ).addErrback(d.errback)
-
-
+        df = self["$cmd"].find_one({"getnonce": 1})
+        df.addCallback(self.authenticate_with_nonce, name, password, d)
+        df.addErrback(d.errback)
         return d
 
     def authenticate_with_nonce(self, result, name, password, d):
@@ -118,9 +118,11 @@ class Database(object):
         auth_command['key'] = key
 
         # Now actually authenticate
-        self["$cmd"].find_one(auth_command
-                ).addCallback(self.authenticated, d
-                ).addErrback(d.errback)
+        df = self["$cmd"].find_one(auth_command)
+        df.addCallback(self.authenticated, d)
+        df.addErrback(d.errback)
+
+        return df
 
     def authenticated(self, result, d):
         """might want to just call callback with 0.0 instead of errback"""

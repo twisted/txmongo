@@ -1,5 +1,5 @@
 # coding: utf-8
-# Copyright 2009 Alexandre Fiori
+# Copyright 2012 Christian Hergert
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,126 +13,121 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from bson import ObjectId
+from bson import ObjectId, SON
+from pymongo.uri_parser import parse_uri
+from twisted.internet import defer, reactor, task
+from twisted.internet.protocol import ReconnectingClientFactory
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol
-from twisted.internet import task, defer, reactor, protocol
 
-
-DISCONNECT_INTERVAL = .5
-
-
-class _offline(object):
-    def OP_INSERT(self, *args, **kwargs):
-        pass
-
-    def OP_UPDATE(self, *args, **kwargs):
-        pass
-
-    def OP_DELETE(self, *args, **kwargs):
-        pass
-
-    def OP_QUERY(self, *args, **kwargs):
-        deferred = defer.Deferred()
-        deferred.errback(RuntimeWarning("not connected"))
-        return deferred
-
-
-class MongoAPI(object):
-    def __init__(self, factory):
-        self.__factory = factory
-        self._connected = factory.deferred
-
-    def __connection_lost(self, deferred):
-        if self.__factory.size == 0:
-            self.__task.stop()
-            deferred.callback(True)
-
-    def disconnect(self):
-        self.__factory.continueTrying = 0
-        for conn in self.__factory.pool:
-            try:
-                conn.transport.loseConnection()
-            except:
-                pass
-
-        d = defer.Deferred()
-        self.__task = task.LoopingCall(self.__connection_lost, d)
-        self.__task.start(DISCONNECT_INTERVAL, True)
-        return d
-
-    def __repr__(self):
-        try:
-            cli = self.__factory.pool[0].transport.getPeer()
-        except:
-            info = "not connected"
-        else:
-            info = "%s:%s - %d connection(s)" % (cli.host, cli.port, self.__factory.size)
-        return "<Mongodb: %s>" % info
-
-    def __getitem__(self, database_name):
-        return Database(self.__factory, database_name)
-
-    def __getattr__(self, database_name):
-        return self[database_name]
-
-
-class _MongoFactory(protocol.ReconnectingClientFactory):
-    maxDelay = 10
+class _Connection(ReconnectingClientFactory):
+    __notify_ready = None
+    __pool = None
+    __uri = None
+    instance = None
     protocol = MongoProtocol
 
-    def __init__(self, pool_size):
-        self.idx = 0
-        self.size = 0
-        self.pool = []
-        self.pool_size = pool_size
-        self.deferred = defer.Deferred()
-        self.API = MongoAPI(self)
+    def __init__(self, pool, uri):
+        self.__pool = pool
+        self.__uri = uri
 
-    def append(self, conn):
-        self.pool.append(conn)
-        self.size += 1
-        if self.deferred and self.size == self.pool_size:
-            self.deferred.callback(self.API)
-            self.deferred = None
+    def notifyReady(self):
+        if self.instance:
+            return defer.succeed(self)
+        if self.__notify_ready is None:
+            self.__notify_ready = []
+        df = defer.Deferred()
+        self.__notify_ready.append(df)
+        return df
 
-    def remove(self, conn):
-        try:
-            self.pool.remove(conn)
-        except:
-            pass
-        self.size = len(self.pool)
+    def setinstance(self, instance=None, reason=None):
+        self.instance = instance
+        deferreds, self.__notify_ready = self.__notify_ready, []
+        for df in deferreds:
+            if self.instance:
+                df.callback(self)
+            else:
+                df.errback(reason)
 
-    def connection(self):
-        try:
-            assert self.size
-            conn = self.pool[self.idx % self.size]
-            self.idx += 1
-        except:
-            return _offline()
-        else:
-            return conn
+    @property
+    def uri(self):
+        return self.__uri
 
+class ConnectionPool(object):
+    __index = 0
+    __pool = None
+    __pool_size = None
+    __uri = None
 
-def _Connection(host, port, reconnect, pool_size, lazy):
-    factory = _MongoFactory(pool_size)
-    factory.continueTrying = reconnect
-    for x in xrange(pool_size):
-        reactor.connectTCP(host, port, factory)
-    return (lazy is True) and factory.API or factory.deferred
+    def __init__(self, uri='mongodb://127.0.0.1:27017', pool_size=1):
+        assert isinstance(uri, basestring)
+        assert isinstance(pool_size, int)
+        assert pool_size >= 1
 
+        if not uri.startswith('mongodb://'):
+            uri = 'mongodb://' + uri
 
-def MongoConnection(host="localhost", port=27017, reconnect=True):
-    return _Connection(host, port, reconnect, pool_size=1, lazy=False)
+        self.__uri = parse_uri(uri)
+        self.__pool_size = pool_size
+        self.__pool = [_Connection(self, self.__uri) for i in xrange(pool_size)]
 
+        host, port = self.__uri['nodelist'][0]
+        for factory in self.__pool:
+            factory.connector = reactor.connectTCP(host, port, factory)
 
-def lazyMongoConnection(host="localhost", port=27017, reconnect=True):
-    return _Connection(host, port, reconnect, pool_size=1, lazy=True)
+    def __getitem__(self, name):
+        return Database(self, name)
 
+    def __getattr__(self, name):
+        return self[name]
 
-def MongoConnectionPool(host="localhost", port=27017, reconnect=True, pool_size=5):
-    return _Connection(host, port, reconnect, pool_size, lazy=False)
+    def __repr__(self):
+        if self.uri['nodelist']:
+            return 'Connection(%r, %r)' % self.uri['nodelist'][0]
+        return 'Connection()'
 
+    def disconnect(self):
+        for factory in self.__pool:
+            factory.stopTrying()
+            factory.stopFactory()
+            if factory.instance and factory.instance.transport:
+                factory.instance.transport.loseConnection()
+            if factory.connector:
+                factory.connector.disconnect()
 
-def lazyMongoConnectionPool(host="localhost", port=27017, reconnect=True, pool_size=5):
-    return _Connection(host, port, reconnect, pool_size, lazy=True)
+    def getprotocol(self):
+        # Get the next protocol available for communication in the pool.
+        connection = self.__pool[self.__index]
+        self.__index = (self.__index + 1) % self.__pool_size
+
+        # If the connection is already connected, just return it.
+        if connection.instance:
+            return defer.succeed(connection.instance)
+
+        # Wait for the connection to connection.
+        return connection.notifyReady().addCallback(lambda c: c.instance)
+
+    @property
+    def uri(self):
+        return self.__uri
+
+class Connection(ConnectionPool):
+    pass
+
+# FOR LEGACY REASONS
+class MongoConnection(Connection):
+    def __init__(self, host, port, pool_size=1):
+        uri = 'mongodb://%s:%d/' % (host, port)
+        Connection.__init__(self, uri, pool_size=pool_size)
+
+lazyMongoConnectionPool = MongoConnection
+lazyMongoConnection = MongoConnection
+MongoConnectionPool = MongoConnection
+
+if __name__ == '__main__':
+    import sys
+    from twisted.python import log
+
+    log.startLogging(sys.stdout)
+    connection = Connection()
+    reactor.run()

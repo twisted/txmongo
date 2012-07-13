@@ -33,7 +33,7 @@ class _MongoQuery(object):
 
 
 class MongoProtocol(protocol.Protocol):
-    def __init__(self):
+    def __init__(self, uri=None):
         self.__connection_made = False
         self.__connection_ready = []
         self.__id = 0
@@ -45,14 +45,14 @@ class MongoProtocol(protocol.Protocol):
 
     def connectionMade(self):
         self.__connection_made = True
-        self.factory.append(self)
+        self.factory.setinstance(self, None)
         deferreds, self.__connection_ready = self.__connection_ready, []
         for df in deferreds:
             df.callback(self)
 
     def connectionLost(self, reason):
         self.connected = 0
-        self.factory.remove(self)
+        self.factory.setinstance(None, reason)
         protocol.Protocol.connectionLost(self, reason)
         deferreds, self.__connection_ready = self.__connection_ready, []
         for df in deferreds:
@@ -187,3 +187,17 @@ class MongoProtocol(protocol.Protocol):
             self.OP_GET_MORE(queryObj.collection, next_batch, cursor_id)
         else:
             queryObj.deferred.callback(queryObj.documents)
+
+    def getlasterror(self, db):
+        command = {'getlasterror': 1}
+        db = '%s.$cmd' % (db.split('.', 1)[0],)
+        uri = self.factory.uri
+        if 'w' in uri['options']:
+            command['w'] = int(uri['options']['w'])
+        if 'wtimeoutms' in uri['options']:
+            command['wtimeout'] = int(uri['options']['wtimeoutms'])
+        if 'fsync' in uri['options']:
+            command['fsync'] = bool(uri['options']['fsync'])
+        if 'journal' in uri['options']:
+            command['journal'] = bool(uri['options']['journal'])
+        return self.OP_QUERY(db, command, 0, 1)
