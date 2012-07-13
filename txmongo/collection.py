@@ -126,24 +126,11 @@ class Collection(object):
         return df
 
     def find_one(self, spec=None, fields=None, _proto=None):
-        def wrapper(docs):
-            doc = docs and docs[0] or {}
-            if doc.get("err") is not None:
-                code = doc.get("code")
-                err = doc.get("err")
-                if code == 11000:
-                    raise errors.DuplicateKeyError(err, code)
-                else: 
-                    raise errors.OperationFailure(err, code)
-            else:
-                return doc
-
         if isinstance(spec, ObjectId):
-            spec = SON(dict(_id=spec))
-
-        d = self.find(spec, limit=-1, fields=fields, _proto=_proto)
-        d.addCallback(wrapper)
-        return d
+            spec = {'_id': spec}
+        df = self.find(spec=spec, limit=1, fields=fields, _proto=_proto)
+        df.addCallback(lambda r: r[0] if r else {})
+        return df
 
     def count(self, spec=None, fields=None):
         def wrapper(result):
