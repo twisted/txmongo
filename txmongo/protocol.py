@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import bson
+from pymongo import errors
 import struct
 from twisted.internet import defer, protocol
 
@@ -188,6 +189,7 @@ class MongoProtocol(protocol.Protocol):
         else:
             queryObj.deferred.callback(queryObj.documents)
 
+    @defer.inlineCallbacks
     def getlasterror(self, db):
         command = {'getlasterror': 1}
         db = '%s.$cmd' % (db.split('.', 1)[0],)
@@ -200,4 +202,17 @@ class MongoProtocol(protocol.Protocol):
             command['fsync'] = bool(uri['options']['fsync'])
         if 'journal' in uri['options']:
             command['journal'] = bool(uri['options']['journal'])
-        return self.OP_QUERY(db, command, 0, 1)
+
+        ret = yield self.OP_QUERY(db, command, 0, 1)
+        assert len(ret) == 1
+
+        err = ret[0].get('err', None)
+        code = ret[0].get('code', None)
+
+        if err is not None:
+            if code == 11000:
+                raise errors.DuplicateKeyError(err, code=code)
+            else:
+                raise errors.OperationFailure(err, code=code)
+
+        defer.returnValue(ret[0])
