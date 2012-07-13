@@ -111,9 +111,10 @@ class Collection(object):
                 fields = self._fields_list_to_dict(fields)
 
         if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
-            spec = SON(dict(query=spec))
-            for k, v in filter.items():
-                spec[k] = isinstance(v, types.TupleType) and SON(v) or v
+            if '$query' not in spec:
+                spec = SON({'$query': spec})
+                for k,v in filter.iteritems():
+                    spec['$' + k] = list(v)
 
         runQuery = lambda p: p.OP_QUERY(str(self), spec, skip, limit, fields)
 
