@@ -81,6 +81,8 @@ class TestMongoObjects(unittest.TestCase):
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         test = conn.foo.test_ts
 
+        test.drop()
+
         # insert with specific timestamp
         doc1 = {'_id':objectid.ObjectId(),
                 'ts':timestamp.Timestamp(1, 2)}
@@ -98,6 +100,7 @@ class TestMongoObjects(unittest.TestCase):
         # the objects come back sorted by ts correctly.
         # (test that we stored inc/time in the right fields)
         result = yield test.find(filter=qf.sort(qf.ASCENDING('ts')))
+        self.assertEqual(len(result), 2)
         self.assertEqual(result[0]['_id'], doc1['_id'])
         self.assertEqual(result[1]['_id'], doc2['_id'])
 
