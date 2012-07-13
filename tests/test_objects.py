@@ -15,7 +15,7 @@
 import time
 from StringIO import StringIO
 
-from pymongo import objectid, timestamp
+from bson import objectid, timestamp
 import txmongo
 from txmongo import database
 from txmongo import collection
