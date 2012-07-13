@@ -213,7 +213,8 @@ class Collection(object):
         proto.OP_INSERT(str(self), docs)
 
         if safe:
-            yield proto.getlasterror(str(self))
+            ret = yield proto.getlasterror(str(self))
+            defer.returnValue(ret)
 
         defer.returnValue(ids)
 
@@ -285,7 +286,7 @@ class Collection(object):
 
         if "bucket_size" in kwargs:
             kwargs["bucketSize"] = kwargs.pop("bucket_size")
-        
+
         index.update(kwargs)
         d = self._database.system.indexes.insert(index, safe=True)
         d.addCallback(wrapper, name)
