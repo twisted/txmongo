@@ -13,40 +13,183 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pymongo.uri_parser import parse_uri
-from twisted.internet import defer, reactor
-from twisted.internet.protocol import ReconnectingClientFactory
-from txmongo.database import Database
-from txmongo.protocol import MongoProtocol
+import pymongo
+from   pymongo.uri_parser        import parse_uri
+from   twisted.internet          import defer, reactor
+from   twisted.internet.protocol import ReconnectingClientFactory
+from   txmongo.database          import Database
+from   txmongo.protocol          import MongoProtocol
 
 class _Connection(ReconnectingClientFactory):
     __notify_ready = None
-    __pool = None
+    __discovered = None
+    __index = -1
     __uri = None
     instance = None
     protocol = MongoProtocol
 
     def __init__(self, pool, uri):
+        self.__discovered = []
+        self.__notify_ready = []
         self.__pool = pool
         self.__uri = uri
 
+    def buildProtocol(self, addr):
+        # Build the protocol.
+        p = ReconnectingClientFactory.buildProtocol(self, addr)
+
+        # If we do not care about connecting to a slave, then we can simply
+        # return the protocol now and fire that we are ready.
+        if self.uri['options'].get('slaveok', False):
+            self.doNotifyReady(p)
+            return p
+
+        # Update our server configuration. This may disconnect if the node
+        # is not a master.
+        df = p.connectionReady().addCallback(lambda _: self.configure(p))
+
+        return p
+
+    def configure(self, proto):
+        """
+        Configures the protocol using the information gathered from the
+        remote Mongo instance. Such information may contain the max
+        BSON document size, replica set configuration, and the master
+        status of the instance.
+        """
+        df = proto.OP_QUERY('admin.$cmd', {'ismaster': 1}, 0, 1)
+        df.addCallback(self._configureCallback, proto)
+        return defer.succeed(None)
+
+    def _configureCallback(self, reply, proto):
+        """
+        Handle the reply from the "ismaster" query. The reply contains
+        configuration information about the peer.
+        """
+        # Make sure we got a result document.
+        if len(reply) != 1:
+            proto.fail(MongoProtocolError())
+            return
+
+        # Get the configuration document from the reply.
+        config = reply[0]
+
+        # Make sure the command was successful.
+        if not config.get('ok'):
+            proto.fail(MongoProtocolError())
+            return
+
+        # Check that the replicaSet matches.
+        set_name = config.get('setName')
+        expected_set_name = self.uri['options'].get('setname')
+        if expected_set_name and (expected_set_name != set_name):
+            # Log the invalid replica set failure.
+            msg = 'Mongo instance does not match requested replicaSet.'
+            reason = pymongo.connection.ConfigurationError(msg)
+            proto.fail(reason)
+            return
+
+        # Track max bson object size limit.
+        max_bson_size = config.get('maxBsonObjectSize')
+        if max_bson_size:
+            proto.max_bson_size = max_bson_size
+
+        # Track the other hosts in the replica set.
+        hosts = config.get('hosts')
+        if isinstance(hosts, list) and hosts:
+            hostaddrs = []
+            for host in hosts:
+                if ':' not in host:
+                    host = (host, 27017)
+                else:
+                    host = host.split(':', 1)
+                    host[1] = int(host[1])
+                hostaddrs.append(host)
+            self.__discovered = hostaddrs
+
+        # Check if this node is the master.
+        ismaster = config.get('ismaster')
+        if not ismaster:
+            reason = pymongo.connection.AutoReconnect('not master')
+            proto.fail(reason)
+            return
+
+        # Notify deferreds waiting for completion.
+        self.doNotifyReady(proto)
+
+    def clientConnectionFailed(self, connector, reason):
+        if self.continueTrying:
+            self.connector = connector
+            self.retryNextHost()
+
+    def clientConnectionLost(self, connector, reason):
+        if self.continueTrying:
+            self.connector = connector
+            self.retryNextHost()
+
+    def doNotifyReady(self, proto):
+        self.instance = proto
+        deferreds, self.__notify_ready = self.__notify_ready, []
+        if deferreds:
+            for df in deferreds:
+                df.callback(proto)
+
     def notifyReady(self):
+        """
+        Returns a deferred that will fire when the factory has created a
+        protocol that can be used to communicate with a Mongo server.
+
+        Note that this will not fire until we have connected to a Mongo
+        master, unless slaveOk was specified in the Mongo URI connection
+        options.
+        """
         if self.instance:
-            return defer.succeed(self)
+            return defer.succeed(self.instance)
         if self.__notify_ready is None:
             self.__notify_ready = []
         df = defer.Deferred()
         self.__notify_ready.append(df)
         return df
 
+    def retryNextHost(self, connector=None):
+        """
+        Have this connector connect again, to the next host in the
+        configured list of hosts.
+        """
+        if not self.continueTrying:
+            log.msg("Abandoning %s on explicit request" % (connector,))
+            return
+
+        if connector is None:
+            if self.connector is None:
+                raise ValueError("no connector to retry")
+            else:
+                connector = self.connector
+
+        delay = False
+        self.__index += 1
+
+        allNodes = list(self.uri['nodelist']) + list(self.__discovered)
+        if self.__index >= len(allNodes):
+            self.__index = 0
+            delay = True
+
+        connector.host, connector.port = allNodes[self.__index]
+
+        if delay:
+            self.retry(connector)
+        else:
+            connector.connect()
+
     def setinstance(self, instance=None, reason=None):
         self.instance = instance
         deferreds, self.__notify_ready = self.__notify_ready, []
-        for df in deferreds:
-            if self.instance:
-                df.callback(self)
-            else:
-                df.errback(reason)
+        if deferreds:
+            for df in deferreds:
+                if self.instance:
+                    df.callback(self)
+                else:
+                    df.errback(reason)
 
     @property
     def uri(self):
