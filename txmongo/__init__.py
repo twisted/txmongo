@@ -94,6 +94,11 @@ class ConnectionPool(object):
                 factory.instance.transport.loseConnection()
             if factory.connector:
                 factory.connector.disconnect()
+        # Wait for the next iteration of the loop for resolvers
+        # to potentially cleanup.
+        df = defer.Deferred()
+        reactor.callLater(0, df.callback, None)
+        return df
 
     def getprotocol(self):
         # Get the next protocol available for communication in the pool.
