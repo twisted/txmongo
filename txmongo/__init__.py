@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from bson import ObjectId, SON
 from pymongo.uri_parser import parse_uri
-from twisted.internet import defer, reactor, task
+from twisted.internet import defer, reactor
 from twisted.internet.protocol import ReconnectingClientFactory
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol
@@ -116,18 +115,23 @@ class ConnectionPool(object):
     def uri(self):
         return self.__uri
 
-class Connection(ConnectionPool):
-    pass
+Connection = ConnectionPool
 
-# FOR LEGACY REASONS
+###
+# Begin Legacy Wrapper
+###
+
 class MongoConnection(Connection):
     def __init__(self, host, port, pool_size=1):
         uri = 'mongodb://%s:%d/' % (host, port)
         Connection.__init__(self, uri, pool_size=pool_size)
-
 lazyMongoConnectionPool = MongoConnection
 lazyMongoConnection = MongoConnection
 MongoConnectionPool = MongoConnection
+
+###
+# End Legacy Wrapper
+###
 
 if __name__ == '__main__':
     import sys
