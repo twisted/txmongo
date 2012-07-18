@@ -247,7 +247,7 @@ class Collection(object):
             return self.insert(doc, safe=safe, **kwargs)
 
     @defer.inlineCallbacks
-    def remove(self, spec, safe=True, **kwargs):
+    def remove(self, spec, safe=True, single=False, **kwargs):
         #print 'remove(%r, %r, safe=%r, **kwargs=%r)' % (self, spec, safe, kwargs)
 
         if isinstance(spec, ObjectId):
@@ -256,8 +256,8 @@ class Collection(object):
             raise TypeError("spec must be an instance of dict, not %s" % type(spec))
 
         flags = kwargs.get('flags', 0)
-        #if single:
-        #    flags |= DELETE_SINGLE_REMOVE
+        if single:
+            flags |= DELETE_SINGLE_REMOVE
 
         proto = yield self._database.connection.getprotocol()
         proto.OP_DELETE(str(self), flags, spec)
