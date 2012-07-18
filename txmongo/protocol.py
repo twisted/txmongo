@@ -26,7 +26,7 @@ decoding as well as Exception types, when applicable.
 """
 
 import bson
-from   collections      import namedtuple, OrderedDict
+from   collections      import namedtuple
 import pymongo
 from   pymongo          import errors
 import random
