@@ -92,6 +92,7 @@ class Collection(object):
         d.addCallback(wrapper)
         return d
 
+    @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
         if spec is None:
             spec = SON()
@@ -118,20 +119,19 @@ class Collection(object):
                     spec['$' + k] = list(v)
 
         flags = kwargs.get('flags', 0)
-        runQuery = lambda p: p.OP_QUERY(str(self), flags, skip, limit, spec, fields)
 
-        df = self._database.connection.getprotocol()
-        df.addCallback(runQuery)
-        df.addCallback(lambda reply: reply.documents)
+        proto = yield self._database.connection.getprotocol()
+        reply = yield proto.OP_QUERY(str(self), flags, skip, limit, spec, fields)
+        documents = reply.documents
+        while reply.cursor:
+            to_fetch = 0 if limit <= 0 else limit - len(documents)
+            reply = yield proto.OP_GETMORE(str(self), to_fetch, reply.cursor)
+            documents.extend(reply.documents)
 
-        """
-        def printReply(r):
-            print '!!! REPLY', r
-            return r
-        df.addCallback(printReply)
-        """
+        if limit > 0:
+            documents = documents[:limit]
 
-        return df
+        defer.returnValue(documents)
 
     def find_one(self, spec=None, fields=None, **kwargs):
         if isinstance(spec, ObjectId):
