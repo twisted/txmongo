@@ -85,6 +85,8 @@ class TestCollection(unittest.TestCase):
         self.assertRaises(TypeError, coll.create_index, 5)
         self.assertRaises(TypeError, coll.create_index, {"hello": 1})
 
+        yield coll.insert({'c': 1}) # make sure collection exists.
+
         yield coll.drop_indexes()
         count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
         self.assertEqual(count, 1)
