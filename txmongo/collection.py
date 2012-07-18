@@ -19,6 +19,7 @@ from pymongo import errors
 from pymongo.son import SON
 from pymongo.code import Code
 from txmongo import filter as qf
+from txmongo.protocol import DELETE_SINGLE_REMOVE
 from twisted.internet import defer
 
 class Collection(object):
@@ -91,7 +92,7 @@ class Collection(object):
         d.addCallback(wrapper)
         return d
 
-    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, _proto=None):
+    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
         if spec is None:
             spec = SON()
 
@@ -116,20 +117,26 @@ class Collection(object):
                 for k,v in filter.iteritems():
                     spec['$' + k] = list(v)
 
-        runQuery = lambda p: p.OP_QUERY(str(self), spec, skip, limit, fields)
+        flags = kwargs.get('flags', 0)
+        runQuery = lambda p: p.OP_QUERY(str(self), flags, skip, limit, spec, fields)
 
-        if not _proto:
-            df = self._database.connection.getprotocol()
-            df.addCallback(runQuery)
-        else:
-            df = runQuery(_proto)
+        df = self._database.connection.getprotocol()
+        df.addCallback(runQuery)
+        df.addCallback(lambda reply: reply.documents)
+
+        """
+        def printReply(r):
+            print '!!! REPLY', r
+            return r
+        df.addCallback(printReply)
+        """
 
         return df
 
-    def find_one(self, spec=None, fields=None, _proto=None):
+    def find_one(self, spec=None, fields=None, **kwargs):
         if isinstance(spec, ObjectId):
             spec = {'_id': spec}
-        df = self.find(spec=spec, limit=1, fields=fields, _proto=_proto)
+        df = self.find(spec=spec, limit=1, fields=fields, **kwargs)
         df.addCallback(lambda r: r[0] if r else {})
         return df
 
@@ -180,7 +187,7 @@ class Collection(object):
         return d
 
     @defer.inlineCallbacks
-    def insert(self, docs, safe=False):
+    def insert(self, docs, safe=True, **kwargs):
         if isinstance(docs, types.DictType):
             ids = docs.get('_id', ObjectId())
             docs["_id"] = ids
@@ -197,17 +204,18 @@ class Collection(object):
         else:
             raise TypeError("insert takes a document or a list of documents")
 
+        flags = kwargs.get('flags', 0)
+
         proto = yield self._database.connection.getprotocol()
-        proto.OP_INSERT(str(self), docs)
+        proto.OP_INSERT(str(self), flags, docs)
 
         if safe:
-            ret = yield proto.getlasterror(str(self))
-            defer.returnValue(ret)
+            yield proto.getlasterror(str(self._database))
 
         defer.returnValue(ids)
 
     @defer.inlineCallbacks
-    def update(self, spec, document, upsert=False, multi=False, safe=False):
+    def update(self, spec, document, upsert=False, multi=False, safe=True, **kwargs):
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict")
         if not isinstance(document, types.DictType):
@@ -215,37 +223,51 @@ class Collection(object):
         if not isinstance(upsert, types.BooleanType):
             raise TypeError("upsert must be an instance of bool")
 
+        flags = kwargs.get('flags', 0)
+
+        if multi:
+            flags |= UPDATE_MULTI
+        if upsert:
+            flags |= UPDATE_UPSERT
+
         proto = yield self._database.connection.getprotocol()
-        proto.OP_UPDATE(str(self), spec, document, upsert, multi)
+        proto.OP_UPDATE(str(self), flags, spec, document)
 
         if safe:
-            yield proto.getlasterror(str(self))
+            yield proto.getlasterror(str(self._database))
 
-    def save(self, doc, safe=False):
+    def save(self, doc, safe=True, **kwargs):
         if not isinstance(doc, types.DictType):
             raise TypeError("cannot save objects of type %s" % type(doc))
 
         objid = doc.get("_id")
         if objid:
-            return self.update({"_id": objid}, doc, safe=safe, upsert=True)
+            return self.update({"_id": objid}, doc, safe=safe, upsert=True, **kwargs)
         else:
-            return self.insert(doc, safe=safe)
+            return self.insert(doc, safe=safe, **kwargs)
 
     @defer.inlineCallbacks
-    def remove(self, spec, safe=False):
+    def remove(self, spec, safe=True, **kwargs):
+        #print 'remove(%r, %r, safe=%r, **kwargs=%r)' % (self, spec, safe, kwargs)
+
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict, not %s" % type(spec))
 
+        flags = kwargs.get('flags', 0)
+        #if single:
+        #    flags |= DELETE_SINGLE_REMOVE
+
         proto = yield self._database.connection.getprotocol()
-        proto.OP_DELETE(str(self), spec)
+        proto.OP_DELETE(str(self), flags, spec)
 
         if safe:
-            yield proto.getlasterror(str(self))
+            ret = yield proto.getlasterror(str(self._database))
+            defer.returnValue(ret)
 
-    def drop(self, safe=False):
-        return self.remove({}, safe)
+    def drop(self, **kwargs):
+        return self._database.drop_collection(self._collection_name)
 
     def create_index(self, sort_fields, **kwargs):
         def wrapper(result, name):

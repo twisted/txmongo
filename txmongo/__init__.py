@@ -18,7 +18,7 @@ from   pymongo.uri_parser        import parse_uri
 from   twisted.internet          import defer, reactor
 from   twisted.internet.protocol import ReconnectingClientFactory
 from   txmongo.database          import Database
-from   txmongo.protocol          import MongoProtocol
+from   txmongo.protocol          import MongoProtocol, MongoProtocolError
 
 class _Connection(ReconnectingClientFactory):
     __notify_ready = None
@@ -57,7 +57,7 @@ class _Connection(ReconnectingClientFactory):
         BSON document size, replica set configuration, and the master
         status of the instance.
         """
-        df = proto.OP_QUERY('admin.$cmd', {'ismaster': 1}, 0, 1)
+        df = proto.OP_QUERY('admin.$cmd', 0, 0, 1, {'ismaster': 1}, None)
         df.addCallback(self._configureCallback, proto)
         return defer.succeed(None)
 
@@ -67,12 +67,12 @@ class _Connection(ReconnectingClientFactory):
         configuration information about the peer.
         """
         # Make sure we got a result document.
-        if len(reply) != 1:
+        if reply.count != 1:
             proto.fail(MongoProtocolError())
             return
 
         # Get the configuration document from the reply.
-        config = reply[0]
+        config = reply.documents[0]
 
         # Make sure the command was successful.
         if not config.get('ok'):
@@ -132,7 +132,7 @@ class _Connection(ReconnectingClientFactory):
         deferreds, self.__notify_ready = self.__notify_ready, []
         if deferreds:
             for df in deferreds:
-                df.callback(proto)
+                df.callback(self)
 
     def notifyReady(self):
         """
