@@ -22,7 +22,7 @@ docs:
 	$(EPYDOC) -v --html --output=docs txmongo
 
 test:
-	$(TRIAL) tests
+	$(TRIAL) -e tests
 
 coverage:
 	$(TRIAL) --coverage tests
