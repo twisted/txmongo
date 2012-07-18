@@ -45,8 +45,8 @@ class TestCollection(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
+        ret = yield self.coll.drop()
+        ret = yield self.conn.disconnect()
 
     @defer.inlineCallbacks
     def test_collection(self):
@@ -75,7 +75,6 @@ class TestCollection(unittest.TestCase):
         yield self.db.drop_collection('test')
         collection_names = yield self.db.collection_names()
         self.assertFalse('test' in collection_names)
-
 
     @defer.inlineCallbacks
     def test_create_index(self):
@@ -119,15 +118,16 @@ class TestCollection(unittest.TestCase):
                                    filter.DESCENDING("world")))
         self.assertEquals(ix, "hello_1_world_-1")
     
+    @defer.inlineCallbacks
     def test_create_index_nodup(self):
         coll = self.coll
 
-        coll.drop()
-        coll.insert({'b': 1})
-        coll.insert({'b': 1})
+        ret = yield coll.drop()
+        ret = yield coll.insert({'b': 1})
+        ret = yield coll.insert({'b': 1})
 
         ix = coll.create_index(filter.sort(filter.ASCENDING("b")), unique=True)
-        return self.assertFailure(ix, errors.DuplicateKeyError)
+        yield self.assertFailure(ix, errors.DuplicateKeyError)
 
 
     @defer.inlineCallbacks
