@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pymongo.son import SON
+from bson.son import SON
 from pymongo import helpers
 from twisted.internet import defer
 from txmongo.collection import Collection

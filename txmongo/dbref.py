@@ -14,11 +14,9 @@
 
 """Tools for manipulating DBRefs (references to MongoDB documents)."""
 
-import types
-
-from pymongo.son import SON
+from bson.son import SON
 from txmongo.collection import Collection
-
+import types
 
 class DBRef(object):
     """A reference to a document stored in a Mongo database.

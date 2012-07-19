@@ -14,10 +14,10 @@
 # limitations under the License.
 
 from bson import ObjectId
+from bson.code import Code
+from bson.son import SON
 import types
 from pymongo import errors
-from pymongo.son import SON
-from pymongo.code import Code
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI
 from twisted.internet import defer
