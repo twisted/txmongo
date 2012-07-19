@@ -29,15 +29,14 @@ else:
 
 setup(
     name="txmongo",
-    version="0.3.90",
+    version="0.3.99",
     description="Asynchronous Python driver for MongoDB <http://www.mongodb.org>",
-    author="Alexandre Fiori",
-    author_email="fiorix@gmail.com",
-    url="http://github.com/fiorix/mongo-async-python-driver",
+    author="Alexandre Fiori, Christian Hergert",
+    author_email="fiorix@gmail.com, chris@dronelabs.com",
+    url="http://github.com/chergert/mongo-async-python-driver",
     keywords=["mongo", "mongodb", "pymongo", "gridfs", "txmongo"],
     packages=["txmongo", "txmongo._gridfs"],
     #install_requires=requirements,
-    features=features,
     license="Apache License, Version 2.0",
     test_suite="nose.collector",
     classifiers=[
@@ -49,4 +48,4 @@ setup(
         "Operating System :: POSIX",
         "Programming Language :: Python",
         "Topic :: Database"]
-    })
+    )
