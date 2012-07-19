@@ -114,9 +114,9 @@ class Collection(object):
 
         if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
             if '$query' not in spec:
-                spec = SON({'$query': spec})
+                spec = {'$query': spec}
                 for k,v in filter.iteritems():
-                    spec['$' + k] = list(v)
+                    spec['$' + k] = dict(v)
 
         flags = kwargs.get('flags', 0)
 
