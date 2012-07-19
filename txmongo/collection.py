@@ -234,7 +234,8 @@ class Collection(object):
         proto.OP_UPDATE(str(self), flags, spec, document)
 
         if safe:
-            yield proto.getlasterror(str(self._database))
+            ret = yield proto.getlasterror(str(self._database))
+            defer.returnValue(ret)
 
     def save(self, doc, safe=True, **kwargs):
         if not isinstance(doc, types.DictType):
