@@ -15,7 +15,7 @@
 
 import pymongo
 from   pymongo.uri_parser        import parse_uri
-from   twisted.internet          import defer, reactor
+from   twisted.internet          import defer, reactor, task
 from   twisted.internet.protocol import ReconnectingClientFactory
 from   txmongo.database          import Database
 from   txmongo.protocol          import MongoProtocol, MongoProtocolError
@@ -25,6 +25,8 @@ class _Connection(ReconnectingClientFactory):
     __discovered = None
     __index = -1
     __uri = None
+    __conf_loop = None
+    __conf_loop_seconds = 300.0
     instance = None
     protocol = MongoProtocol
 
@@ -33,6 +35,8 @@ class _Connection(ReconnectingClientFactory):
         self.__notify_ready = []
         self.__pool = pool
         self.__uri = uri
+        self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
+        self.__conf_loop.start(self.__conf_loop_seconds, now=False)
 
     def buildProtocol(self, addr):
         # Build the protocol.
@@ -57,8 +61,10 @@ class _Connection(ReconnectingClientFactory):
         BSON document size, replica set configuration, and the master
         status of the instance.
         """
-        df = proto.OP_QUERY('admin.$cmd', 0, 0, 1, {'ismaster': 1}, None)
-        df.addCallback(self._configureCallback, proto)
+        if proto:
+            df = proto.OP_QUERY('admin.$cmd', 0, 0, 1, {'ismaster': 1}, None)
+            df.addCallback(self._configureCallback, proto)
+            return df
         return defer.succeed(None)
 
     def _configureCallback(self, reply, proto):
@@ -190,6 +196,10 @@ class _Connection(ReconnectingClientFactory):
                     df.callback(self)
                 else:
                     df.errback(reason)
+
+    def stopTrying(self):
+        ReconnectingClientFactory.stopTrying(self)
+        self.__conf_loop.stop()
 
     @property
     def uri(self):
