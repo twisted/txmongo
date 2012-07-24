@@ -45,7 +45,7 @@ class _Connection(ReconnectingClientFactory):
         # If we do not care about connecting to a slave, then we can simply
         # return the protocol now and fire that we are ready.
         if self.uri['options'].get('slaveok', False):
-            self.doNotifyReady(p)
+            self.setInstance(instance=p)
             return p
 
         # Update our server configuration. This may disconnect if the node
@@ -121,7 +121,7 @@ class _Connection(ReconnectingClientFactory):
             return
 
         # Notify deferreds waiting for completion.
-        self.doNotifyReady(proto)
+        self.setInstance(instance=proto)
 
     def clientConnectionFailed(self, connector, reason):
         if self.continueTrying:
@@ -132,13 +132,6 @@ class _Connection(ReconnectingClientFactory):
         if self.continueTrying:
             self.connector = connector
             self.retryNextHost()
-
-    def doNotifyReady(self, proto):
-        self.instance = proto
-        deferreds, self.__notify_ready = self.__notify_ready, []
-        if deferreds:
-            for df in deferreds:
-                df.callback(self)
 
     def notifyReady(self):
         """
@@ -187,7 +180,7 @@ class _Connection(ReconnectingClientFactory):
         else:
             connector.connect()
 
-    def setinstance(self, instance=None, reason=None):
+    def setInstance(self, instance=None, reason=None):
         self.instance = instance
         deferreds, self.__notify_ready = self.__notify_ready, []
         if deferreds:
