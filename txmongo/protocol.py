@@ -27,18 +27,10 @@ decoding as well as Exception types, when applicable.
 
 import bson
 from   collections      import namedtuple
-import pymongo
 from   pymongo          import errors
-import random
 import struct
 from   twisted.internet import defer, protocol
 from   twisted.python   import failure, log
-import types
-
-
-#
-# Constants
-#
 
 OP_REPLY        = 1
 OP_MSG          = 1000
@@ -49,9 +41,18 @@ OP_GETMORE      = 2005
 OP_DELETE       = 2006
 OP_KILL_CURSORS = 2007
 
+OP_NAMES = {
+    OP_REPLY:        'REPLY',
+    OP_MSG:          'MSG',
+    OP_UPDATE:       'UPDATE',
+    OP_INSERT:       'INSERT',
+    OP_QUERY:        'QUERY',
+    OP_GETMORE:      'GETMORE',
+    OP_DELETE:       'DELETE',
+    OP_KILL_CURSORS: 'KILL_CURSORS'
+}
 
 DELETE_SINGLE_REMOVE = 1 << 0
-
 
 QUERY_TAILABLE_CURSOR   = 1 << 1
 QUERY_SLAVE_OK          = 1 << 2
@@ -61,67 +62,197 @@ QUERY_AWAIT_DATA        = 1 << 5
 QUERY_EXHAUST           = 1 << 6
 QUERY_PARTIAL           = 1 << 7
 
-
 REPLY_CURSOR_NOT_FOUND   = 1 << 0
 REPLY_QUERY_FAILURE      = 1 << 1
 REPLY_SHARD_CONFIG_STALE = 1 << 2
 REPLY_AWAIT_CAPABLE      = 1 << 3
 
-
 UPDATE_UPSERT = 1 << 0
 UPDATE_MULTI  = 1 << 1
 
+Reply = namedtuple('Reply', ['len', 'request_id', 'response_to', 'opcode', 'response_flags', 'cursor_id', 'starting_from', 'n_returned', 'documents'])
+Msg = namedtuple('Msg', ['len', 'request_id', 'response_to', 'opcode', 'message'])
+KillCursors = namedtuple('KillCursors', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'n_cursors', 'cursors'])
 
-#
-# Structures
-#
+class Delete(namedtuple('Delete', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'collection', 'flags', 'selector'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_DELETE,
+                zero=0, collection='', flags=0, selector=None):
+        return super(Delete, cls).__new__(cls, len, request_id, response_to,
+                                           opcode, zero, collection,
+                                           flags, selector)
 
-MongoHeaderFields = ['message_length',
-                     'request_id',
-                     'response_to',
-                     'op_code']
-MongoHeader = namedtuple('MongoHeader', MongoHeaderFields)
+class Getmore(namedtuple('Getmore', ['len', 'request_id', 'response_to',
+                                     'opcode', 'zero', 'collection',
+                                     'n_to_return', 'cursor_id'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_GETMORE,
+                zero=0, collection='', n_to_return=-1, cursor_id=-1):
+        return super(Getmore, cls).__new__(cls, len, request_id, response_to,
+                                           opcode, zero, collection,
+                                           n_to_return, cursor_id)
 
-MongoReplyFields = ['header',
-                    'response_flags',
-                    'cursor',
-                    'starting_offset',
-                    'count',
-                    'documents']
-MongoReply = namedtuple('MongoReply', MongoReplyFields)
+class Insert(namedtuple('Insert', ['len', 'request_id', 'response_to',
+                                   'opcode', 'flags', 'collection',
+                                   'documents'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_INSERT,
+                flags=0, collection='', documents=None):
+        return super(Insert, cls).__new__(cls, len, request_id, response_to,
+                                          opcode, flags, collection, documents)
 
+class Query(namedtuple('Query', ['len', 'request_id', 'response_to', 'opcode',
+                                 'flags', 'collection', 'n_to_skip',
+                                 'n_to_return', 'query', 'fields'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_QUERY,
+                flags=0, collection='', n_to_skip=0, n_to_return=-1,
+                query=None, fields=None):
+        if query is None:
+            query = {}
+        if not isinstance(query, bson.BSON):
+            query = bson.BSON.encode(query)
+        if fields is not None and not isinstance(fields, bson.BSON):
+            fields = bson.BSON.encode(fields)
+        return super(Query, cls).__new__(cls, len, request_id, response_to,
+                                         opcode, flags, collection, n_to_skip,
+                                         n_to_return, query, fields)
 
-#
-# Errors
-#
+class Update(namedtuple('Update', ['len', 'request_id', 'response_to',
+                                   'opcode', 'zero', 'collection', 'flags',
+                                   'selector', 'update'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_UPDATE,
+                zero=0, collection='', flags=0, selector=None, update=None):
+        return super(Update, cls).__new__(cls, len, request_id, response_to,
+                                          opcode, zero, collection, flags,
+                                          selector, update)
 
-class MongoProtocolError(Exception):
-    message = 'The communication contract was broken.'
+class MongoClientProtocol(protocol.Protocol):
+    __request_id = 1
 
-class InsufficientData(Exception):
-    pass
+    def _send(self, iovec):
+        request_id, self.__request_id = self.__request_id, self.__request_id + 1
+        datalen = sum([len(chunk) for chunk in iovec]) + 8
+        datareq = struct.pack('<ii', datalen, request_id)
+        iovec.insert(0, datareq)
+        self.transport.write(''.join(iovec))
+        return request_id
 
+    def send(self, request):
+        opname = OP_NAMES[request.opcode]
+        sender = getattr(self, 'send_%s' % opname, None)
+        if callable(sender):
+            return sender(request)
+        else:
+            log.msg("No sender for opcode: %d" % request.opcode)
 
-#
-# Classes
-#
+    def send_REPLY(self, request):
+        iovec = [struct.pack('<iiiqii', *request[2:8])]
+        iovec.extend(request.documents)
+        self._send(iovec)
 
-class MongoProtocol(protocol.Protocol):
-    __buffer = ''
-    __connection_ready = None
-    __deferreds = None
-    __request_id = None
-    as_class = dict
-    max_bson_size = 16777216
+    def send_MSG(self, request):
+        iovec = [struct.pack('<ii', *request[2:4]), request.message, '\x00']
+        return self._send(iovec)
+
+    def send_UPDATE(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<i', request.flags),
+                 request.selector,
+                 request.update]
+        return self._send(iovec)
+
+    def send_INSERT(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00']
+        iovec.extend(request.documents)
+        return self._send(iovec)
+
+    def send_QUERY(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<ii', request.n_to_skip, request.n_to_return),
+                 request.query,
+                 (request.fields or '')]
+        return self._send(iovec)
+
+    def send_GETMORE(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<iq', request.n_to_return, request.cursor_id)]
+        return self._send(iovec)
+
+    def send_DELETE(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<i', request.flags),
+                 request.selector]
+        return self._send(iovec)
+
+    def send_KILL_CURSORS(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<i', len(request.cursors))]
+        for cursor in request.cursors:
+            iovec.append(struct.pack('<q', cursor))
+        return self._send(iovec)
+
+class MongoServerProtocol(protocol.Protocol):
+    __decoder = None
 
     def __init__(self):
-        self.__buffer = ''
-        self.__deferreds = {}
-        self.__request_id = random.randint(1, 65535)
+        self.__decoder = MongoDecoder()
+
+    def dataReceived(self, data):
+        self.__decoder.feed(data)
+
+        try:
+            request = self.__decoder.next()
+            while request:
+                self.handle(request)
+                request = self.__decoder.next()
+        except Exception, ex:
+            self.fail(reason=failure.Failure(ex))
+
+    def handle(self, request):
+        opname = OP_NAMES[request.opcode]
+        handler = getattr(self, 'handle_%s' % opname, None)
+        if callable(handler):
+            handler(request)
+        else:
+            log.msg("No handler found for opcode: %d" % request.opcode)
+
+    def handle_REPLY(self, request):
+        pass
+
+    def handle_MSG(self, request):
+        pass
+
+    def handle_UPDATE(self, request):
+        pass
+
+    def handle_INSERT(self, request):
+        pass
+
+    def handle_QUERY(self, request):
+        pass
+
+    def handle_GETMORE(self, request):
+        pass
+
+    def handle_DELETE(self, request):
+        pass
+
+    def handle_KILL_CURSORS(self, request):
+        pass
+
+class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
+    __connection_ready = None
+    __deferreds = None
+
+    def __init__(self):
+        MongoServerProtocol.__init__(self)
         self.__connection_ready = []
+        self.__deferreds = {}
 
     def connectionMade(self):
-        # Log our connection status.
         addr = '%s:%s' % self.transport.addr
         log.msg('Connected to %s.' % addr, system='txmongo')
         deferreds, self.__connection_ready = self.__connection_ready, []
@@ -132,7 +263,7 @@ class MongoProtocol(protocol.Protocol):
     def connectionLost(self, reason):
         if self.__deferreds:
             deferreds, self.__deferreds = self.__deferreds, {}
-            for df in deferreds:
+            for df in deferreds.itervalues():
                 df.errback(reason)
         deferreds, self.__connection_ready = self.__connection_ready, []
         if deferreds:
@@ -149,305 +280,31 @@ class MongoProtocol(protocol.Protocol):
         self.__connection_ready.append(df)
         return df
 
-    def OP_QUERY(self,
-                 db_and_collection,
-                 flags,
-                 skip,
-                 limit,
-                 query,
-                 field_selector):
-        """
-        Perform a Mongo query against @db_and_collection.
-
-        Parameters:
-            @db_and_collection -- The db and collection name "db.collection".
-            @flags             -- Mongo query flags.
-            @skip              -- Number of documents to skip.
-            @field_selector    -- What fields to select.
-        """
-        #print 'OP_QUERY', self
-
-        assert isinstance(db_and_collection, basestring)
-        assert isinstance(flags, int)
-        assert isinstance(skip, int)
-        assert isinstance(limit, int)
-
-        request_id, self.__request_id = self.__request_id, self.__request_id + 1
-        if query is None:
-            query = {}
-        if not isinstance(query, bson.BSON):
-            query = bson.BSON.encode(query)
-
-        data = struct.pack('<iiii', request_id, 0, OP_QUERY, flags)
-        data += db_and_collection.encode('ascii') + '\0'
-        data += struct.pack('<ii', skip, limit)
-        data += query
-        if field_selector is not None:
-            if not isinstance(field_selector, bson.BSON):
-                field_selector = bson.BSON.encode(field_selector)
-            if len(field_selector) > self.max_bson_size:
-                raise pymongo.connection.ConfigurationError('BSON document size is too large')
-            data += field_selector
-        data_len = len(data) + 4
-        data = struct.pack('<i', data_len) + data
-        self.__deferreds[request_id] = df = defer.Deferred()
-        self.transport.write(data)
-
+    def send_GETMORE(self, request):
+        request_id = MongoClientProtocol.send_GETMORE(self, request)
+        df = defer.Deferred()
+        self.__deferreds[request_id] = df
         return df
 
-    def OP_UPDATE(self,
-                  db_and_collection,
-                  flags,
-                  selector,
-                  update):
-        """
-        Perform a Mongo update against @db_and_collection.
-
-        Parameters:
-            @db_and_collection -- The db and collection name "db.collection".
-            @flags             -- Mongo update flags.
-            @selector          -- The selector to query.
-            @update            -- The update to perform.
-        """
-        #print 'OP_UPDATE', self
-
-        assert isinstance(db_and_collection, basestring)
-        assert isinstance(flags, int)
-        assert update
-
-        request_id, self.__request_id = self.__request_id, self.__request_id + 1
-        if selector is None:
-            selector = {}
-        if not isinstance(selector, bson.BSON):
-            selector = bson.BSON.encode(selector)
-        if not isinstance(update, bson.BSON):
-            update = bson.BSON.encode(update)
-        data = struct.pack('<iiii', request_id, 0, OP_UPDATE, 0)
-        data += db_and_collection.encode('ascii') + '\0'
-        data += struct.pack('<i', flags)
-        if len(selector) > self.max_bson_size:
-            raise pymongo.connection.ConfigurationError('BSON document size is too large')
-        data += selector
-        if len(update) > self.max_bson_size:
-            raise pymongo.connection.ConfigurationError('BSON document size is too large')
-        data += update
-        data_len = len(data) + 4
-        data = struct.pack('<i', data_len) + data
-        self.transport.write(data)
-
-    def OP_INSERT(self,
-                  db_and_collection,
-                  flags,
-                  documents):
-        """
-        Performs a Mongo insertion against @db_and_collection.
-
-        Parameters:
-            @db_and_collection -- The db and collection name "db.collection".
-            @flags             -- Mongo insertion flags.
-            @documents         -- A document or list of documents to insert.
-        """
-        #print 'OP_INSERT', self
-
-        assert isinstance(db_and_collection, basestring)
-        assert isinstance(flags, int)
-        assert documents
-
-        if not isinstance(documents, list):
-            documents = [documents]
-
-        request_id, self.__request_id = self.__request_id, self.__request_id + 1
-        data = struct.pack('<iiii', request_id, 0, OP_INSERT, flags)
-        data += db_and_collection.encode('ascii') + '\0'
-        for document in documents:
-            if not isinstance(document, bson.BSON):
-                document = bson.BSON.encode(document)
-            if len(document) > self.max_bson_size:
-                raise pymongo.connection.ConfigurationError('BSON document size is too large')
-            data += document
-        data_len = len(data) + 4
-        data = struct.pack('<i', data_len) + data
-        self.transport.write(data)
-
-    def OP_GETMORE(self,
-                   db_and_collection,
-                   limit,
-                   cursor_id):
-        """
-        Performs a Mongo getmore operation against @db_and_collection.
-
-        Parameters:
-            @db_and_collection -- The db and collection name "db.collection".
-            @limit             -- The maximum number of documents.
-            @cursor_id         -- The Mongo cursor we are iterating.
-        """
-        #print 'OP_GETMORE', self
-
-        assert isinstance(db_and_collection, basestring)
-        assert isinstance(cursor_id, (int, long))
-
-        request_id, self.__request_id = self.__request_id, self.__request_id + 1
-        data = struct.pack('<iiii', request_id, 0, OP_GETMORE, 0)
-        data += db_and_collection.encode('ascii') + '\0'
-        data += struct.pack('<iq', limit, cursor_id)
-        data_len = len(data) + 4
-        data = struct.pack('<i', data_len) + data
-        self.__deferreds[request_id] = df = defer.Deferred()
-        self.transport.write(data)
-
+    def send_QUERY(self, request):
+        request_id = MongoClientProtocol.send_QUERY(self, request)
+        df = defer.Deferred()
+        self.__deferreds[request_id] = df
         return df
 
-    def OP_DELETE(self,
-                  db_and_collection,
-                  flags,
-                  selector):
-        """
-        Performs a Mongo delete operation against @db_and_collection.
-
-        Parameters:
-            @db_and_collection -- The db and collection name "db.collection".
-            @flags             -- Mongo delete flags.
-            @selector          -- Selector for matching documents.
-        """
-        #print 'OP_DELETE', self
-
-        assert isinstance(db_and_collection, basestring)
-        assert isinstance(flags, int)
-        assert isinstance(selector, (bson.ObjectId, bson.BSON, types.DictType))
-
-        if not isinstance(selector, bson.BSON):
-            selector = bson.BSON.encode(selector)
-
-        request_id, self.__request_id = self.__request_id, self.__request_id + 1
-        data = struct.pack('<iiii', request_id, 0, OP_DELETE, 0)
-        data += db_and_collection.encode('ascii') + '\0'
-        data += struct.pack('<i', flags)
-        if len(selector) > self.max_bson_size:
-            raise pymongo.connection.ConfigurationError('BSON document size is too large')
-        data += selector
-        data_len = len(data) + 4
-        data = struct.pack('<i', data_len) + data
-        self.transport.write(data)
-
-    def OP_KILL_CURSORS(self, cursors):
-        """
-        Performs a Mongo killcursors operation.
-
-        Parameters:
-            cursors -- A list of cursor_ids to kill.
-        """
-        #print 'OP_KILL_CURSORS', self
-
-        assert isinstance(cursors, (list, int, long))
-
-        if not isinstance(cursors, list):
-            cursors = [cursors]
-
-        request_id, self.__request_id = self.__request_id, self.__request_id + 1
-        data = struct.pack('<iiii', request_id, 0, OP_KILL_CURSORS, 0)
-        data += struct.pack('<i', len(cursors))
-        data += struct.pack(('<%dq' % len(cursors)), *cursors)
-        data_len = len(data) + 4
-        data = struct.pack('<i', data_len) + data
-        self.transport.write(data)
-
-    def OP_MSG(self, message):
-        """
-        Performs a Mongo msg operation.
-
-        Parameters:
-            @msg -- The message to deliver.
-        """
-        #print 'OP_MSG', self
-
-        assert isinstance(message, basestring)
-        request_id, self.__request_id = self.__request_id, self.__request_id + 1
-        data = struct.pack('<iii', request_id, 0, OP_MSG)
-        data += message.encode('ascii') + '\0'
-        data_len = len(data) + 4
-        data = struct.pack('<i', data_len) + data
-        self.transport.write(data)
-
-    def dataReceived(self, data):
-        """
-        Handle incoming bytes from the Mongo server. Dispatch any pending
-        responses.
-        """
-        #print 'Got', data.encode('hex')
-        self.__buffer += data
-        self._process()
-
-    pcount = 0
-
-    def _process(self):
-        """
-        Process the current receive buffer and dispatch any deferreds.
-        """
-        try:
-            #print 'XXXXXXXXX process'
-            self.pcount += 1
-            #print '>>>> %d <<<< _process(%r)' % (self.pcount, self.__buffer)
-            while self.__buffer:
-                try:
-                    reply = self._readNextOp()
-                    if reply.header.response_to in self.__deferreds:
-                        if reply.header.response_to not in self.__deferreds:
-                            f = MongoProtocolError('Mongo replied with invalid '
-                                                   'response_to set.')
-                            self.fail(f)
-                            return
-                        df = self.__deferreds.pop(reply.header.response_to)
-                        if reply.response_flags & REPLY_QUERY_FAILURE:
-                            doc = reply.documents[0]
-                            code = doc.get('code')
-                            msg = doc.get('$err', 'Unknown error')
-                            err = errors.OperationFailure(msg, code)
-                            df.errback(err)
-                        else:
-                            df.callback(reply)
-                except MongoProtocolError, ex:
-                    #print 'Protocol Error', repr(ex)
-                    self.fail(ex)
-                    return
-                except InsufficientData, ex:
-                    #print 'Insufficient data', repr(ex)
-                    return
-            #print 'Done processing ======', self.pcount
-        except Exception, ex:
-            print 'caught exception !!!!!!!!!!!!!!!!!!!!', repr(ex)
-
-    def _readNextOp(self):
-        data = self.__buffer
-        if len(data) < 16:
-            raise InsufficientData()
-        header = MongoHeader(*struct.unpack('<iiii', data[:16]))
-        if header.message_length > len(data):
-            raise InsufficientData()
-        data = data[16:]
-        if header.op_code != OP_REPLY:
-            raise MongoProtocolError('Unknown message type %s' % header.op_code)
-        reply_fields = struct.unpack('<iqii', data[:20])
-        data = data[20:]
-        docs = []
-        for i in xrange(reply_fields[3]):
-            if len(data) < 4:
-                raise InsufficientData()
-            doc_len, = struct.unpack('<i', data[:4])
-            if len(data) < doc_len:
-                raise InsufficientData()
-            doc = bson.BSON(data[:doc_len]).decode(as_class=self.as_class)
-            docs.append(doc)
-            data = data[doc_len:]
-        self.__buffer = data
-        if len(docs) != reply_fields[3]:
-            raise MongoProtocolError('document count did not match number '
-                                     'of received documents.')
-        return MongoReply(header,
-                          *reply_fields,
-                          documents=docs)
+    def handle_REPLY(self, request):
+        if request.response_to in self.__deferreds:
+            df = self.__deferreds.pop(request.response_to)
+            if request.response_flags & REPLY_QUERY_FAILURE:
+                doc = request.documents[0].decode()
+                code = doc.get('code')
+                msg = doc.get('$err', 'Unknown error')
+                err = errors.OperationFailure(msg, code)
+                df.errback(err)
+            else:
+                df.callback(request)
 
     def fail(self, reason):
-        #print 'THIS SHIT IS GOING DOWN'
         if not isinstance(reason, failure.Failure):
             reason = failure.Failure(reason)
         log.err(reason)
@@ -457,7 +314,6 @@ class MongoProtocol(protocol.Protocol):
     def getlasterror(self, db):
         command = {'getlasterror': 1}
         db = '%s.$cmd' % db.split('.', 1)[0]
-        #print 'getlasterror', db
         uri = self.factory.uri
         if 'w' in uri['options']:
             command['w'] = int(uri['options']['w'])
@@ -468,29 +324,12 @@ class MongoProtocol(protocol.Protocol):
         if 'journal' in uri['options']:
             command['journal'] = bool(uri['options']['journal'])
 
-        #print command
-        #print 'OP_QUERY()', db, 0, 0, 1, command, None
-        try:
-            df = self.OP_QUERY(db, 0, 0, 1, command, None)
-            #print df
-            #print self.__deferreds
-            reply = yield df
-            #print 'got reply', reply
-        except Exception, ex:
-            #print 'EXCEPTION!!!', repr(ex)
-            raise ex
+        query = Query(collection=db, query=command)
+        reply = yield self.send_QUERY(query)
 
-        #print reply.count
-        #print reply.documents
+        assert len(reply.documents) == 1
 
-        try:
-            assert reply.count == 1
-            assert len(reply.documents) == 1
-        except Exception, ex:
-            #print 'HOLY FUCK WTF'
-            raise ex
-
-        document = reply.documents[0]
+        document = reply.documents[0].decode()
         err = document.get('err', None)
         code = document.get('code', None)
 
@@ -501,3 +340,119 @@ class MongoProtocol(protocol.Protocol):
                 raise errors.OperationFailure(err, code=code)
 
         defer.returnValue(document)
+
+class MongoDecoder:
+    dataBuffer = None
+
+    def __init__(self):
+        self.dataBuffer = ''
+
+    def feed(self, data):
+        self.dataBuffer += data
+
+    def next(self):
+        if len(self.dataBuffer) < 16:
+            return None
+        msglen, = struct.unpack('<i', self.dataBuffer[:4])
+        if len(self.dataBuffer) < msglen:
+            return None
+        if msglen < 16:
+            raise errors.ConnectionFailure()
+        msgdata = self.dataBuffer[:msglen]
+        self.dataBuffer = self.dataBuffer[msglen:]
+        return self.decode(msgdata)
+
+    def decode(self, msgdata):
+        msglen = len(msgdata)
+        header = struct.unpack('<iiii', msgdata[:16])
+        opcode = header[3]
+        if opcode == OP_UPDATE:
+            zero, = struct.unpack('<i', msgdata[16:20])
+            if zero != 0:
+                raise errors.ConnectionFailure()
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            flags, = struct.unpack('<i', msgdata[offset:offset+4])
+            offset += 4
+            selectorlen, = struct.unpack('<i', msgdata[offset:offset+4])
+            selector = bson.BSON(msgdata[offset:offset+selectorlen])
+            offset += selectorlen
+            updatelen, = struct.unpack('<i', msgdata[offset:offset+4])
+            update = bson.BSON(msgdata[offset:offset+updatelen])
+            return Update(*(header + (zero, name, flags, selector, update)))
+        elif opcode == OP_INSERT:
+            flags, = struct.unpack('<i', msgdata[16:20])
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            docs = []
+            while offset < len(msgdata):
+                doclen, = struct.unpack('<i', msgdata[offset:offset+4])
+                docdata = msgdata[offset:offset+doclen]
+                doc = bson.BSON(docdata)
+                docs.append(doc)
+                offset += doclen
+            return Insert(*(header + (flags, name, docs)))
+        elif opcode == OP_QUERY:
+            flags, = struct.unpack('<i', msgdata[16:20])
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            ntoskip, ntoreturn = struct.unpack('<ii', msgdata[offset:offset+8])
+            offset += 8
+            querylen, = struct.unpack('<i', msgdata[offset:offset+4])
+            querydata = msgdata[offset:offset+querylen]
+            query = bson.BSON(querydata)
+            offset += querylen
+            fields = None
+            if msglen > offset:
+                fieldslen, = struct.unpack('<i', msgdata[offset:offset+4])
+                fields = bson.BSON(msgdata[offset:offset+fieldslen])
+            return Query(*(header + (flags, name, ntoskip, ntoreturn, query, fields)))
+        elif opcode == OP_GETMORE:
+            zero, = struct.unpack('<i', msgdata[16:20])
+            if zero != 0:
+                raise errors.ConnectionFailure()
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            ntoreturn, cursorid = struct.unpack('<iq', msgdata[offset:offset+12])
+            return Getmore(*(header + (zero, name, ntoreturn, cursorid)))
+        elif opcode == OP_DELETE:
+            zero, = struct.unpack('<i', msgdata[16:20])
+            if zero != 0:
+                raise errors.ConnectionFailure()
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            flags, = struct.unpack('<i', msgdata[offset:offset+4])
+            offset += 4
+            selector = bson.BSON(msgdata[offset:])
+            return Delete(*(header + (zero, name, flags, selector)))
+        elif opcode == OP_KILL_CURSORS:
+            cursors = struct.unpack('<ii', msgdata[16:24])
+            if cursors[0] != 0:
+                raise errors.ConnectionFailure()
+            offset = 24
+            cursor_list = []
+            for i in xrange(cursors[1]):
+                cursor, = struct.unpack('<q', msgdata[offset:offset+8])
+                cursor_list.append(cursor)
+                offset += 8
+            return KillCursors(*(header + cursors + (cursor_list,)))
+        elif opcode == OP_MSG:
+            if msgdata[-1] != '\x00':
+                raise errors.ConnectionFailure()
+            return Msg(*(header + (msgdata[16:-1].decode('ascii'),)))
+        elif opcode == OP_REPLY:
+            reply = struct.unpack('<iqii', msgdata[16:36])
+            docs = []
+            offset = 36
+            for i in xrange(reply[3]):
+                doclen, = struct.unpack('<i', msgdata[offset:offset+4])
+                if doclen > (msglen - offset):
+                    raise errors.ConnectionFailure()
+                docdata = msgdata[offset:offset+doclen]
+                doc = bson.BSON(docdata)
+                docs.append(doc)
+                offset += doclen
+            return Reply(*(header + reply + (docs,)))
+        else:
+            raise errors.ConnectionFailure()
+        return header

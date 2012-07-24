@@ -14,11 +14,12 @@
 # limitations under the License.
 
 import pymongo
+from   pymongo                   import errors
 from   pymongo.uri_parser        import parse_uri
 from   twisted.internet          import defer, reactor, task
 from   twisted.internet.protocol import ReconnectingClientFactory
 from   txmongo.database          import Database
-from   txmongo.protocol          import MongoProtocol, MongoProtocolError
+from   txmongo.protocol          import MongoProtocol, Query
 
 class _Connection(ReconnectingClientFactory):
     __notify_ready = None
@@ -62,7 +63,8 @@ class _Connection(ReconnectingClientFactory):
         status of the instance.
         """
         if proto:
-            df = proto.OP_QUERY('admin.$cmd', 0, 0, 1, {'ismaster': 1}, None)
+            query = Query(collection='admin.$cmd', query={'ismaster': 1})
+            df = proto.send_QUERY(query)
             df.addCallback(self._configureCallback, proto)
             return df
         return defer.succeed(None)
@@ -73,16 +75,18 @@ class _Connection(ReconnectingClientFactory):
         configuration information about the peer.
         """
         # Make sure we got a result document.
-        if reply.count != 1:
-            proto.fail(MongoProtocolError())
+        if len(reply.documents) != 1:
+            proto.fail(errors.OperationFailure('Invalid document length.'))
             return
 
         # Get the configuration document from the reply.
-        config = reply.documents[0]
+        config = reply.documents[0].decode()
 
         # Make sure the command was successful.
         if not config.get('ok'):
-            proto.fail(MongoProtocolError())
+            code = config.get('code')
+            msg = config.get('err', 'Unknown error')
+            proto.fail(errors.OperationFailure(msg, code))
             return
 
         # Check that the replicaSet matches.
@@ -185,7 +189,7 @@ class _Connection(ReconnectingClientFactory):
         deferreds, self.__notify_ready = self.__notify_ready, []
         if deferreds:
             for df in deferreds:
-                if self.instance:
+                if instance:
                     df.callback(self)
                 else:
                     df.errback(reason)

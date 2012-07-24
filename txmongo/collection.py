@@ -13,13 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import bson
 from bson import ObjectId
 from bson.code import Code
 from bson.son import SON
 import types
 from pymongo import errors
 from txmongo import filter as qf
-from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI
+from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, \
+                             UPDATE_MULTI, Query, Getmore, Insert, \
+                             Update, Delete
 from twisted.internet import defer
 
 class Collection(object):
@@ -118,20 +121,29 @@ class Collection(object):
                 for k,v in filter.iteritems():
                     spec['$' + k] = dict(v)
 
-        flags = kwargs.get('flags', 0)
-
         proto = yield self._database.connection.getprotocol()
-        reply = yield proto.OP_QUERY(str(self), flags, skip, limit, spec, fields)
+
+        flags = kwargs.get('flags', 0)
+        query = Query(flags=flags, collection=str(self),
+                      n_to_skip=skip, n_to_return=limit,
+                      query=spec, fields=fields)
+
+        reply = yield proto.send_QUERY(query)
         documents = reply.documents
-        while reply.cursor:
+        while reply.cursor_id:
             to_fetch = 0 if limit <= 0 else limit - len(documents)
-            reply = yield proto.OP_GETMORE(str(self), to_fetch, reply.cursor)
+            getmore = Getmore(collection=str(self),
+                              n_to_return=to_fetch,
+                              cursor_id=reply.cursor_id)
+            reply = yield proto.send_GETMORE(getmore)
             documents.extend(reply.documents)
 
         if limit > 0:
             documents = documents[:limit]
 
-        defer.returnValue(documents)
+        as_class = kwargs.get('as_class', dict)
+
+        defer.returnValue([d.decode(as_class=as_class) for d in documents])
 
     def find_one(self, spec=None, fields=None, **kwargs):
         if isinstance(spec, ObjectId):
@@ -204,10 +216,11 @@ class Collection(object):
         else:
             raise TypeError("insert takes a document or a list of documents")
 
+        docs = [bson.BSON.encode(d) for d in docs]
         flags = kwargs.get('flags', 0)
-
+        insert = Insert(flags=flags, collection=str(self), documents=docs)
         proto = yield self._database.connection.getprotocol()
-        proto.OP_INSERT(str(self), flags, docs)
+        proto.send_INSERT(insert)
 
         if safe:
             yield proto.getlasterror(str(self._database))
@@ -230,8 +243,12 @@ class Collection(object):
         if upsert:
             flags |= UPDATE_UPSERT
 
+        spec = bson.BSON.encode(spec)
+        document = bson.BSON.encode(document)
+        update = Update(flags=flags, collection=str(self),
+                        selector=spec, update=document)
         proto = yield self._database.connection.getprotocol()
-        proto.OP_UPDATE(str(self), flags, spec, document)
+        proto.send_UPDATE(update)
 
         if safe:
             ret = yield proto.getlasterror(str(self._database))
@@ -249,8 +266,6 @@ class Collection(object):
 
     @defer.inlineCallbacks
     def remove(self, spec, safe=True, single=False, **kwargs):
-        #print 'remove(%r, %r, safe=%r, **kwargs=%r)' % (self, spec, safe, kwargs)
-
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, types.DictType):
@@ -260,8 +275,10 @@ class Collection(object):
         if single:
             flags |= DELETE_SINGLE_REMOVE
 
+        spec = bson.BSON.encode(spec)
+        delete = Delete(flags=flags, collection=str(self), selector=spec)
         proto = yield self._database.connection.getprotocol()
-        proto.OP_DELETE(str(self), flags, spec)
+        proto.send_DELETE(delete)
 
         if safe:
             ret = yield proto.getlasterror(str(self._database))
