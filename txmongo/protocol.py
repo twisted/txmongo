@@ -70,7 +70,6 @@ REPLY_AWAIT_CAPABLE      = 1 << 3
 UPDATE_UPSERT = 1 << 0
 UPDATE_MULTI  = 1 << 1
 
-Reply = namedtuple('Reply', ['len', 'request_id', 'response_to', 'opcode', 'response_flags', 'cursor_id', 'starting_from', 'n_returned', 'documents'])
 Msg = namedtuple('Msg', ['len', 'request_id', 'response_to', 'opcode', 'message'])
 KillCursors = namedtuple('KillCursors', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'n_cursors', 'cursors'])
 
@@ -97,6 +96,22 @@ class Insert(namedtuple('Insert', ['len', 'request_id', 'response_to',
                 flags=0, collection='', documents=None):
         return super(Insert, cls).__new__(cls, len, request_id, response_to,
                                           opcode, flags, collection, documents)
+
+class Reply(namedtuple('Reply', ['len', 'request_id', 'response_to', 'opcode',
+                                 'response_flags', 'cursor_id',
+                                 'starting_from', 'n_returned', 'documents'])):
+    def __new__(cls, _len=0, request_id=0, response_to=0, opcode=OP_REPLY,
+                response_flags=0, cursor_id=0, starting_from=0,
+                n_returned=None, documents=None):
+        if documents is None:
+            documents = []
+        if n_returned is None:
+            n_returned = len(documents)
+        documents = [b if isinstance(b, bson.BSON) else bson.BSON.encode(b) for b in documents]
+        return super(Reply, cls).__new__(cls, _len, request_id, response_to,
+                                         opcode, response_flags, cursor_id,
+                                         starting_from, n_returned,
+                                         documents)
 
 class Query(namedtuple('Query', ['len', 'request_id', 'response_to', 'opcode',
                                  'flags', 'collection', 'n_to_skip',
