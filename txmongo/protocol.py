@@ -268,8 +268,6 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         self.__deferreds = {}
 
     def connectionMade(self):
-        addr = '%s:%s' % self.transport.addr
-        log.msg('Connected to %s.' % addr, system='txmongo')
         deferreds, self.__connection_ready = self.__connection_ready, []
         if deferreds:
             for df in deferreds:
