@@ -31,10 +31,16 @@ Failing that, you can fall back to::
   $ sudo python setup.py install
 
 
-Docs and examples
+Docs and Examples
 =================
-Generate them with **make docs**. You will need `epydoc` installed.
-There are some examples in the ``./examples/`` directory.
+You can generate the docs with::
+
+ $ make docs
+
+Do note, however, that you will need `epydoc` installed in order to do so.
+
+For "living" docs, be sure to take a look at the sample code in the
+``./examples/`` directory.
 
 
 Hacking
