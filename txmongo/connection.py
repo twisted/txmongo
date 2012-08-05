@@ -12,16 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import pymongo
-from   pymongo                   import errors
-from   pymongo.uri_parser        import parse_uri
-from   twisted.internet          import defer, reactor, task
-from   twisted.internet.protocol import ReconnectingClientFactory
-from   txmongo.database          import Database
-from   txmongo.protocol          import MongoProtocol, Query
+from pymongo import errors
+from pymongo.uri_parser import parse_uri
+
+from twisted.internet import defer, reactor, task
+from twisted.internet.protocol import ReconnectingClientFactory
+
+from txmongo.database import Database
+from txmongo.protocol import MongoProtocol, Query
+
 
 class _Connection(ReconnectingClientFactory):
+
     __notify_ready = None
     __discovered = None
     __index = -1
@@ -36,7 +39,8 @@ class _Connection(ReconnectingClientFactory):
         self.__notify_ready = []
         self.__pool = pool
         self.__uri = uri
-        self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
+        self.__conf_loop = task.LoopingCall(
+            lambda: self.configure(self.instance))
         self.__conf_loop.start(self.__conf_loop_seconds, now=False)
 
     def buildProtocol(self, addr):
@@ -52,7 +56,6 @@ class _Connection(ReconnectingClientFactory):
         # Update our server configuration. This may disconnect if the node
         # is not a master.
         p.connectionReady().addCallback(lambda _: self.configure(p))
-
         return p
 
     def configure(self, proto):
@@ -202,7 +205,9 @@ class _Connection(ReconnectingClientFactory):
     def uri(self):
         return self.__uri
 
+
 class ConnectionPool(object):
+
     __index = 0
     __pool = None
     __pool_size = None
@@ -265,28 +270,13 @@ class ConnectionPool(object):
     def uri(self):
         return self.__uri
 
+
 Connection = ConnectionPool
 
-###
-# Begin Legacy Wrapper
-###
 
+# Begin Legacy Wrapper
 class MongoConnection(Connection):
+
     def __init__(self, host, port, pool_size=1):
         uri = 'mongodb://%s:%d/' % (host, port)
         Connection.__init__(self, uri, pool_size=pool_size)
-lazyMongoConnectionPool = MongoConnection
-lazyMongoConnection = MongoConnection
-MongoConnectionPool = MongoConnection
-
-###
-# End Legacy Wrapper
-###
-
-if __name__ == '__main__':
-    import sys
-    from twisted.python import log
-
-    log.startLogging(sys.stdout)
-    connection = Connection()
-    reactor.run()
