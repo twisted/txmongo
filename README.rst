@@ -1,12 +1,14 @@
 =======
-TxMongo
+txMongo
 =======
-:Info: See `the mongo site <http://www.mongodb.org>`_ for more information. See `github <http://github.com/fiorix/mongo-async-python-driver/tree>`_ for the latest source.
+:Info: See `the mongo site`_ for more information. See `github`_ for the latest
+       source.
 :Author: Alexandre Fiori <fiorix@gmail.com>
+
 
 About
 =====
-An asynchronous Python driver for the Mongo database, based on Twisted.
+An asynchronous Python driver for the Mongo database, using on Twisted.
 The ``txmongo`` package is an alternative to the original ``pymongo``
 shipped with the Mongo database.
 
@@ -16,21 +18,35 @@ network servers using the Twisted framework.
 Instead of deferring database operations to threads, now it's possible
 to do it asynchronously, as easy as using the original API.
 
+
 Installation
 ============
-You need `setuptools <http://peak.telecommunity.com/DevCenter/setuptools>`_
-in order to get ``txmongo`` installed.
-Just run **python setup.py install**
+`pip`_ is recommended over `setuptools`_ for installation, so best to just
+run::
+
+  $ sudo pip install txmongo
+
+Failing that, you can fall back to::
+
+  $ sudo python setup.py install
+
 
 Docs and examples
 =================
 Generate them with **make docs**. You will need `epydoc` installed.
-There are some examples in the *examples/* directory.
+There are some examples in the ``./examples/`` directory.
+
 
 Hacking
 =======
-Run **make env** to create clean hacking environment with `virtualenv`.
-Run **make** to torture your code with tests and code style tools.
+To create clean hacking environment with `virtualenv`::
+
+  $ make env
+
+To torture your code with tests and code style tools::
+
+  $ make
+
 
 Credits
 =======
@@ -41,7 +57,7 @@ Thanks to (in no particular order):
   - The author of original ``pymongo`` package.
 
 - Renzo Sanchez-Silva (rnz0)
- 
+
   - Initial twisted trial unit tests.
 
 - Vanderson Mota (chunda)
@@ -64,6 +80,14 @@ Thanks to (in no particular order):
 
   - Code clean up and hacking environment
 
-- `Silas Sewell <https://github.com/silas>`_
+- `Silas Sewell`_
 
   - Minor build and type fixes
+
+
+.. Document Links
+.. _the mongo site: http://www.mongodb.org/
+.. _github: http://github.com/oubiwann/txmongo/tree
+.. _pip: http://pypi.python.org/pypi/pip/
+.. _setuptools: http://peak.telecommunity.com/DevCenter/setuptools
+.. _Silas Sewell: https://github.com/silas
