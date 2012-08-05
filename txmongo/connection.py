@@ -274,9 +274,10 @@ class ConnectionPool(object):
 Connection = ConnectionPool
 
 
-# Begin Legacy Wrapper
-class MongoConnection(Connection):
-
+class MongoConnection(ConnectionPool):
+    """
+    A legacy wrapper.
+    """
     def __init__(self, host, port, pool_size=1):
         uri = 'mongodb://%s:%d/' % (host, port)
-        Connection.__init__(self, uri, pool_size=pool_size)
+        super(MongoConnection, self).__init__(uri, pool_size=pool_size)
