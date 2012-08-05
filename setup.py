@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 import sys
 import os
 import shutil
@@ -12,7 +11,8 @@ from distutils.errors import CCompilerError
 from distutils.errors import DistutilsPlatformError, DistutilsExecError
 from distutils.core import Extension
 
-requirements = ["twisted"]
+
+requirements = ["twisted", "pymongo"]
 try:
     import xml.etree.ElementTree
 except ImportError:
@@ -27,16 +27,17 @@ if sys.platform == 'win32' and sys.version_info > (2, 6):
 else:
    build_errors = (CCompilerError, DistutilsExecError, DistutilsPlatformError)
 
+
 setup(
     name="txmongo",
-    version="0.3.99",
+    version="0.3.99.1",
     description="Asynchronous Python driver for MongoDB <http://www.mongodb.org>",
     author="Alexandre Fiori, Christian Hergert",
     author_email="fiorix@gmail.com, chris@dronelabs.com",
     url="http://github.com/chergert/mongo-async-python-driver",
     keywords=["mongo", "mongodb", "pymongo", "gridfs", "txmongo"],
     packages=["txmongo", "txmongo._gridfs"],
-    #install_requires=requirements,
+    install_requires=requirements,
     license="Apache License, Version 2.0",
     test_suite="nose.collector",
     classifiers=[
