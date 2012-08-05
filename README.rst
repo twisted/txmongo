@@ -21,7 +21,7 @@ to do it asynchronously, as easy as using the original API.
 
 Installation
 ============
-`pip`_ is recommended over `setuptools`_ for installation, so best to just
+`pip`_ is recommended over `setuptools`_ for installation, so best just to
 run::
 
   $ sudo pip install txmongo
