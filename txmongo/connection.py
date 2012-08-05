@@ -278,6 +278,14 @@ class MongoConnection(ConnectionPool):
     """
     A legacy wrapper.
     """
-    def __init__(self, host, port, pool_size=1):
+    pool_size = 1
+
+    def __init__(self, host="127.0.0.1", port=27017):
         uri = 'mongodb://%s:%d/' % (host, port)
-        super(MongoConnection, self).__init__(uri, pool_size=pool_size)
+        super(MongoConnection, self).__init__(uri, pool_size=self.pool_size)
+
+
+class MongoConnectionPool(MongoConnection):
+    """
+    """
+    pool_size = 5

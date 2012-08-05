@@ -1,10 +1,9 @@
-from txmongo.connection import MongoConnection
+from txmongo.connection import MongoConnection, MongoConnectionPool
 
 
 # Legacy aliases
-lazyMongoConnectionPool = MongoConnection
 lazyMongoConnection = MongoConnection
-MongoConnectionPool = MongoConnection
+lazyMongoConnectionPool = MongoConnectionPool
 
 
 if __name__ == '__main__':
