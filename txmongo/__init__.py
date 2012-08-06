@@ -30,6 +30,7 @@ class _Connection(ReconnectingClientFactory):
     __conf_loop_seconds = 300.0
     instance = None
     protocol = MongoProtocol
+    maxDelay = 60
 
     def __init__(self, pool, uri):
         self.__discovered = []
