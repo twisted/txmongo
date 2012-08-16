@@ -312,8 +312,15 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 doc = request.documents[0].decode()
                 code = doc.get('code')
                 msg = doc.get('$err', 'Unknown error')
-                err = errors.OperationFailure(msg, code)
+                fail_conn = False
+                if code == 13435:
+                    err = errors.AutoReconnect(msg)
+                    fail_conn = True
+                else:
+                    err = errors.OperationFailure(msg, code)
                 df.errback(err)
+                if fail_conn:
+                    self.transport.loseConnection()
             else:
                 df.callback(request)
 
