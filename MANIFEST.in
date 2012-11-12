@@ -1,0 +1,1 @@
+include txmongo/_pymongo/*.h
