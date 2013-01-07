@@ -25,6 +25,8 @@ sudo python setup.py install
 
 # Packages
 
+## Debian
+
 Packing for debian exists in debian/, you can build yourself a package
 (remember to update debian/changelog) if you make changes.
 
@@ -33,6 +35,15 @@ dpkg-buildpackage -b
 ```
 
 Then look for the package in your home directory.
+
+## Fedora
+
+```sh
+rpmbuild -bb python-txmongo.spec
+```
+
+You might need to download Source0 from the .spec and place it in
+rpmbuild/SOURCES first.
 
 # Contributing
 
