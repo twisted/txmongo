@@ -26,8 +26,13 @@ sudo python setup.py install
 # Packages
 
 Packing for debian exists in debian/, you can build yourself a package
-(remember to update debian/changelog). Alternatively you can download a
-pre-built package from my github (chergert/mongo-async-python-driver).
+(remember to update debian/changelog) if you make changes.
+
+```sh
+dpkg-buildpackage -b
+```
+
+Then look for the package in your home directory.
 
 # Contributing
 
