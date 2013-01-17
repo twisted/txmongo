@@ -27,8 +27,7 @@ from twisted.internet import defer
 from txmongo._gridfs.errors import (CorruptGridFile,
                                     NoFile,
                                     UnsupportedAPI)
-from pymongo.binary import Binary
-from bson import ObjectId
+from bson import Binary, ObjectId
 from txmongo.collection import Collection
 
 try:
