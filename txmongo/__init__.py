@@ -1,5 +1,5 @@
 # coding: utf-8
-# Copyright 2009 Alexandre Fiori
+# Copyright 2012 Christian Hergert
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,126 +13,281 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from txmongo.database import Database
-from txmongo.protocol import MongoProtocol
-from txmongo._pymongo.objectid import ObjectId
-from twisted.internet import task, defer, reactor, protocol
+import pymongo
+from   pymongo                   import errors
+from   pymongo.uri_parser        import parse_uri
+from   twisted.internet          import defer, reactor, task
+from   twisted.internet.protocol import ReconnectingClientFactory
+from   txmongo.database          import Database
+from   txmongo.protocol          import MongoProtocol, Query
 
+class _Connection(ReconnectingClientFactory):
+    __notify_ready = None
+    __discovered = None
+    __index = -1
+    __uri = None
+    __conf_loop = None
+    __conf_loop_seconds = 300.0
+    instance = None
+    protocol = MongoProtocol
+    maxDelay = 60
 
-DISCONNECT_INTERVAL = .5
+    def __init__(self, pool, uri):
+        self.__discovered = []
+        self.__notify_ready = []
+        self.__pool = pool
+        self.__uri = uri
+        self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
+        self.__conf_loop.start(self.__conf_loop_seconds, now=False)
 
+    def buildProtocol(self, addr):
+        # Build the protocol.
+        p = ReconnectingClientFactory.buildProtocol(self, addr)
 
-class _offline(object):
-    def OP_INSERT(self, *args, **kwargs):
-        pass
+        # If we do not care about connecting to a slave, then we can simply
+        # return the protocol now and fire that we are ready.
+        if self.uri['options'].get('slaveok', False):
+            self.setInstance(instance=p)
+            return p
 
-    def OP_UPDATE(self, *args, **kwargs):
-        pass
+        # Update our server configuration. This may disconnect if the node
+        # is not a master.
+        p.connectionReady().addCallback(lambda _: self.configure(p))
 
-    def OP_DELETE(self, *args, **kwargs):
-        pass
+        return p
 
-    def OP_QUERY(self, *args, **kwargs):
-        deferred = defer.Deferred()
-        deferred.errback(RuntimeWarning("not connected"))
-        return deferred
+    def configure(self, proto):
+        """
+        Configures the protocol using the information gathered from the
+        remote Mongo instance. Such information may contain the max
+        BSON document size, replica set configuration, and the master
+        status of the instance.
+        """
+        if proto:
+            query = Query(collection='admin.$cmd', query={'ismaster': 1})
+            df = proto.send_QUERY(query)
+            df.addCallback(self._configureCallback, proto)
+            return df
+        return defer.succeed(None)
 
+    def _configureCallback(self, reply, proto):
+        """
+        Handle the reply from the "ismaster" query. The reply contains
+        configuration information about the peer.
+        """
+        # Make sure we got a result document.
+        if len(reply.documents) != 1:
+            proto.fail(errors.OperationFailure('Invalid document length.'))
+            return
 
-class MongoAPI(object):
-    def __init__(self, factory):
-        self.__factory = factory
-        self._connected = factory.deferred
+        # Get the configuration document from the reply.
+        config = reply.documents[0].decode()
 
-    def __connection_lost(self, deferred):
-        if self.__factory.size == 0:
-            self.__task.stop()
-            deferred.callback(True)
+        # Make sure the command was successful.
+        if not config.get('ok'):
+            code = config.get('code')
+            msg = config.get('err', 'Unknown error')
+            proto.fail(errors.OperationFailure(msg, code))
+            return
 
-    def disconnect(self):
-        self.__factory.continueTrying = 0
-        for conn in self.__factory.pool:
-            try:
-                conn.transport.loseConnection()
-            except:
-                pass
+        # Check that the replicaSet matches.
+        set_name = config.get('setName')
+        expected_set_name = self.uri['options'].get('setname')
+        if expected_set_name and (expected_set_name != set_name):
+            # Log the invalid replica set failure.
+            msg = 'Mongo instance does not match requested replicaSet.'
+            reason = pymongo.connection.ConfigurationError(msg)
+            proto.fail(reason)
+            return
 
-        d = defer.Deferred()
-        self.__task = task.LoopingCall(self.__connection_lost, d)
-        self.__task.start(DISCONNECT_INTERVAL, True)
-        return d
+        # Track max bson object size limit.
+        max_bson_size = config.get('maxBsonObjectSize')
+        if max_bson_size:
+            proto.max_bson_size = max_bson_size
+
+        # Track the other hosts in the replica set.
+        hosts = config.get('hosts')
+        if isinstance(hosts, list) and hosts:
+            hostaddrs = []
+            for host in hosts:
+                if ':' not in host:
+                    host = (host, 27017)
+                else:
+                    host = host.split(':', 1)
+                    host[1] = int(host[1])
+                hostaddrs.append(host)
+            self.__discovered = hostaddrs
+
+        # Check if this node is the master.
+        ismaster = config.get('ismaster')
+        if not ismaster:
+            reason = pymongo.connection.AutoReconnect('not master')
+            proto.fail(reason)
+            return
+
+        # Notify deferreds waiting for completion.
+        self.setInstance(instance=proto)
+
+    def clientConnectionFailed(self, connector, reason):
+        if self.continueTrying:
+            self.connector = connector
+            self.retryNextHost()
+
+    def clientConnectionLost(self, connector, reason):
+        if self.continueTrying:
+            self.connector = connector
+            self.retryNextHost()
+
+    def notifyReady(self):
+        """
+        Returns a deferred that will fire when the factory has created a
+        protocol that can be used to communicate with a Mongo server.
+
+        Note that this will not fire until we have connected to a Mongo
+        master, unless slaveOk was specified in the Mongo URI connection
+        options.
+        """
+        if self.instance:
+            return defer.succeed(self.instance)
+        if self.__notify_ready is None:
+            self.__notify_ready = []
+        df = defer.Deferred()
+        self.__notify_ready.append(df)
+        return df
+
+    def retryNextHost(self, connector=None):
+        """
+        Have this connector connect again, to the next host in the
+        configured list of hosts.
+        """
+        if not self.continueTrying:
+            log.msg("Abandoning %s on explicit request" % (connector,))
+            return
+
+        if connector is None:
+            if self.connector is None:
+                raise ValueError("no connector to retry")
+            else:
+                connector = self.connector
+
+        delay = False
+        self.__index += 1
+
+        allNodes = list(self.uri['nodelist']) + list(self.__discovered)
+        if self.__index >= len(allNodes):
+            self.__index = 0
+            delay = True
+
+        connector.host, connector.port = allNodes[self.__index]
+
+        if delay:
+            self.retry(connector)
+        else:
+            connector.connect()
+
+    def setInstance(self, instance=None, reason=None):
+        self.instance = instance
+        deferreds, self.__notify_ready = self.__notify_ready, []
+        if deferreds:
+            for df in deferreds:
+                if instance:
+                    df.callback(self)
+                else:
+                    df.errback(reason)
+
+    def stopTrying(self):
+        ReconnectingClientFactory.stopTrying(self)
+        self.__conf_loop.stop()
+
+    @property
+    def uri(self):
+        return self.__uri
+
+class ConnectionPool(object):
+    __index = 0
+    __pool = None
+    __pool_size = None
+    __uri = None
+
+    def __init__(self, uri='mongodb://127.0.0.1:27017', pool_size=1):
+        assert isinstance(uri, basestring)
+        assert isinstance(pool_size, int)
+        assert pool_size >= 1
+
+        if not uri.startswith('mongodb://'):
+            uri = 'mongodb://' + uri
+
+        self.__uri = parse_uri(uri)
+        self.__pool_size = pool_size
+        self.__pool = [_Connection(self, self.__uri) for i in xrange(pool_size)]
+
+        host, port = self.__uri['nodelist'][0]
+        for factory in self.__pool:
+            factory.connector = reactor.connectTCP(host, port, factory)
+
+    def __getitem__(self, name):
+        return Database(self, name)
+
+    def __getattr__(self, name):
+        return self[name]
 
     def __repr__(self):
-        try:
-            cli = self.__factory.pool[0].transport.getPeer()
-        except:
-            info = "not connected"
-        else:
-            info = "%s:%s - %d connection(s)" % (cli.host, cli.port, self.__factory.size)
-        return "<Mongodb: %s>" % info
+        if self.uri['nodelist']:
+            return 'Connection(%r, %r)' % self.uri['nodelist'][0]
+        return 'Connection()'
 
-    def __getitem__(self, database_name):
-        return Database(self.__factory, database_name)
+    def disconnect(self):
+        for factory in self.__pool:
+            factory.stopTrying()
+            factory.stopFactory()
+            if factory.instance and factory.instance.transport:
+                factory.instance.transport.loseConnection()
+            if factory.connector:
+                factory.connector.disconnect()
+        # Wait for the next iteration of the loop for resolvers
+        # to potentially cleanup.
+        df = defer.Deferred()
+        reactor.callLater(0, df.callback, None)
+        return df
 
-    def __getattr__(self, database_name):
-        return self[database_name]
+    def getprotocol(self):
+        # Get the next protocol available for communication in the pool.
+        connection = self.__pool[self.__index]
+        self.__index = (self.__index + 1) % self.__pool_size
 
+        # If the connection is already connected, just return it.
+        if connection.instance:
+            return defer.succeed(connection.instance)
 
-class _MongoFactory(protocol.ReconnectingClientFactory):
-    maxDelay = 10
-    protocol = MongoProtocol
+        # Wait for the connection to connection.
+        return connection.notifyReady().addCallback(lambda c: c.instance)
 
-    def __init__(self, pool_size):
-        self.idx = 0
-        self.size = 0
-        self.pool = []
-        self.pool_size = pool_size
-        self.deferred = defer.Deferred()
-        self.API = MongoAPI(self)
+    @property
+    def uri(self):
+        return self.__uri
 
-    def append(self, conn):
-        self.pool.append(conn)
-        self.size += 1
-        if self.deferred and self.size == self.pool_size:
-            self.deferred.callback(self.API)
-            self.deferred = None
+Connection = ConnectionPool
 
-    def remove(self, conn):
-        try:
-            self.pool.remove(conn)
-        except:
-            pass
-        self.size = len(self.pool)
+###
+# Begin Legacy Wrapper
+###
 
-    def connection(self):
-        try:
-            assert self.size
-            conn = self.pool[self.idx % self.size]
-            self.idx += 1
-        except:
-            return _offline()
-        else:
-            return conn
+class MongoConnection(Connection):
+    def __init__(self, host, port, pool_size=1):
+        uri = 'mongodb://%s:%d/' % (host, port)
+        Connection.__init__(self, uri, pool_size=pool_size)
+lazyMongoConnectionPool = MongoConnection
+lazyMongoConnection = MongoConnection
+MongoConnectionPool = MongoConnection
 
+###
+# End Legacy Wrapper
+###
 
-def _Connection(host, port, reconnect, pool_size, lazy):
-    factory = _MongoFactory(pool_size)
-    factory.continueTrying = reconnect
-    for x in xrange(pool_size):
-        reactor.connectTCP(host, port, factory)
-    return (lazy is True) and factory.API or factory.deferred
+if __name__ == '__main__':
+    import sys
+    from twisted.python import log
 
-
-def MongoConnection(host="localhost", port=27017, reconnect=True):
-    return _Connection(host, port, reconnect, pool_size=1, lazy=False)
-
-
-def lazyMongoConnection(host="localhost", port=27017, reconnect=True):
-    return _Connection(host, port, reconnect, pool_size=1, lazy=True)
-
-
-def MongoConnectionPool(host="localhost", port=27017, reconnect=True, pool_size=5):
-    return _Connection(host, port, reconnect, pool_size, lazy=False)
-
-
-def lazyMongoConnectionPool(host="localhost", port=27017, reconnect=True, pool_size=5):
-    return _Connection(host, port, reconnect, pool_size, lazy=True)
+    log.startLogging(sys.stdout)
+    connection = Connection()
+    reactor.run()

@@ -27,8 +27,8 @@ from twisted.internet import defer
 from txmongo._gridfs.errors import (CorruptGridFile,
                                     NoFile,
                                     UnsupportedAPI)
-from txmongo._pymongo.binary import Binary
-from txmongo._pymongo.objectid import ObjectId
+from pymongo.binary import Binary
+from bson import ObjectId
 from txmongo.collection import Collection
 
 try:
@@ -87,7 +87,7 @@ class GridIn(object):
         provided by :class:`~gridfs.GridFS`.
 
         Raises :class:`TypeError` if `root_collection` is not an
-        instance of :class:`~txmongo._pymongo.collection.Collection`.
+        instance of :class:`~pymongo.collection.Collection`.
 
         Any of the file level options specified in the `GridFS Spec
         <http://dochub.mongodb.org/core/gridfsspec>`_ may be passed as
@@ -292,7 +292,7 @@ class GridOut(object):
         provided by :class:`~gridfs.GridFS`.
 
         Raises :class:`TypeError` if `root_collection` is not an instance of
-        :class:`~txmongo._pymongo.collection.Collection`.
+        :class:`~pymongo.collection.Collection`.
 
         :Parameters:
           - `root_collection`: root collection to read from

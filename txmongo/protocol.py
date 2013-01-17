@@ -1,5 +1,6 @@
 # coding: utf-8
 # Copyright 2009 Alexandre Fiori
+# Copyright 2012 Christian Hergert
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,162 +14,465 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Low level connection to Mongo.
+
+This module contains the wire protocol implementation for txmongo.
+The various constants from the protocl are available as constants.
+
+This implementation requires pymongo so that as much of the
+implementation can be shared. This includes BSON encoding and
+decoding as well as Exception types, when applicable.
+"""
+
+import bson
+from   collections      import namedtuple
+from   pymongo          import errors
 import struct
-from txmongo._pymongo import bson
-from txmongo.database import Database
-from twisted.internet import defer, protocol
+from   twisted.internet import defer, protocol
+from   twisted.python   import failure, log
 
-_ONE = "\x01\x00\x00\x00"
-_ZERO = "\x00\x00\x00\x00"
+OP_REPLY        = 1
+OP_MSG          = 1000
+OP_UPDATE       = 2001
+OP_INSERT       = 2002
+OP_QUERY        = 2004
+OP_GETMORE      = 2005
+OP_DELETE       = 2006
+OP_KILL_CURSORS = 2007
 
-"""Low level connection to Mongo."""
+OP_NAMES = {
+    OP_REPLY:        'REPLY',
+    OP_MSG:          'MSG',
+    OP_UPDATE:       'UPDATE',
+    OP_INSERT:       'INSERT',
+    OP_QUERY:        'QUERY',
+    OP_GETMORE:      'GETMORE',
+    OP_DELETE:       'DELETE',
+    OP_KILL_CURSORS: 'KILL_CURSORS'
+}
 
+DELETE_SINGLE_REMOVE = 1 << 0
 
-class _MongoQuery(object):
-    def __init__(self, id, collection, limit):
-        self.id = id
-        self.limit = limit
-        self.collection = collection
-        self.documents = []
-        self.deferred = defer.Deferred()
+QUERY_TAILABLE_CURSOR   = 1 << 1
+QUERY_SLAVE_OK          = 1 << 2
+QUERY_OPLOG_REPLAY      = 1 << 3
+QUERY_NO_CURSOR_TIMEOUT = 1 << 4
+QUERY_AWAIT_DATA        = 1 << 5
+QUERY_EXHAUST           = 1 << 6
+QUERY_PARTIAL           = 1 << 7
 
+REPLY_CURSOR_NOT_FOUND   = 1 << 0
+REPLY_QUERY_FAILURE      = 1 << 1
+REPLY_SHARD_CONFIG_STALE = 1 << 2
+REPLY_AWAIT_CAPABLE      = 1 << 3
 
-class MongoProtocol(protocol.Protocol):
+UPDATE_UPSERT = 1 << 0
+UPDATE_MULTI  = 1 << 1
+
+Msg = namedtuple('Msg', ['len', 'request_id', 'response_to', 'opcode', 'message'])
+KillCursors = namedtuple('KillCursors', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'n_cursors', 'cursors'])
+
+class Delete(namedtuple('Delete', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'collection', 'flags', 'selector'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_DELETE,
+                zero=0, collection='', flags=0, selector=None):
+        return super(Delete, cls).__new__(cls, len, request_id, response_to,
+                                           opcode, zero, collection,
+                                           flags, selector)
+
+class Getmore(namedtuple('Getmore', ['len', 'request_id', 'response_to',
+                                     'opcode', 'zero', 'collection',
+                                     'n_to_return', 'cursor_id'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_GETMORE,
+                zero=0, collection='', n_to_return=-1, cursor_id=-1):
+        return super(Getmore, cls).__new__(cls, len, request_id, response_to,
+                                           opcode, zero, collection,
+                                           n_to_return, cursor_id)
+
+class Insert(namedtuple('Insert', ['len', 'request_id', 'response_to',
+                                   'opcode', 'flags', 'collection',
+                                   'documents'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_INSERT,
+                flags=0, collection='', documents=None):
+        return super(Insert, cls).__new__(cls, len, request_id, response_to,
+                                          opcode, flags, collection, documents)
+
+class Reply(namedtuple('Reply', ['len', 'request_id', 'response_to', 'opcode',
+                                 'response_flags', 'cursor_id',
+                                 'starting_from', 'n_returned', 'documents'])):
+    def __new__(cls, _len=0, request_id=0, response_to=0, opcode=OP_REPLY,
+                response_flags=0, cursor_id=0, starting_from=0,
+                n_returned=None, documents=None):
+        if documents is None:
+            documents = []
+        if n_returned is None:
+            n_returned = len(documents)
+        documents = [b if isinstance(b, bson.BSON) else bson.BSON.encode(b) for b in documents]
+        return super(Reply, cls).__new__(cls, _len, request_id, response_to,
+                                         opcode, response_flags, cursor_id,
+                                         starting_from, n_returned,
+                                         documents)
+
+class Query(namedtuple('Query', ['len', 'request_id', 'response_to', 'opcode',
+                                 'flags', 'collection', 'n_to_skip',
+                                 'n_to_return', 'query', 'fields'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_QUERY,
+                flags=0, collection='', n_to_skip=0, n_to_return=-1,
+                query=None, fields=None):
+        if query is None:
+            query = {}
+        if not isinstance(query, bson.BSON):
+            query = bson.BSON.encode(query)
+        if fields is not None and not isinstance(fields, bson.BSON):
+            fields = bson.BSON.encode(fields)
+        return super(Query, cls).__new__(cls, len, request_id, response_to,
+                                         opcode, flags, collection, n_to_skip,
+                                         n_to_return, query, fields)
+
+class Update(namedtuple('Update', ['len', 'request_id', 'response_to',
+                                   'opcode', 'zero', 'collection', 'flags',
+                                   'selector', 'update'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_UPDATE,
+                zero=0, collection='', flags=0, selector=None, update=None):
+        return super(Update, cls).__new__(cls, len, request_id, response_to,
+                                          opcode, zero, collection, flags,
+                                          selector, update)
+
+class MongoClientProtocol(protocol.Protocol):
+    __request_id = 1
+
+    def _send(self, iovec):
+        request_id, self.__request_id = self.__request_id, self.__request_id + 1
+        datalen = sum([len(chunk) for chunk in iovec]) + 8
+        datareq = struct.pack('<ii', datalen, request_id)
+        iovec.insert(0, datareq)
+        self.transport.write(''.join(iovec))
+        return request_id
+
+    def send(self, request):
+        opname = OP_NAMES[request.opcode]
+        sender = getattr(self, 'send_%s' % opname, None)
+        if callable(sender):
+            return sender(request)
+        else:
+            log.msg("No sender for opcode: %d" % request.opcode)
+
+    def send_REPLY(self, request):
+        iovec = [struct.pack('<iiiqii', *request[2:8])]
+        iovec.extend(request.documents)
+        self._send(iovec)
+
+    def send_MSG(self, request):
+        iovec = [struct.pack('<ii', *request[2:4]), request.message, '\x00']
+        return self._send(iovec)
+
+    def send_UPDATE(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<i', request.flags),
+                 request.selector,
+                 request.update]
+        return self._send(iovec)
+
+    def send_INSERT(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00']
+        iovec.extend(request.documents)
+        return self._send(iovec)
+
+    def send_QUERY(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<ii', request.n_to_skip, request.n_to_return),
+                 request.query,
+                 (request.fields or '')]
+        return self._send(iovec)
+
+    def send_GETMORE(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<iq', request.n_to_return, request.cursor_id)]
+        return self._send(iovec)
+
+    def send_DELETE(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<i', request.flags),
+                 request.selector]
+        return self._send(iovec)
+
+    def send_KILL_CURSORS(self, request):
+        iovec = [struct.pack('<iii', *request[2:5]),
+                 request.collection.encode('ascii'), '\x00',
+                 struct.pack('<i', len(request.cursors))]
+        for cursor in request.cursors:
+            iovec.append(struct.pack('<q', cursor))
+        return self._send(iovec)
+
+class MongoServerProtocol(protocol.Protocol):
+    __decoder = None
+
     def __init__(self):
-        self.__id = 0
-        self.__queries = {}
-        self.__buffer = ""
-        self.__datalen = None
-        self.__response = 0
-        self.__waiting_header = True
-
-    def connectionMade(self):
-        self.factory.append(self)
-
-    def connectionLost(self, reason):
-        self.connected = 0
-        self.factory.remove(self)
-        protocol.Protocol.connectionLost(self, reason)
+        self.__decoder = MongoDecoder()
 
     def dataReceived(self, data):
-        while self.__waiting_header:
-            self.__buffer += data
-            if len(self.__buffer) < 16:
-                break
+        self.__decoder.feed(data)
 
-            # got full header, 16 bytes (or more)
-            header, extra = self.__buffer[:16], self.__buffer[16:]
-            self.__buffer = ""
-            self.__waiting_header = False
-            datalen, request, response, operation = struct.unpack("<iiii", header)
-            self.__datalen = datalen - 16
-            self.__response = response
-            if extra:
-                self.dataReceived(extra)
-            break
-        else:
-            if self.__datalen is not None:
-                data, extra = data[:self.__datalen], data[self.__datalen:]
-                self.__datalen -= len(data)
-            else:
-                extra = ""
-
-            self.__buffer += data
-            if self.__datalen == 0:
-                self.messageReceived(self.__response, self.__buffer)
-                self.__datalen = None
-                self.__waiting_header = True
-                self.__buffer = ""
-                if extra:
-                    self.dataReceived(extra)
-
-    def messageReceived(self, request_id, packet):
-        # Response Flags:
-        #   bit 0:    Cursor Not Found
-        #   bit 1:    Query Failure
-        #   bit 2:    Shard Config Stale
-        #   bit 3:    Await Capable
-        #   bit 4-31: Reserved
-        QUERY_FAILURE = 1 << 1
-        response_flag, cursor_id, start, length = struct.unpack("<iqii", packet[:20])
-        if response_flag == QUERY_FAILURE:
-            self.queryFailure(request_id, cursor_id, response_flag, bson._to_dicts(packet[20:]))
-            return
-        self.querySuccess(request_id, cursor_id, bson._to_dicts(packet[20:]))
-
-    def sendMessage(self, operation, collection, message, query_opts=_ZERO):
-        #print "sending %d to %s" % (operation, self)
-        fullname = collection and bson._make_c_string(collection) or ""
-        message = query_opts + fullname + message
-        header = struct.pack("<iiii", 16 + len(message), self.__id, 0, operation)
-        self.transport.write(header + message)
-        self.__id += 1
-
-    def OP_INSERT(self, collection, docs):
-        docs = [bson.BSON.from_dict(doc) for doc in docs]
-        self.sendMessage(2002, collection, "".join(docs))
-
-    def OP_UPDATE(self, collection, spec, document, upsert=False, multi=False):
-        options = 0
-        if upsert:
-            options += 1
-        if multi:
-            options += 2
-
-        message = struct.pack("<i", options) + \
-            bson.BSON.from_dict(spec) + bson.BSON.from_dict(document)
-        self.sendMessage(2001, collection, message)
-
-    def OP_DELETE(self, collection, spec):
-        self.sendMessage(2006, collection, _ZERO + bson.BSON.from_dict(spec))
-
-    def OP_KILL_CURSORS(self, cursors):
-        message = struct.pack("<i", len(cursors))
-        for cursor_id in cursors:
-            message += struct.pack("<q", cursor_id)
-        self.sendMessage(2007, None, message)
-
-    def OP_GET_MORE(self, collection, limit, cursor_id):
-        message = struct.pack("<iq", limit, cursor_id)
-        self.sendMessage(2005, collection, message)
-
-    def OP_QUERY(self, collection, spec, skip, limit, fields=None):
-        message = struct.pack("<ii", skip, limit) + bson.BSON.from_dict(spec)
-        if fields:
-            message += bson.BSON.from_dict(fields)
-
-        queryObj = _MongoQuery(self.__id, collection, limit)
-        self.__queries[self.__id] = queryObj
-        self.sendMessage(2004, collection, message)
-        return queryObj.deferred
-
-    def queryFailure(self, request_id, cursor_id, response, raw_error):
-        queryObj = self.__queries.pop(request_id, None)
-        if queryObj:
-            queryObj.deferred.errback(ValueError("mongo error=%s" % repr(raw_error)))
-            del(queryObj)
-
-    def querySuccess(self, request_id, cursor_id, documents):
         try:
-            queryObj = self.__queries.pop(request_id)
-        except KeyError:
-            return
-        queryObj.documents += documents
-        if cursor_id:
-            queryObj.id = self.__id
-            next_batch = 0
-            if queryObj.limit:
-                next_batch = queryObj.limit - len(queryObj.documents)
-                # Assert, because according to the protocol spec and my observations
-                # there should be no problems with this, but who knows? At least it will
-                # be noticed, if something unexpected happens. And it is definitely
-                # better, than silently returning a wrong number of documents
-                assert next_batch >= 0, "Unexpected number of documents received!"
-                if not next_batch:
-                    self.OP_KILL_CURSORS([cursor_id])
-                    queryObj.deferred.callback(queryObj.documents)
-                    return
-            self.__queries[self.__id] = queryObj
-            self.OP_GET_MORE(queryObj.collection, next_batch, cursor_id)
+            request = self.__decoder.next()
+            while request:
+                self.handle(request)
+                request = self.__decoder.next()
+        except Exception, ex:
+            self.fail(reason=failure.Failure(ex))
+
+    def handle(self, request):
+        opname = OP_NAMES[request.opcode]
+        handler = getattr(self, 'handle_%s' % opname, None)
+        if callable(handler):
+            handler(request)
         else:
-            queryObj.deferred.callback(queryObj.documents)
+            log.msg("No handler found for opcode: %d" % request.opcode)
+
+    def handle_REPLY(self, request):
+        pass
+
+    def handle_MSG(self, request):
+        pass
+
+    def handle_UPDATE(self, request):
+        pass
+
+    def handle_INSERT(self, request):
+        pass
+
+    def handle_QUERY(self, request):
+        pass
+
+    def handle_GETMORE(self, request):
+        pass
+
+    def handle_DELETE(self, request):
+        pass
+
+    def handle_KILL_CURSORS(self, request):
+        pass
+
+class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
+    __connection_ready = None
+    __deferreds = None
+
+    def __init__(self):
+        MongoServerProtocol.__init__(self)
+        self.__connection_ready = []
+        self.__deferreds = {}
+
+    def connectionMade(self):
+        deferreds, self.__connection_ready = self.__connection_ready, []
+        if deferreds:
+            for df in deferreds:
+                df.callback(self)
+
+    def connectionLost(self, reason):
+        if self.__deferreds:
+            deferreds, self.__deferreds = self.__deferreds, {}
+            for df in deferreds.itervalues():
+                df.errback(reason)
+        deferreds, self.__connection_ready = self.__connection_ready, []
+        if deferreds:
+            for df in deferreds:
+                df.errback(reason)
+        protocol.Protocol.connectionLost(self, reason)
+
+    def connectionReady(self):
+        if self.transport:
+            return defer.succeed(None)
+        if not self.__connection_ready:
+            self.__connection_ready = []
+        df = defer.Deferred()
+        self.__connection_ready.append(df)
+        return df
+
+    def send_GETMORE(self, request):
+        request_id = MongoClientProtocol.send_GETMORE(self, request)
+        df = defer.Deferred()
+        self.__deferreds[request_id] = df
+        return df
+
+    def send_QUERY(self, request):
+        request_id = MongoClientProtocol.send_QUERY(self, request)
+        df = defer.Deferred()
+        self.__deferreds[request_id] = df
+        return df
+
+    def handle_REPLY(self, request):
+        if request.response_to in self.__deferreds:
+            df = self.__deferreds.pop(request.response_to)
+            if request.response_flags & REPLY_QUERY_FAILURE:
+                doc = request.documents[0].decode()
+                code = doc.get('code')
+                msg = doc.get('$err', 'Unknown error')
+                fail_conn = False
+                if code == 13435:
+                    err = errors.AutoReconnect(msg)
+                    fail_conn = True
+                else:
+                    err = errors.OperationFailure(msg, code)
+                df.errback(err)
+                if fail_conn:
+                    self.transport.loseConnection()
+            else:
+                df.callback(request)
+
+    def fail(self, reason):
+        if not isinstance(reason, failure.Failure):
+            reason = failure.Failure(reason)
+        log.err(reason)
+        self.transport.loseConnection()
+
+    @defer.inlineCallbacks
+    def getlasterror(self, db):
+        command = {'getlasterror': 1}
+        db = '%s.$cmd' % db.split('.', 1)[0]
+        uri = self.factory.uri
+        if 'w' in uri['options']:
+            command['w'] = int(uri['options']['w'])
+        if 'wtimeoutms' in uri['options']:
+            command['wtimeout'] = int(uri['options']['wtimeoutms'])
+        if 'fsync' in uri['options']:
+            command['fsync'] = bool(uri['options']['fsync'])
+        if 'journal' in uri['options']:
+            command['journal'] = bool(uri['options']['journal'])
+
+        query = Query(collection=db, query=command)
+        reply = yield self.send_QUERY(query)
+
+        assert len(reply.documents) == 1
+
+        document = reply.documents[0].decode()
+        err = document.get('err', None)
+        code = document.get('code', None)
+
+        if err is not None:
+            if code == 11000:
+                raise errors.DuplicateKeyError(err, code=code)
+            else:
+                raise errors.OperationFailure(err, code=code)
+
+        defer.returnValue(document)
+
+class MongoDecoder:
+    dataBuffer = None
+
+    def __init__(self):
+        self.dataBuffer = ''
+
+    def feed(self, data):
+        self.dataBuffer += data
+
+    def next(self):
+        if len(self.dataBuffer) < 16:
+            return None
+        msglen, = struct.unpack('<i', self.dataBuffer[:4])
+        if len(self.dataBuffer) < msglen:
+            return None
+        if msglen < 16:
+            raise errors.ConnectionFailure()
+        msgdata = self.dataBuffer[:msglen]
+        self.dataBuffer = self.dataBuffer[msglen:]
+        return self.decode(msgdata)
+
+    def decode(self, msgdata):
+        msglen = len(msgdata)
+        header = struct.unpack('<iiii', msgdata[:16])
+        opcode = header[3]
+        if opcode == OP_UPDATE:
+            zero, = struct.unpack('<i', msgdata[16:20])
+            if zero != 0:
+                raise errors.ConnectionFailure()
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            flags, = struct.unpack('<i', msgdata[offset:offset+4])
+            offset += 4
+            selectorlen, = struct.unpack('<i', msgdata[offset:offset+4])
+            selector = bson.BSON(msgdata[offset:offset+selectorlen])
+            offset += selectorlen
+            updatelen, = struct.unpack('<i', msgdata[offset:offset+4])
+            update = bson.BSON(msgdata[offset:offset+updatelen])
+            return Update(*(header + (zero, name, flags, selector, update)))
+        elif opcode == OP_INSERT:
+            flags, = struct.unpack('<i', msgdata[16:20])
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            docs = []
+            while offset < len(msgdata):
+                doclen, = struct.unpack('<i', msgdata[offset:offset+4])
+                docdata = msgdata[offset:offset+doclen]
+                doc = bson.BSON(docdata)
+                docs.append(doc)
+                offset += doclen
+            return Insert(*(header + (flags, name, docs)))
+        elif opcode == OP_QUERY:
+            flags, = struct.unpack('<i', msgdata[16:20])
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            ntoskip, ntoreturn = struct.unpack('<ii', msgdata[offset:offset+8])
+            offset += 8
+            querylen, = struct.unpack('<i', msgdata[offset:offset+4])
+            querydata = msgdata[offset:offset+querylen]
+            query = bson.BSON(querydata)
+            offset += querylen
+            fields = None
+            if msglen > offset:
+                fieldslen, = struct.unpack('<i', msgdata[offset:offset+4])
+                fields = bson.BSON(msgdata[offset:offset+fieldslen])
+            return Query(*(header + (flags, name, ntoskip, ntoreturn, query, fields)))
+        elif opcode == OP_GETMORE:
+            zero, = struct.unpack('<i', msgdata[16:20])
+            if zero != 0:
+                raise errors.ConnectionFailure()
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            ntoreturn, cursorid = struct.unpack('<iq', msgdata[offset:offset+12])
+            return Getmore(*(header + (zero, name, ntoreturn, cursorid)))
+        elif opcode == OP_DELETE:
+            zero, = struct.unpack('<i', msgdata[16:20])
+            if zero != 0:
+                raise errors.ConnectionFailure()
+            name = msgdata[20:].split('\x00', 1)[0]
+            offset = 20 + len(name) + 1
+            flags, = struct.unpack('<i', msgdata[offset:offset+4])
+            offset += 4
+            selector = bson.BSON(msgdata[offset:])
+            return Delete(*(header + (zero, name, flags, selector)))
+        elif opcode == OP_KILL_CURSORS:
+            cursors = struct.unpack('<ii', msgdata[16:24])
+            if cursors[0] != 0:
+                raise errors.ConnectionFailure()
+            offset = 24
+            cursor_list = []
+            for i in xrange(cursors[1]):
+                cursor, = struct.unpack('<q', msgdata[offset:offset+8])
+                cursor_list.append(cursor)
+                offset += 8
+            return KillCursors(*(header + cursors + (cursor_list,)))
+        elif opcode == OP_MSG:
+            if msgdata[-1] != '\x00':
+                raise errors.ConnectionFailure()
+            return Msg(*(header + (msgdata[16:-1].decode('ascii'),)))
+        elif opcode == OP_REPLY:
+            reply = struct.unpack('<iqii', msgdata[16:36])
+            docs = []
+            offset = 36
+            for i in xrange(reply[3]):
+                doclen, = struct.unpack('<i', msgdata[offset:offset+4])
+                if doclen > (msglen - offset):
+                    raise errors.ConnectionFailure()
+                docdata = msgdata[offset:offset+doclen]
+                doc = bson.BSON(docdata)
+                docs.append(doc)
+                offset += doclen
+            return Reply(*(header + reply + (docs,)))
+        else:
+            raise errors.ConnectionFailure()
+        return header
