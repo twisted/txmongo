@@ -12,7 +12,7 @@ from distutils.errors import CCompilerError
 from distutils.errors import DistutilsPlatformError, DistutilsExecError
 from distutils.core import Extension
 
-requirements = ["twisted"]
+requirements = ["twisted", "pymongo"]
 try:
     import xml.etree.ElementTree
 except ImportError:
@@ -36,7 +36,7 @@ setup(
     url="http://github.com/chergert/mongo-async-python-driver",
     keywords=["mongo", "mongodb", "pymongo", "gridfs", "txmongo"],
     packages=["txmongo", "txmongo._gridfs"],
-    #install_requires=requirements,
+    install_requires=requirements,
     license="Apache License, Version 2.0",
     test_suite="nose.collector",
     classifiers=[
