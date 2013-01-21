@@ -161,6 +161,8 @@ class TestGridFsObjects(unittest.TestCase):
             out_file = StringIO()
         except Exception, e:
             self.fail("Failed to create memory files for testing: %s" % e)
+
+        g_out = None
         
         try:
             # Tests writing to a new gridfs file
@@ -185,7 +187,8 @@ class TestGridFsObjects(unittest.TestCase):
         finally:
             in_file.close()
             out_file.close()
-            g_out.close()
+            if g_out:
+                g_out.close()
 
         
         listed_files = yield gfs.list()
