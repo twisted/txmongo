@@ -225,6 +225,9 @@ class ConnectionPool(object):
         for factory in self.__pool:
             factory.connector = reactor.connectTCP(host, port, factory)
 
+    def getprotocols(self):
+        return self.__pool
+
     def __getitem__(self, name):
         return Database(self, name)
 

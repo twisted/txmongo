@@ -143,6 +143,9 @@ class Update(namedtuple('Update', ['len', 'request_id', 'response_to',
 class MongoClientProtocol(protocol.Protocol):
     __request_id = 1
 
+    def getrequestid(self):
+        return self.__request_id
+
     def _send(self, iovec):
         request_id, self.__request_id = self.__request_id, self.__request_id + 1
         if self.__request_id >= INT_MAX:
@@ -270,6 +273,9 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         MongoServerProtocol.__init__(self)
         self.__connection_ready = []
         self.__deferreds = {}
+
+    def inflight(self):
+        return len(self.__deferreds)
 
     def connectionMade(self):
         deferreds, self.__connection_ready = self.__connection_ready, []
