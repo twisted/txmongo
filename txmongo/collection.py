@@ -171,10 +171,14 @@ class Collection(object):
     def group(self, keys, initial, reduce, condition=None, finalize=None):
         body = {
             "ns": self._collection_name,
-            "key": self._fields_list_to_dict(keys),
             "initial": initial,
             "$reduce": Code(reduce),
         }
+
+        if isinstance(keys, basestring):
+            body['$keyf'] = Code(keys)
+        else:
+            body['key'] = self._fields_list_to_dict(keys)
 
         if condition:
             body["cond"] = condition
