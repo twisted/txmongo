@@ -47,7 +47,7 @@ class _Connection(ReconnectingClientFactory):
         # If we do not care about connecting to a slave, then we can simply
         # return the protocol now and fire that we are ready.
         if self.uri['options'].get('slaveok', False):
-            self.setInstance(instance=p)
+            p.connectionReady().addCallback(lambda _: self.setInstance(instance=p))
             return p
 
         # Update our server configuration. This may disconnect if the node
