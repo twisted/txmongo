@@ -96,7 +96,7 @@ class _Connection(ReconnectingClientFactory):
         if expected_set_name and (expected_set_name != set_name):
             # Log the invalid replica set failure.
             msg = 'Mongo instance does not match requested replicaSet.'
-            reason = pymongo.connection.ConfigurationError(msg)
+            reason = pymongo.errros.ConfigurationError(msg)
             proto.fail(reason)
             return
 
@@ -121,7 +121,7 @@ class _Connection(ReconnectingClientFactory):
         # Check if this node is the master.
         ismaster = config.get('ismaster')
         if not ismaster:
-            reason = pymongo.connection.AutoReconnect('not master')
+            reason = pymongo.errors.AutoReconnect('not master')
             proto.fail(reason)
             return
 
