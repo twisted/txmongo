@@ -132,6 +132,9 @@ class Collection(object):
         documents = reply.documents
         while reply.cursor_id:
             to_fetch = 0 if limit <= 0 else limit - len(documents)
+            if to_fetch <= 0:
+                break
+                
             getmore = Getmore(collection=str(self),
                               n_to_return=to_fetch,
                               cursor_id=reply.cursor_id)
