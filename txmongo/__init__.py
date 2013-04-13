@@ -1,7 +1,6 @@
 from txmongo.connection import MongoConnection, MongoConnectionPool
 
 
-# Legacy aliases
 lazyMongoConnection = MongoConnection
 lazyMongoConnectionPool = MongoConnectionPool
 
