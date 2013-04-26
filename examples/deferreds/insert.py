@@ -32,10 +32,7 @@ def insertData(coll):
     for x in xrange(10000):
         d = coll.insert({"something":x*time.time()}, safe=True)
         deferreds.append(d)
-    d = defer.DeferredList(deferreds)
-    d.addErrback(log.err)
-    d.addCallback(processResults)
-    return d
+    return defer.DeferredList(deferreds)
 
 
 def processResults(results):
@@ -62,6 +59,8 @@ def example():
     d.addCallback(getDatabase, "foo")
     d.addCallback(getCollection, "test")
     d.addCallback(insertData)
+    d.addErrback(log.err)
+    d.addCallback(processResults)
     d.addErrback(log.err)
     d.addCallback(finish)
     return d
