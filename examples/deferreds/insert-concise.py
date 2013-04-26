@@ -9,17 +9,11 @@ from twisted.python import log
 import txmongo
 
 
-def getConnection():
-    print "getting connection..."
-    return txmongo.MongoConnectionPool()
-
-
 def insertData(conn):
-    coll = conn.foo.test
     print "inserting data..."
-    # insert some data
+    collection = conn.foo.test
     for x in xrange(10000):
-        d = coll.insert({"something":x*time.time()}, safe=True)
+        d = collection.insert({"something":x*time.time()}, safe=True)
         d.addErrback(log.err)
     return d
 
@@ -48,4 +42,3 @@ if __name__ == '__main__':
     log.startLogging(sys.stdout)
     example()
     reactor.run()
-
