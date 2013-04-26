@@ -47,7 +47,7 @@ class _Connection(ReconnectingClientFactory):
         # If we do not care about connecting to a slave, then we can simply
         # return the protocol now and fire that we are ready.
         if self.uri['options'].get('slaveok', False):
-            self.setInstance(instance=p)
+            p.connectionReady().addCallback(lambda _: self.setInstance(instance=p))
             return p
 
         # Update our server configuration. This may disconnect if the node
@@ -96,7 +96,7 @@ class _Connection(ReconnectingClientFactory):
         if expected_set_name and (expected_set_name != set_name):
             # Log the invalid replica set failure.
             msg = 'Mongo instance does not match requested replicaSet.'
-            reason = pymongo.connection.ConfigurationError(msg)
+            reason = pymongo.errros.ConfigurationError(msg)
             proto.fail(reason)
             return
 
@@ -121,7 +121,7 @@ class _Connection(ReconnectingClientFactory):
         # Check if this node is the master.
         ismaster = config.get('ismaster')
         if not ismaster:
-            reason = pymongo.connection.AutoReconnect('not master')
+            reason = pymongo.errors.AutoReconnect('not master')
             proto.fail(reason)
             return
 
@@ -224,6 +224,9 @@ class ConnectionPool(object):
         host, port = self.__uri['nodelist'][0]
         for factory in self.__pool:
             factory.connector = reactor.connectTCP(host, port, factory)
+
+    def getprotocols(self):
+        return self.__pool
 
     def __getitem__(self, name):
         return Database(self, name)

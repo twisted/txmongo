@@ -32,6 +32,8 @@ import struct
 from   twisted.internet import defer, protocol
 from   twisted.python   import failure, log
 
+INT_MAX = 2147483647
+
 OP_REPLY        = 1
 OP_MSG          = 1000
 OP_UPDATE       = 2001
@@ -141,8 +143,13 @@ class Update(namedtuple('Update', ['len', 'request_id', 'response_to',
 class MongoClientProtocol(protocol.Protocol):
     __request_id = 1
 
+    def getrequestid(self):
+        return self.__request_id
+
     def _send(self, iovec):
         request_id, self.__request_id = self.__request_id, self.__request_id + 1
+        if self.__request_id >= INT_MAX:
+            self.__request_id = 1
         datalen = sum([len(chunk) for chunk in iovec]) + 8
         datareq = struct.pack('<ii', datalen, request_id)
         iovec.insert(0, datareq)
@@ -266,6 +273,9 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         MongoServerProtocol.__init__(self)
         self.__connection_ready = []
         self.__deferreds = {}
+
+    def inflight(self):
+        return len(self.__deferreds)
 
     def connectionMade(self):
         deferreds, self.__connection_ready = self.__connection_ready, []
