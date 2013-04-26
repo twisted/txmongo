@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 import sys
 import os
 import shutil
@@ -11,6 +10,7 @@ from distutils.command.build_ext import build_ext
 from distutils.errors import CCompilerError
 from distutils.errors import DistutilsPlatformError, DistutilsExecError
 from distutils.core import Extension
+
 
 requirements = ["twisted", "pymongo"]
 try:
@@ -26,6 +26,7 @@ if sys.platform == 'win32' and sys.version_info > (2, 6):
                  IOError)
 else:
    build_errors = (CCompilerError, DistutilsExecError, DistutilsPlatformError)
+
 
 setup(
     name="txmongo",
