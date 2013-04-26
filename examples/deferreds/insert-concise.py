@@ -17,8 +17,7 @@ def getConnection():
 def insertData(conn):
     coll = conn.foo.test
     print "inserting data..."
-    # insert some data, building a deferred list so that we can later check
-    # the succes or failure of each deferred result
+    # insert some data
     for x in xrange(10000):
         d = coll.insert({"something":x*time.time()}, safe=True)
         d.addErrback(log.err)
