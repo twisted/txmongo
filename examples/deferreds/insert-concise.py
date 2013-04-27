@@ -3,7 +3,7 @@
 import sys
 import time
 
-from twisted.internet import defer, reactor
+from twisted.internet import reactor
 from twisted.python import log
 
 import txmongo
@@ -31,7 +31,6 @@ def finish(ignore):
 def example():
     d = txmongo.MongoConnectionPool()
     d.addCallback(insertData)
-    d.addErrback(log.err)
     d.addCallback(processResult)
     d.addErrback(log.err)
     d.addCallback(finish)
