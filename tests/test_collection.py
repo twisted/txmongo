@@ -77,6 +77,16 @@ class TestCollection(unittest.TestCase):
         self.assertFalse('test' in collection_names)
 
     @defer.inlineCallbacks
+    def test_aggregate(self):
+        self.assertFailure(self.coll.aggregate('str'), TypeError)
+        self.assertFailure(self.coll.aggregate([{'$maaaatch': {}}]), errors.OperationFailure)
+        result = yield self.coll.aggregate([{'$match': {}}, {'$group': {'_id': '$_id'}}])
+        self.assertNotIn('result', result)
+
+        result = yield self.coll.aggregate([{'$match': {}}, {'$group': {'_id': '$_id'}}], full_response=True)
+        self.assertIn('result', result)
+
+    @defer.inlineCallbacks
     def test_create_index(self):
         db = self.db
         coll = self.coll
