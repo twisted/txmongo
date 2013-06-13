@@ -192,8 +192,8 @@ class Collection(object):
         if not isinstance(pipeline, types.ListType):
             raise TypeError("pipeline must be an instance of list")
         result = yield self._database['$cmd'].find_one({'aggregate': self._collection_name, 'pipeline': pipeline})
-        if not result.get('ok', False) and 'errmsg' in result:
-            raise Exception(result['errmsg'])
+        if not result.get('ok', False):
+            raise errors.OperationFailure(result.get('errmsg', 'An unknown error has occured'), code=result.get('code', None))
 
         if full_response:
             defer.returnValue(result)
