@@ -187,6 +187,17 @@ class Collection(object):
 
         return self._database["$cmd"].find_one({"group": body})
 
+    @defer.inlineCallbacks
+    def aggregate(self, pipeline):
+        if not isinstance(pipeline, types.ListType):
+            raise TypeError("pipeline must be an instance of list")
+        result = yield self._database['$cmd'].find_one({'aggregate': self._collection_name, 'pipeline': pipeline})
+        if not result.get('ok', False) and 'errmsg' in result:
+            raise Exception(result['errmsg'])
+        if 'result' in result:
+            defer.returnValue(result['result'])
+        defer.returnValue([])
+
     def filemd5(self, spec):
         def wrapper(result):
             return result.get('md5')
