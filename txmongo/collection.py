@@ -143,6 +143,12 @@ class Collection(object):
         d.addCallback(wrapper)
         return d
 
+    def runCommand(self, command, **kwargs):
+        cmd = SON([ (command, self._collection_name) ])
+        cmd.update(**kwargs)
+        d = self._database["$cmd"].find_one(cmd)
+        return d
+
     def count(self, spec=None, fields=None):
         def wrapper(result):
             return result["n"]
