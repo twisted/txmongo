@@ -13,14 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from bson.son import SON
-from pymongo import helpers
+#from bson.son import SON
+#from pymongo import auth
 from twisted.internet import defer
 from txmongo.collection import Collection
 
 
 class Database(object):
     __factory = None
+    __authenticated = False
 
     def __init__(self, factory, database_name):
         self.__factory = factory
@@ -99,36 +100,8 @@ class Database(object):
             raise TypeError("name must be an instance of basestring")
         if not isinstance(password, basestring):
             raise TypeError("password must be an instance of basestring")
-
-        d = defer.Deferred()
-        # First get the nonce
-        df = self["$cmd"].find_one({"getnonce": 1})
-        df.addCallback(self.authenticate_with_nonce, name, password, d)
-        df.addErrback(d.errback)
-        return d
-
-    def authenticate_with_nonce(self, result, name, password, d):
-        nonce = result['nonce']
-        key = helpers._auth_key(nonce, name, password)
-
-        # hacky because order matters
-        auth_command = SON(authenticate=1)
-        auth_command['user'] = unicode(name)
-        auth_command['nonce'] = nonce
-        auth_command['key'] = key
-
-        # Now actually authenticate
-        df = self["$cmd"].find_one(auth_command)
-        df.addCallback(self.authenticated, d)
-        df.addErrback(d.errback)
-
-        return df
-
-    def authenticated(self, result, d):
-        """might want to just call callback with 0.0 instead of errback"""
-        ok = result['ok']
-        if ok:
-            d.callback(ok)
-        else:
-            d.errback(result['errmsg'])
-
+    
+        """
+        Authenticating
+        """
+        self.connection.authenticate_with_nonce(self,name,password)

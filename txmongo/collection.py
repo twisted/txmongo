@@ -121,7 +121,10 @@ class Collection(object):
                 for k,v in filter.iteritems():
                     spec['$' + k] = dict(v)
 
-        proto = yield self._database.connection.getprotocol()
+        if self._database.__authenticated :
+            proto = yield self._database.connection.get_authenticated_protocol(self._database)
+        else :
+            proto = yield self._database.connection.getprotocol()
 
         flags = kwargs.get('flags', 0)
         query = Query(flags=flags, collection=str(self),
@@ -226,7 +229,12 @@ class Collection(object):
         docs = [bson.BSON.encode(d) for d in docs]
         flags = kwargs.get('flags', 0)
         insert = Insert(flags=flags, collection=str(self), documents=docs)
-        proto = yield self._database.connection.getprotocol()
+
+        if self._database.__authenticated :
+            proto = yield self._database.connection.get_authenticated_protocol(self._database)
+        else :
+            proto = yield self._database.connection.getprotocol()
+
         proto.send_INSERT(insert)
 
         if safe:
@@ -254,7 +262,11 @@ class Collection(object):
         document = bson.BSON.encode(document)
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
-        proto = yield self._database.connection.getprotocol()
+        if self._database.__authenticated :
+            proto = yield self._database.connection.get_authenticated_protocol(self._database)
+        else :
+            proto = yield self._database.connection.getprotocol()
+
         proto.send_UPDATE(update)
 
         if safe:
@@ -284,7 +296,11 @@ class Collection(object):
 
         spec = bson.BSON.encode(spec)
         delete = Delete(flags=flags, collection=str(self), selector=spec)
-        proto = yield self._database.connection.getprotocol()
+        if self._database.__authenticated :
+            proto = yield self._database.connection.get_authenticated_protocol(self._database)
+        else :
+            proto = yield self._database.connection.getprotocol()
+
         proto.send_DELETE(delete)
 
         if safe:
