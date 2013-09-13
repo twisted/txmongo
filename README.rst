@@ -67,3 +67,8 @@ Thanks to (in no particular order):
 - `Silas Sewell <https://github.com/silas>`_
 
   - Minor build and type fixes
+
+- Tryggvi Björgvinsson
+
+  - Aggregation pipeline
+
