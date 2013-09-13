@@ -1,5 +1,5 @@
 # coding: utf-8
-# Copyright 2010 Mark L.
+# Copyright 2010 Tryggvi Bjorgvinsson
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
