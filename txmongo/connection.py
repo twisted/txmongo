@@ -254,8 +254,9 @@ class ConnectionPool(object):
 
     @defer.inlineCallbacks
     def authenticate_with_nonce (self,database,name,password) :
-        
+
         database_name = str(database)
+        self.cred_cache[database_name] = (name,password)
         current_connection = self.__pool[self.__index]
         proto = yield self.getprotocol()
 
@@ -285,12 +286,10 @@ class ConnectionPool(object):
                 
         if result["ok"]:
             database.__authenticated = True
-            
-            self.cred_cache[database_name] = (name,password)
             current_connection.auth_set.add(database_name)
-            
             defer.returnValue(result["ok"])
         else:
+            del self.cred_cache[database_name]
             defer.returnValue(result["errmsg"])
             
     def disconnect(self):
