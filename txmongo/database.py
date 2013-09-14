@@ -91,6 +91,7 @@ class Database(object):
         d.addCallback(wrapper)
         return d
 
+    @defer.inlineCallbacks
     def authenticate(self, name, password):
         """
         Send an authentication command for this database.
@@ -104,4 +105,4 @@ class Database(object):
         """
         Authenticating
         """
-        self.connection.authenticate_with_nonce(self,name,password)
+        yield self.connection.authenticate_with_nonce(self,name,password)
