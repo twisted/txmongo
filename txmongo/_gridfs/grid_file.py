@@ -208,8 +208,7 @@ class GridIn(object):
             yield self.__flush()
             self._closed = True
 
-    # TODO should support writing unicode to a file. this means that files will
-    # need to have an encoding attribute.
+    @defer.inlineCallbacks
     def write(self, data):
         """Write data to the file. There is no return value.
 
@@ -229,42 +228,44 @@ class GridIn(object):
         if self._closed:
             raise ValueError("cannot write to a closed file")
 
-        #NC: Reverse the order of string and file-like from pymongo 1.6.
-        #    It is more likely to call write several times when writing
-        #    strings than to write multiple file-like objects to a
-        #    single concatenated file.
-
-        try:  # string
-            while data:
-                space = self.chunk_size - self._buffer.tell()
-                if len(data) <= space:
-                    self._buffer.write(data)
-                    break
-                else:
-                    self._buffer.write(data[:space])
-                    self.__flush_buffer()
-                    data = data[space:]
+        try:
+            # file-like
+            read = data.read
         except AttributeError:
-            try:  # file-like
-                if self._buffer.tell() > 0:
-                    space = self.chunk_size - self._buffer.tell()
-                    self._buffer.write(data.read(space))
-                    self.__flush_buffer()
-                to_write = data.read(self.chunk_size)
-                while to_write and len(to_write) == self.chunk_size:
-                    self.__flush_data(to_write)
-                    to_write = data.read(self.chunk_size)
-                self._buffer.write(to_write)
-            except AttributeError:
+            # string
+            if not isinstance(data, string_types):
                 raise TypeError("can only write strings or file-like objects")
+            if isinstance(data, unicode):
+                try:
+                    data = data.encode(self.encoding)
+                except AttributeError:
+                    raise TypeError("must specify an encoding for file in "
+                                    "order to write %s" % (text_type.__name__,))
+            read = StringIO(data).read
+        
+        if self._buffer.tell() > 0:
+            # Make sure to flush only when _buffer is complete
+            space = self.chunk_size - self._buffer.tell()
+            if space:
+                to_write = read(space)
+                self._buffer.write(to_write)
+                if len(to_write) < space:
+                    return # EOF or incomplete
+            yield self.__flush_buffer()
+        to_write = read(self.chunk_size)
+        while to_write and len(to_write) == self.chunk_size:
+            yield self.__flush_data(to_write)
+            to_write = read(self.chunk_size)
+        self._buffer.write(to_write)
 
+    @defer.inlineCallbacks
     def writelines(self, sequence):
         """Write a sequence of strings to the file.
 
         Does not add separators.
         """
         for line in sequence:
-            self.write(line)
+            yield self.write(line)
 
     def __enter__(self):
         """Support for the context manager protocol.
