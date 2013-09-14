@@ -340,6 +340,19 @@ class Collection(object):
         d.addCallback(wrapper)
         return d
 
+    def aggregate(self, pipeline, full_response=False):
+        def wrapper(result, full_response):
+            if full_response:
+                return result
+            return result.get("result")
+
+        cmd = SON([("aggregate", self._collection_name),
+                   ("pipeline", pipeline)])
+
+        d = self._database["$cmd"].find_one(cmd)
+        d.addCallback(wrapper, full_response)
+        return d
+
     def map_reduce(self, map, reduce, full_response=False, **kwargs):
         def wrapper(result, full_response):
             if full_response:
