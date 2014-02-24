@@ -15,12 +15,12 @@
 import time
 from StringIO import StringIO
 
+from bson import objectid, timestamp
 import txmongo
 from txmongo import database
 from txmongo import collection
 from txmongo import gridfs
 from txmongo import filter as qf
-from txmongo._pymongo import objectid, timestamp
 from txmongo._gridfs import GridIn
 from twisted.trial import unittest
 from twisted.trial import runner
@@ -81,6 +81,8 @@ class TestMongoObjects(unittest.TestCase):
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         test = conn.foo.test_ts
 
+        test.drop()
+
         # insert with specific timestamp
         doc1 = {'_id':objectid.ObjectId(),
                 'ts':timestamp.Timestamp(1, 2)}
@@ -98,6 +100,7 @@ class TestMongoObjects(unittest.TestCase):
         # the objects come back sorted by ts correctly.
         # (test that we stored inc/time in the right fields)
         result = yield test.find(filter=qf.sort(qf.ASCENDING('ts')))
+        self.assertEqual(len(result), 2)
         self.assertEqual(result[0]['_id'], doc1['_id'])
         self.assertEqual(result[1]['_id'], doc2['_id'])
 
@@ -158,6 +161,8 @@ class TestGridFsObjects(unittest.TestCase):
             out_file = StringIO()
         except Exception, e:
             self.fail("Failed to create memory files for testing: %s" % e)
+
+        g_out = None
         
         try:
             # Tests writing to a new gridfs file
@@ -182,7 +187,8 @@ class TestGridFsObjects(unittest.TestCase):
         finally:
             in_file.close()
             out_file.close()
-            g_out.close()
+            if g_out:
+                g_out.close()
 
         
         listed_files = yield gfs.list()

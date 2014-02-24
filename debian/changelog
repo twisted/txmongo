@@ -1,3 +1,11 @@
+python-txmongo (0.4-1) stable; urgency=low
+
+  * Support AutoReconnect to connect to failover master.
+  * Use pymongo instead of in-tree copy.
+  * Significant performance improvements.
+
+ -- Christian Hergert <christian@hergert.me>  Mon, 07 Jan 2013 14:41:49 -0800
+
 python-txmongo (0.3-1) stable; urgency=low
 
   * Backporting to Stable

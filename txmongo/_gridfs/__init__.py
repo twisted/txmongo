@@ -73,6 +73,7 @@ class GridFS(object):
         """
         return GridIn(self.__collection, **kwargs)
 
+    @defer.inlineCallbacks
     def put(self, data, **kwargs):
         """Put data in GridFS as a new file.
 
@@ -98,11 +99,12 @@ class GridFS(object):
         """
         grid_file = GridIn(self.__collection, **kwargs)
         try:
-            grid_file.write(data)
+            yield grid_file.write(data)
         finally:
             grid_file.close()
-        return grid_file._id
-
+        defer.returnValue(grid_file._id)
+    
+    @defer.inlineCallbacks
     def get(self, file_id):
         """Get a file from GridFS by ``"_id"``.
 
@@ -114,7 +116,10 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        return GridOut(self.__collection, file_id)
+        
+        doc = yield self.__collection.files.find_one({"_id": file_id})
+        
+        defer.returnValue(GridOut(self.__collection, doc))
 
     def get_last_version(self, filename):
         """Get a file from GridFS by ``"filename"``.

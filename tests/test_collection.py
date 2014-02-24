@@ -18,15 +18,16 @@
 Based on pymongo driver's test_collection.py
 """
 
+from bson.son import SON
+from pymongo import errors 
+
 from twisted.internet import defer
 from twisted.trial import unittest
 
 import txmongo
 
-from txmongo._pymongo.son import SON
 from txmongo import filter
 from txmongo.collection import Collection
-from txmongo._pymongo import errors 
 
 mongo_host="localhost"
 mongo_port=27017
@@ -44,8 +45,8 @@ class TestCollection(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
+        ret = yield self.coll.drop()
+        ret = yield self.conn.disconnect()
 
     @defer.inlineCallbacks
     def test_collection(self):
@@ -75,7 +76,6 @@ class TestCollection(unittest.TestCase):
         collection_names = yield self.db.collection_names()
         self.assertFalse('test' in collection_names)
 
-
     @defer.inlineCallbacks
     def test_create_index(self):
         db = self.db
@@ -83,6 +83,8 @@ class TestCollection(unittest.TestCase):
 
         self.assertRaises(TypeError, coll.create_index, 5)
         self.assertRaises(TypeError, coll.create_index, {"hello": 1})
+
+        yield coll.insert({'c': 1}) # make sure collection exists.
 
         yield coll.drop_indexes()
         count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
@@ -116,15 +118,16 @@ class TestCollection(unittest.TestCase):
                                    filter.DESCENDING("world")))
         self.assertEquals(ix, "hello_1_world_-1")
     
+    @defer.inlineCallbacks
     def test_create_index_nodup(self):
         coll = self.coll
 
-        coll.drop()
-        coll.insert({'b': 1})
-        coll.insert({'b': 1})
+        ret = yield coll.drop()
+        ret = yield coll.insert({'b': 1})
+        ret = yield coll.insert({'b': 1})
 
         ix = coll.create_index(filter.sort(filter.ASCENDING("b")), unique=True)
-        return self.assertFailure(ix, errors.DuplicateKeyError)
+        yield self.assertFailure(ix, errors.DuplicateKeyError)
 
 
     @defer.inlineCallbacks
