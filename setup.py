@@ -34,7 +34,7 @@ setup(
     description="Asynchronous Python driver for MongoDB <http://www.mongodb.org>",
     author="Alexandre Fiori, Christian Hergert",
     author_email="fiorix@gmail.com, chris@dronelabs.com",
-    url="http://github.com/chergert/mongo-async-python-driver",
+    url="http://github.com/fiorix/mongo-async-python-driver",
     keywords=["mongo", "mongodb", "pymongo", "gridfs", "txmongo"],
     packages=["txmongo", "txmongo._gridfs"],
     install_requires=requirements,
