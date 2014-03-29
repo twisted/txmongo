@@ -4,6 +4,7 @@
 build
 
 .download_cache
+.coverage
 env
 docs
 _trial_temp
