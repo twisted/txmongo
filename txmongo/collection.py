@@ -134,8 +134,11 @@ class Collection(object):
         reply = yield proto.send_QUERY(query)
         documents = reply.documents
         while reply.cursor_id:
-            to_fetch = 0 if limit <= 0 else limit - len(documents)
-            if to_fetch <= 0:
+            if limit <= 0:
+                to_fetch = 0
+            else:
+                to_fetch = -1 if len(documents) > limit else limit - len(documents)
+            if to_fetch < 0:
                 break
                 
             getmore = Getmore(collection=str(self),
