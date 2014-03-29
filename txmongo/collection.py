@@ -121,7 +121,7 @@ class Collection(object):
                 for k,v in filter.iteritems():
                     spec['$' + k] = dict(v)
 
-        if self._database.__authenticated :
+        if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
         else :
             proto = yield self._database.connection.getprotocol()
@@ -134,8 +134,11 @@ class Collection(object):
         reply = yield proto.send_QUERY(query)
         documents = reply.documents
         while reply.cursor_id:
-            to_fetch = 0 if limit <= 0 else limit - len(documents)
-            if to_fetch <= 0:
+            if limit <= 0:
+                to_fetch = 0
+            else:
+                to_fetch = -1 if len(documents) > limit else limit - len(documents)
+            if to_fetch < 0:
                 break
                 
             getmore = Getmore(collection=str(self),
@@ -230,7 +233,7 @@ class Collection(object):
         flags = kwargs.get('flags', 0)
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
-        if self._database.__authenticated :
+        if self._database._authenticated :
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
         else :
             proto = yield self._database.connection.getprotocol()
@@ -262,7 +265,7 @@ class Collection(object):
         document = bson.BSON.encode(document)
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
-        if self._database.__authenticated :
+        if self._database._authenticated :
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
         else :
             proto = yield self._database.connection.getprotocol()
@@ -296,7 +299,7 @@ class Collection(object):
 
         spec = bson.BSON.encode(spec)
         delete = Delete(flags=flags, collection=str(self), selector=spec)
-        if self._database.__authenticated :
+        if self._database._authenticated :
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
         else :
             proto = yield self._database.connection.getprotocol()
