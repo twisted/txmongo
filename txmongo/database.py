@@ -21,7 +21,7 @@ from txmongo.collection import Collection
 
 class Database(object):
     __factory = None
-    __authenticated = False
+    _authenticated = False
 
     def __init__(self, factory, database_name):
         self.__factory = factory

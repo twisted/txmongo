@@ -233,7 +233,7 @@ class GridIn(object):
             read = data.read
         except AttributeError:
             # string
-            if not isinstance(data, string_types):
+            if not isinstance(data, basestring):
                 raise TypeError("can only write strings or file-like objects")
             if isinstance(data, unicode):
                 try:
