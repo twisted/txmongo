@@ -19,7 +19,7 @@ Based on pymongo driver's test_collection.py
 """
 
 from bson.son import SON
-from pymongo import errors 
+from pymongo import errors
 
 from twisted.internet import defer
 from twisted.trial import unittest
@@ -29,8 +29,8 @@ import txmongo
 from txmongo import filter
 from txmongo.collection import Collection
 
-mongo_host="localhost"
-mongo_port=27017
+mongo_host = "localhost"
+mongo_port = 27017
 
 
 class TestCollection(unittest.TestCase):
@@ -66,11 +66,29 @@ class TestCollection(unittest.TestCase):
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "test.")
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes..t")
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes\x00t")
+        self.assertRaises(TypeError, self.coll.save, 'test')
+        self.assertRaises(ValueError, self.coll.filemd5, 'test')
+        self.assertFailure(self.db.test.find(spec="test"), TypeError)
+        self.assertFailure(self.db.test.find(fields="test"), TypeError)
+        self.assertFailure(self.db.test.find(skip="test"), TypeError)
+        self.assertFailure(self.db.test.find(limit="test"), TypeError)
+        self.assertFailure(self.db.test.insert([1]), TypeError)
+        self.assertFailure(self.db.test.insert(1), TypeError)
+        self.assertFailure(self.db.test.update(1, 1), TypeError)
+        self.assertFailure(self.db.test.update({}, 1), TypeError)
+        self.assertFailure(self.db.test.update({}, {}, 'a'), TypeError)
 
         self.assert_(isinstance(self.db.test, Collection))
+        self.assertEqual(-1, cmp(self.db.test, 7))
         self.assertEqual(self.db.test, Collection(self.db, "test"))
         self.assertEqual(self.db.test.mike, self.db["test.mike"])
         self.assertEqual(self.db.test["mike"], self.db["test.mike"])
+        self.assertEqual(repr(self.db.test), 'Collection(mydb, test)')
+        self.assertEqual(self.db.test.test, self.db.test('test'))
+
+        options = yield self.db.test.options()
+        print options
+        self.assertIsInstance(options, dict)
 
         yield self.db.drop_collection('test')
         collection_names = yield self.db.collection_names()

@@ -4,6 +4,7 @@ VIRTUALENV?=virtualenv
 # VIRTUALENV?=virtualenv-2.6
 EPYDOC=epydoc
 TRIAL?=trial
+COVERAGE?=coverage
 PYFLAKES?=pyflakes
 PEP8?=pep8
 
@@ -25,7 +26,8 @@ test:
 	$(TRIAL) -e tests
 
 coverage:
-	$(TRIAL) --coverage tests
+	$(COVERAGE) run --source=txmongo `which $(TRIAL)` tests
+	$(COVERAGE) report -m
 
 flakes:
 	$(PYFLAKES) txmongo
