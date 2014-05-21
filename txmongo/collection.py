@@ -158,6 +158,14 @@ class Collection(object):
         defer.returnValue([d.decode(as_class=as_class) for d in documents])
 
     def find_with_cursor(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
+        ''' find method that uses the cursor to only return a block of
+        results at a time.
+        Arguments are the same as with find()
+        returns deferred that results in a tuple: (docs, deferred) where
+        docs are the current page of results and deferred results in the next
+        tuple. When the cursor is exhausted, it will return the tuple
+        ([], None)
+        '''
         if spec is None:
             spec = SON()
 
