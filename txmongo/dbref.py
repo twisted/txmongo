@@ -42,6 +42,7 @@ class DBRef(object):
 
         if not isinstance(collection, types.StringTypes):
             raise TypeError("collection must be an instance of (str, unicode)")
+
         if not isinstance(database, (types.StringTypes, types.NoneType)):
             raise TypeError("database must be an instance of (str, unicode)")
 
@@ -84,8 +85,8 @@ class DBRef(object):
 
     def __repr__(self):
         if self.database is None:
-            return "DBRef(%r, %r)" % (self.collection, self.id)
-        return "DBRef(%r, %r, %r)" % (self.collection, self.id, self.database)
+            return "DBRef(%s, %r)" % (self.collection, self.id)
+        return "DBRef(%s, %r, %s)" % (self.collection, self.id, self.database)
 
     def __cmp__(self, other):
         if isinstance(other, DBRef):

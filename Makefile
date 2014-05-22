@@ -4,6 +4,7 @@ VIRTUALENV?=virtualenv
 # VIRTUALENV?=virtualenv-2.6
 EPYDOC=epydoc
 TRIAL?=trial
+COVERAGE?=coverage
 PYFLAKES?=pyflakes
 PEP8?=pep8
 
@@ -13,7 +14,7 @@ env:
 	rm -fr env
 	mkdir -p .download_cache
 	$(VIRTUALENV) --no-site-packages env
-	env/bin/pip install --download-cache=.download_cache/ Twisted pymongo epydoc pyflakes pep8
+	env/bin/pip install --download-cache=.download_cache/ -r requirements.txt 
 	echo "\n\n>> Run 'source env/bin/activate'"
 
 docs:
@@ -25,7 +26,8 @@ test:
 	$(TRIAL) -e tests
 
 coverage:
-	$(TRIAL) --coverage tests
+	$(COVERAGE) run --source=txmongo `which $(TRIAL)` tests
+	$(COVERAGE) report -m
 
 flakes:
 	$(PYFLAKES) txmongo

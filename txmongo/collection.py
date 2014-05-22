@@ -50,7 +50,7 @@ class Collection(object):
         return "%s.%s" % (str(self._database), self._collection_name)
 
     def __repr__(self):
-        return "Collection(%r, %r)" % (self._database, str(self),)
+        return "Collection(%s, %s)" % (self._database, self._collection_name)
 
     def __getitem__(self, collection_name):
         return Collection(self._database,
@@ -202,7 +202,7 @@ class Collection(object):
 
         if not isinstance(spec, ObjectId):
             raise ValueError("filemd5 expected an objectid for its "
-                             "on-keyword argument")
+                             "non-keyword argument")
 
         spec = SON([("filemd5", spec),
                     ("root", self._collection_name)])

@@ -49,6 +49,48 @@ class TestMongoQueries(unittest.TestCase):
         self.assertEqual(len(res), 4)
 
     @defer.inlineCallbacks
+    def test_SpecifiedFields(self):
+        yield self.coll.insert([{k: v for k in 'abcdefg'} for v in xrange(5)], safe=True)
+        res = yield self.coll.find(fields={'a': 1, 'c': 1})
+        cnt = yield self.coll.count(fields={'a': 1, 'c': 1})
+        self.assertEqual(res[0].keys(), ['a', 'c', '_id'])
+        res = yield self.coll.find(fields=['a', 'c'])
+        cnt = yield self.coll.count(fields=['a', 'c'])
+        self.assertEqual(res[0].keys(), ['a', 'c', '_id'])
+        res = yield self.coll.find(fields=[])
+        cnt = yield self.coll.count(fields=[])
+        self.assertEqual(res[0].keys(), ['_id'])
+        self.assertRaises(TypeError, self.coll._fields_list_to_dict, [1])
+
+    @defer.inlineCallbacks
+    def test_group(self):
+        yield self.coll.insert([{'v': i % 2} for i in xrange(5)], safe=True)
+        reduce_ = '''
+        function(curr, result) {
+            result.total += curr.v;
+        }
+        '''
+        keys = {'v': 1}
+        initial = {'total': 0}
+        cond = {'v': {'$in': [0, 1]}}
+        final = '''
+        function(result) {
+            result.five = 5;
+        }
+        '''
+        res = yield self.coll.group(keys, initial, reduce_, cond, final)
+        self.assertEqual(len(res['retval']), 2)
+
+        keys = '''
+        function(doc) {
+            return {'value': 5, 'v': 1};
+        }
+        '''
+
+        res = yield self.coll.group(keys, initial, reduce_, cond, final)
+        self.assertEqual(len(res['retval']), 1)
+
+    @defer.inlineCallbacks
     def tearDown(self):
         yield self.coll.drop()
         yield self.conn.disconnect()
