@@ -136,12 +136,14 @@ class _Connection(ReconnectingClientFactory):
         self.setInstance(instance=proto)
     
     def clientConnectionFailed(self, connector, reason):
+        self.instance = None
         self.auth_set = set()
         if self.continueTrying:
             self.connector = connector
             self.retryNextHost()
     
     def clientConnectionLost(self, connector, reason):
+        self.instance = None
         self.auth_set = set()
         if self.continueTrying:
             self.connector = connector
