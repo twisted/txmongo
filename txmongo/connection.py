@@ -19,6 +19,7 @@ from pymongo import auth
 
 from bson.son import SON
 
+from twisted.python import log
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory
 
@@ -59,7 +60,8 @@ class _Connection(ReconnectingClientFactory):
         
         # Update our server configuration. This may disconnect if the node
         # is not a master.
-        p.connectionReady().addCallback(lambda _: self.configure(p))
+        p.connectionReady().addCallback(lambda _: self.configure(p))\
+                           .addCallback(lambda_: self.resetDelay())
         
         return p
     
