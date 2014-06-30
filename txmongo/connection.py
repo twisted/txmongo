@@ -61,7 +61,7 @@ class _Connection(ReconnectingClientFactory):
         # Update our server configuration. This may disconnect if the node
         # is not a master.
         p.connectionReady().addCallback(lambda _: self.configure(p))\
-                           .addCallback(lambda_: self.resetDelay())
+                           .addCallback(lambda _: self.resetDelay())
         
         return p
     
