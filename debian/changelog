@@ -1,3 +1,10 @@
+python-txmongo (0.5-1) stable; urgency=low
+
+  * Code review and cleanup
+  * Bug fixes
+
+ -- Alexandre Fiori <fiorix@gmail.com>  Thu, 02 Oct 2014 21:56:14 -0400
+
 python-txmongo (0.4-1) stable; urgency=low
 
   * Support AutoReconnect to connect to failover master.

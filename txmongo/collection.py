@@ -1,17 +1,7 @@
 # coding: utf-8
-# Copyright 2009 Alexandre Fiori
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Copyright 2009-2014 The txmongo authors.  All rights reserved.
+# Use of this source code is governed by the Apache License that can be
+# found in the LICENSE file.
 
 import bson
 from bson import ObjectId
@@ -140,7 +130,7 @@ class Collection(object):
                 to_fetch = -1 if len(documents) > limit else limit - len(documents)
             if to_fetch < 0:
                 break
-                
+
             getmore = Getmore(collection=str(self),
                               n_to_return=to_fetch,
                               cursor_id=reply.cursor_id)
@@ -347,7 +337,7 @@ class Collection(object):
         return d
 
     def ensure_index(self, sort_fields, **kwargs):
-        # ensure_index is an alias of create_index since we are not 
+        # ensure_index is an alias of create_index since we are not
         # keep an index cache same way pymongo does
         return self.create_index(sort_fields, **kwargs)
 

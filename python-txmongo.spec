@@ -1,12 +1,12 @@
 Name:		python-txmongo
-Version:	0.4.0
+Version:	0.5.0
 Release:	1%{?dist}
-Summary:	Twisted bindings for MongoDB
+Summary:	Twisted driver for MongoDB
 
 Group:		Development/Languages
 License:	Apache License, Version 2.0
-URL:		https://github.com/chergert/txmongo
-Source0:	https://github.com/chergert/txmongo/archive/txmongo-0.4.0.tar.gz
+URL:		https://github.com/fiorix/mongo-async-python-driver
+Source0:	https://github.com/fiorix/mongo-async-python-driver/archive/master.zip
 
 BuildArch:	noarch
 
@@ -19,7 +19,8 @@ Requires:	python-pymongo
 Requires:	python-bson
 
 %description
-txmongo allows access to MongoDB from python-twisted.
+txmongo is a Python/Twisted driver for MongoDB that implements the wire
+protocol on non-blocking sockets. The API derives from the original pymongo.
 
 %prep
 %setup -q -n txmongo-txmongo-%{version}
@@ -37,5 +38,9 @@ txmongo allows access to MongoDB from python-twisted.
 %{python_sitelib}/*
 
 %changelog
+* Thu Oct 02 2014 Alexandre Fiori <fiorix@gmail.com>
+- Code review and cleanup
+- Bug fixes
+
 * Mon Jan 07 2013 Christian Hergert <christian@hergert.me>
 - initial package for Fedora
