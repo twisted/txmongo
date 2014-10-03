@@ -4,6 +4,7 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
+import _local_path
 import txmongo
 import txmongo.filter
 from twisted.internet import defer, reactor
