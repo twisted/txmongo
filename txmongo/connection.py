@@ -336,7 +336,7 @@ class ConnectionPool(object):
 ###
 
 class MongoConnection(ConnectionPool):
-    def __init__(self, host, port, pool_size=1):
+    def __init__(self, host='127.0.0.1', port=27017, pool_size=1):
         uri = 'mongodb://%s:%d/' % (host, port)
         ConnectionPool.__init__(self, uri, pool_size=pool_size)
 lazyMongoConnectionPool = MongoConnection
