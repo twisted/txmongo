@@ -213,7 +213,7 @@ class ConnectionPool(object):
     __uri = None
 
 
-    def __init__(self, uri='mongodb://127.0.0.1:27017', pool_size=1):
+    def __init__(self, uri='mongodb://127.0.0.1:27017', pool_size=1, ssl_context_factory=None):
         assert isinstance(uri, basestring)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
@@ -228,7 +228,10 @@ class ConnectionPool(object):
 
         host, port = self.__uri['nodelist'][0]
         for factory in self.__pool:
-            factory.connector = reactor.connectTCP(host, port, factory)
+            if ssl_context_factory:
+                factory.connector = reactor.connectSSL(host, port, factory, ssl_context_factory)
+            else:
+                factory.connector = reactor.connectTCP(host, port, factory)
 
     def getprotocols(self):
         return self.__pool
@@ -336,9 +339,9 @@ class ConnectionPool(object):
 ###
 
 class MongoConnection(ConnectionPool):
-    def __init__(self, host='127.0.0.1', port=27017, pool_size=1):
+    def __init__(self, host='127.0.0.1', port=27017, pool_size=1, ssl_context_factory=None):
         uri = 'mongodb://%s:%d/' % (host, port)
-        ConnectionPool.__init__(self, uri, pool_size=pool_size)
+        ConnectionPool.__init__(self, uri, pool_size=pool_size, ssl_context_factory=ssl_context_factory)
 lazyMongoConnectionPool = MongoConnection
 lazyMongoConnection = MongoConnection
 MongoConnectionPool = MongoConnection
