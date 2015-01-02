@@ -17,6 +17,7 @@
 # run:
 #  twistd -ny twistwedweb_server.tac
 
+import _local_path
 import txmongo
 from twisted.internet import defer
 from twisted.web import xmlrpc, server

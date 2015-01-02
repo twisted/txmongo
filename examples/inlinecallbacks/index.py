@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
+# Copyright 2009-2014 The txmongo authors.  All rights reserved.
+# Use of this source code is governed by the Apache License that can be
+# found in the LICENSE file.
 
+import _local_path
 import txmongo
 from txmongo import filter
 from twisted.internet import defer, reactor
@@ -29,7 +33,7 @@ def example():
     print "IDX:", geoh_idx
     result = yield test.create_index(geoh_idx, **{'bucketSize':1})
     print "index_information:", result
-    
+
     result = yield test.drop_index(geoh_idx)
     print "drop_index:", result
 

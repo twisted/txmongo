@@ -19,6 +19,7 @@
 # run:
 #  twistd -ny cyclone_server.tac
 
+import _local_path
 import txmongo
 import cyclone.web
 from twisted.internet import defer
