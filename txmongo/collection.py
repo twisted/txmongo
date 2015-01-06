@@ -86,7 +86,10 @@ class Collection(object):
         return d
 
     @defer.inlineCallbacks
-    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
+    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
+        if cursor:
+            out = yield self.find_with_cursor(spec=spec, skip=skip, fields=fields, filter=filter, **kwargs)
+            defer.returnValue(out)
         if spec is None:
             spec = SON()
 
@@ -108,12 +111,12 @@ class Collection(object):
         if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
             if '$query' not in spec:
                 spec = {'$query': spec}
-                for k,v in filter.iteritems():
+                for k, v in filter.iteritems():
                     spec['$' + k] = dict(v)
 
         if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else :
+        else:
             proto = yield self._database.connection.getprotocol()
 
         flags = kwargs.get('flags', 0)
@@ -143,6 +146,77 @@ class Collection(object):
         as_class = kwargs.get('as_class', dict)
 
         defer.returnValue([d.decode(as_class=as_class) for d in documents])
+
+    def find_with_cursor(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
+        ''' find method that uses the cursor to only return a block of
+        results at a time.
+        Arguments are the same as with find()
+        returns deferred that results in a tuple: (docs, deferred) where
+        docs are the current page of results and deferred results in the next
+        tuple. When the cursor is exhausted, it will return the tuple
+        ([], None)
+        '''
+        if spec is None:
+            spec = SON()
+
+        if not isinstance(spec, types.DictType):
+            raise TypeError("spec must be an instance of dict")
+        if not isinstance(fields, (types.DictType, types.ListType, types.NoneType)):
+            raise TypeError("fields must be an instance of dict or list")
+        if not isinstance(skip, types.IntType):
+            raise TypeError("skip must be an instance of int")
+        if not isinstance(limit, types.IntType):
+            raise TypeError("limit must be an instance of int")
+
+        if fields is not None:
+            if not isinstance(fields, types.DictType):
+                if not fields:
+                    fields = ["_id"]
+                fields = self._fields_list_to_dict(fields)
+
+        if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
+            if '$query' not in spec:
+                spec = {'$query': spec}
+                for k, v in filter.iteritems():
+                    spec['$' + k] = dict(v)
+
+        as_class = kwargs.get('as_class', dict)
+        d = self._database.connection.getprotocol()
+
+        def after_connection(proto):
+            flags = kwargs.get('flags', 0)
+            query = Query(flags=flags, collection=str(self),
+                          n_to_skip=skip, n_to_return=limit,
+                          query=spec, fields=fields)
+
+            d = proto.send_QUERY(query)
+            d.addCallback(after_reply, proto)
+            return d
+
+        def after_reply(reply, proto, fetched=0):
+            documents = reply.documents
+            fetched = fetched + len(documents)
+            out = [d.decode(as_class=as_class) for d in documents]
+            if reply.cursor_id:
+                if limit <= 0:
+                    to_fetch = len(documents)
+                else:
+                    to_fetch = -1 if fetched < limit else len(documents)
+                if to_fetch < 0:
+                    nomore = defer.succeed(([], None))
+                    return (out, nomore)
+
+                getmore = Getmore(collection=str(self),
+                                  n_to_return=to_fetch,
+                                  cursor_id=reply.cursor_id)
+                d = proto.send_GETMORE(getmore)
+                d.addCallback(after_reply, proto, fetched)
+                return (out, d)
+            nomore = defer.succeed(([], None))
+            return (out, nomore)
+
+        d.addCallback(after_connection)
+        return d
 
     def find_one(self, spec=None, fields=None, **kwargs):
         if isinstance(spec, ObjectId):

@@ -38,9 +38,29 @@ class TestMongoQueries(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_MultipleCursorIterations(self):
-        yield self.coll.insert([{'v':i} for i in xrange(450)], safe=True)
+        yield self.coll.insert([{'v': i} for i in xrange(450)], safe=True)
         res = yield self.coll.find()
         self.assertEqual(len(res), 450)
+
+    @defer.inlineCallbacks
+    def test_FindWithCursor(self):
+        yield self.coll.insert([{'v': i} for i in xrange(750)], safe=True)
+        docs, d = yield self.coll.find_with_cursor()
+        self.assertEqual(len(docs), 101)
+        total = 0
+        while docs:
+            total += len(docs)
+            docs, d = yield d
+        self.assertEqual(total, 750)
+
+        # Same thing, but with the "cursor" keyword argument on find()
+        docs, d = yield self.coll.find(cursor=True)
+        self.assertEqual(len(docs), 101)
+        total = 0
+        while docs:
+            total += len(docs)
+            docs, d = yield d
+        self.assertEqual(total, 750)
 
     @defer.inlineCallbacks
     def test_LargeData(self):
