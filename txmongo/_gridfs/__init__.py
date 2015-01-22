@@ -19,7 +19,6 @@ The :mod:`gridfs` package is an implementation of GridFS on top of
 
 .. mongodoc:: gridfs
 """
-from twisted.python import log
 from twisted.internet import defer
 from txmongo._gridfs.errors import (NoFile,
                                     UnsupportedAPI)
@@ -34,6 +33,7 @@ from txmongo.database import Database
 class GridFS(object):
     """An instance of GridFS on top of a single Database.
     """
+
     def __init__(self, database, collection="fs"):
         """Create a new instance of :class:`GridFS`.
 
@@ -103,7 +103,7 @@ class GridFS(object):
         finally:
             grid_file.close()
         defer.returnValue(grid_file._id)
-    
+
     @defer.inlineCallbacks
     def get(self, file_id):
         """Get a file from GridFS by ``"_id"``.
@@ -116,9 +116,9 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        
+
         doc = yield self.__collection.files.find_one({"_id": file_id})
-        
+
         defer.returnValue(GridOut(self.__collection, doc))
 
     def get_last_version(self, filename):
@@ -138,14 +138,15 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        self.__files.ensure_index(filter.sort(ASCENDING("filename") + \
-                                   DESCENDING("uploadDate")))
+        self.__files.ensure_index(filter.sort(ASCENDING("filename") +
+                                              DESCENDING("uploadDate")))
 
         d = self.__files.find({"filename": filename},
-                                  filter=filter.sort(DESCENDING('uploadDate')))
+                              filter=filter.sort(DESCENDING('uploadDate')))
         d.addCallback(self._cb_get_last_version, filename)
         return d
-#        cursor.limit(-1).sort("uploadDate", -1)#DESCENDING)
+
+    # cursor.limit(-1).sort("uploadDate", -1)#DESCENDING)
 
     def _cb_get_last_version(self, docs, filename):
         try:

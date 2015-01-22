@@ -1,7 +1,3 @@
 Twisted
 pymongo
-epydoc
-pyflakes
-pep8
-coverage
 -e .

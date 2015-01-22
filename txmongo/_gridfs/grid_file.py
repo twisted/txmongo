@@ -16,17 +16,17 @@
 
 import datetime
 import math
+
 import os
+
+
 try:
     from cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO
 
-from twisted.python import log
 from twisted.internet import defer
-from txmongo._gridfs.errors import (CorruptGridFile,
-                                    NoFile,
-                                    UnsupportedAPI)
+from txmongo._gridfs.errors import CorruptGridFile, UnsupportedAPI
 from bson import Binary, ObjectId
 from txmongo.collection import Collection
 
@@ -39,15 +39,15 @@ except AttributeError:  # before 2.5
     _SEEK_CUR = 1
     _SEEK_END = 2
 
-
 """Default chunk size, in bytes."""
 DEFAULT_CHUNK_SIZE = 256 * 1024
 
 
 def _create_property(field_name, docstring,
-                      read_only=False, closed_only=False):
+                     read_only=False, closed_only=False):
     """Helper for creating properties to read/write to files.
     """
+
     def getter(self):
         if closed_only and not self._closed:
             raise AttributeError("can only get %r on a closed file" %
@@ -64,11 +64,11 @@ def _create_property(field_name, docstring,
         docstring = docstring + "\n\nThis attribute is read-only."
     elif not closed_only:
         docstring = "%s\n\n%s" % (docstring, "This attribute can only be "
-                                  "set before :meth:`close` has been called.")
+                                             "set before :meth:`close` has been called.")
     else:
         docstring = "%s\n\n%s" % (docstring, "This attribute is read-only and "
-                                  "can only be read after :meth:`close` "
-                                  "has been called.")
+                                             "can only be read after :meth:`close` "
+                                             "has been called.")
 
     if not read_only and not closed_only:
         return property(getter, setter, doc=docstring)
@@ -78,6 +78,7 @@ def _create_property(field_name, docstring,
 class GridIn(object):
     """Class to write data to GridFS.
     """
+
     def __init__(self, root_collection, **kwargs):
         """Write a file to GridFS
 
@@ -137,19 +138,19 @@ class GridIn(object):
         return self._closed
 
     _id = _create_property("_id", "The ``'_id'`` value for this file.",
-                            read_only=True)
+                           read_only=True)
     filename = _create_property("filename", "Name of this file.")
     content_type = _create_property("contentType", "Mime-type for this file.")
     length = _create_property("length", "Length (in bytes) of this file.",
-                               closed_only=True)
+                              closed_only=True)
     chunk_size = _create_property("chunkSize", "Chunk size for this file.",
-                                   read_only=True)
+                                  read_only=True)
     upload_date = _create_property("uploadDate",
-                                    "Date that this file was uploaded.",
-                                    closed_only=True)
+                                   "Date that this file was uploaded.",
+                                   closed_only=True)
     md5 = _create_property("md5", "MD5 of the contents of this file "
-                            "(generated on the server).",
-                            closed_only=True)
+                                  "(generated on the server).",
+                           closed_only=True)
 
     def __getattr__(self, name):
         if name in self._file:
@@ -166,7 +167,7 @@ class GridIn(object):
         """Flush `data` to a chunk.
         """
         if data:
-            assert(len(data) <= self.chunk_size)
+            assert (len(data) <= self.chunk_size)
             chunk = {"files_id": self._file["_id"],
                      "n": self._chunk_number,
                      "data": Binary(data)}
@@ -240,9 +241,9 @@ class GridIn(object):
                     data = data.encode(self.encoding)
                 except AttributeError:
                     raise TypeError("must specify an encoding for file in "
-                                    "order to write %s" % (text_type.__name__,))
+                                    "order to write %s" % (data.__name__,))
             read = StringIO(data).read
-        
+
         if self._buffer.tell() > 0:
             # Make sure to flush only when _buffer is complete
             space = self.chunk_size - self._buffer.tell()
@@ -250,7 +251,7 @@ class GridIn(object):
                 to_write = read(space)
                 self._buffer.write(to_write)
                 if len(to_write) < space:
-                    return # EOF or incomplete
+                    return  # EOF or incomplete
             yield self.__flush_buffer()
         to_write = read(self.chunk_size)
         while to_write and len(to_write) == self.chunk_size:
@@ -284,6 +285,7 @@ class GridIn(object):
 class GridOut(object):
     """Class to read data out of GridFS.
     """
+
     def __init__(self, root_collection, doc):
         """Read a file from GridFS
 
@@ -310,20 +312,20 @@ class GridOut(object):
     _id = _create_property("_id", "The ``'_id'`` value for this file.", True)
     name = _create_property("filename", "Name of this file.", True)
     content_type = _create_property("contentType", "Mime-type for this file.",
-                                     True)
-    length = _create_property("length", "Length (in bytes) of this file.",
-                               True)
-    chunk_size = _create_property("chunkSize", "Chunk size for this file.",
-                                   True)
-    upload_date = _create_property("uploadDate",
-                                    "Date that this file was first uploaded.",
                                     True)
+    length = _create_property("length", "Length (in bytes) of this file.",
+                              True)
+    chunk_size = _create_property("chunkSize", "Chunk size for this file.",
+                                  True)
+    upload_date = _create_property("uploadDate",
+                                   "Date that this file was first uploaded.",
+                                   True)
     aliases = _create_property("aliases", "List of aliases for this file.",
-                                True)
+                               True)
     metadata = _create_property("metadata", "Metadata attached to this file.",
-                                 True)
+                                True)
     md5 = _create_property("md5", "MD5 of the contents of this file "
-                            "(generated on the server).", True)
+                                  "(generated on the server).", True)
 
     def __getattr__(self, name):
         if name in self._file:
@@ -426,7 +428,7 @@ class GridOutIterator(object):
         if self.__current_chunk >= self.__max_chunk:
             raise StopIteration
         chunk = yield self.__chunks.find_one({"files_id": self.__id,
-                                        "n": self.__current_chunk})
+                                              "n": self.__current_chunk})
         if not chunk:
             raise CorruptGridFile("no chunk #%d" % self.__current_chunk)
         self.__current_chunk += 1
@@ -439,6 +441,7 @@ class GridFile(object):
     .. versionchanged:: 1.6
        The GridFile class is no longer supported.
     """
+
     def __init__(self, *args, **kwargs):
         raise UnsupportedAPI("The GridFile class is no longer supported. "
                              "Please use GridIn or GridOut instead.")

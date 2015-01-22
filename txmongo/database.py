@@ -72,7 +72,7 @@ class Database(object):
         def wrapper(results):
             names = [r["name"] for r in results]
             names = [n[len(str(self)) + 1:] for n in names
-                if n.startswith(str(self) + ".")]
+                     if n.startswith(str(self) + ".")]
             names = [n for n in names if "$" not in n]
             return names
 
@@ -90,8 +90,8 @@ class Database(object):
             raise TypeError("name must be an instance of basestring")
         if not isinstance(password, basestring):
             raise TypeError("password must be an instance of basestring")
-    
+
         """
         Authenticating
         """
-        yield self.connection.authenticate_with_nonce(self,name,password)
+        yield self.connection.authenticate_with_nonce(self, name, password)

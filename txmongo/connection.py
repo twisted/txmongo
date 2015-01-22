@@ -12,9 +12,11 @@ from bson.son import SON
 
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory
+from twisted.python import log
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
+
 
 class _Connection(ReconnectingClientFactory):
     __notify_ready = None
@@ -28,7 +30,7 @@ class _Connection(ReconnectingClientFactory):
     protocol = MongoProtocol
     maxDelay = 60
 
-    def __init__(self, pool, uri,id):
+    def __init__(self, pool, uri, id):
         self.__discovered = []
         self.__notify_ready = []
         self.__pool = pool
@@ -212,7 +214,6 @@ class ConnectionPool(object):
     __pool_size = None
     __uri = None
 
-
     def __init__(self, uri='mongodb://127.0.0.1:27017', pool_size=1, ssl_context_factory=None):
         assert isinstance(uri, basestring)
         assert isinstance(pool_size, int)
@@ -224,7 +225,7 @@ class ConnectionPool(object):
         self.cred_cache = {}
         self.__uri = parse_uri(uri)
         self.__pool_size = pool_size
-        self.__pool = [_Connection(self, self.__uri,i) for i in xrange(pool_size)]
+        self.__pool = [_Connection(self, self.__uri, i) for i in xrange(pool_size)]
 
         host, port = self.__uri['nodelist'][0]
         for factory in self.__pool:
@@ -247,24 +248,22 @@ class ConnectionPool(object):
             return 'Connection(%r, %r)' % self.uri['nodelist'][0]
         return 'Connection()'
 
-
     @defer.inlineCallbacks
-    def authenticate_with_nonce (self,database,name,password) :
-
+    def authenticate_with_nonce(self, database, name, password):
         database_name = str(database)
-        self.cred_cache[database_name] = (name,password)
+        self.cred_cache[database_name] = (name, password)
         current_connection = self.__pool[self.__index]
         proto = yield self.getprotocol()
 
-        collection_name = database_name+'.$cmd'
+        collection_name = database_name + '.$cmd'
         query = Query(collection=collection_name, query={'getnonce': 1})
         result = yield proto.send_QUERY(query)
 
         result = result.documents[0].decode()
 
-        if result["ok"] :
+        if result["ok"]:
             nonce = result["nonce"]
-        else :
+        else:
             defer.returnValue(result["errmsg"])
 
         key = auth._auth_key(nonce, name, password)
@@ -303,16 +302,16 @@ class ConnectionPool(object):
         return df
 
     @defer.inlineCallbacks
-    def get_authenticated_protocol(self,database) :
+    def get_authenticated_protocol(self, database):
         # Get the next protocol available for communication in the pool
         connection = self.__pool[self.__index]
         database_name = str(database)
 
-        if database_name not in connection.auth_set :
-            name  = self.cred_cache[database_name][0]
+        if database_name not in connection.auth_set:
+            name = self.cred_cache[database_name][0]
             password = self.cred_cache[database_name][1]
-            yield self.authenticate_with_nonce(database,name,password)
-        else :
+            yield self.authenticate_with_nonce(database, name, password)
+        else:
             self.__index = (self.__index + 1) % self.__pool_size
 
         defer.returnValue(connection.instance)
@@ -342,6 +341,8 @@ class MongoConnection(ConnectionPool):
     def __init__(self, host='127.0.0.1', port=27017, pool_size=1):
         uri = 'mongodb://%s:%d/' % (host, port)
         ConnectionPool.__init__(self, uri, pool_size=pool_size)
+
+
 lazyMongoConnectionPool = MongoConnection
 lazyMongoConnection = MongoConnection
 MongoConnectionPool = MongoConnection

@@ -52,7 +52,8 @@ class TestDBRef(unittest.TestCase):
         ref2 = DBRef('b', oid)
 
         self.assertEqual(cmp(ref1, ref2), -1)
-        self.assertEqual(cmp(ref1, 0), -1)
+        self.assertEqual(ref1.__cmp__(0), NotImplemented)
+        self.assertNotEqual(cmp(ref1, 0), 0)
 
         ref1 = DBRef('a', oid)
         ref2 = DBRef('a', oid)
