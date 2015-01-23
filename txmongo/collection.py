@@ -11,9 +11,10 @@ import types
 from pymongo import errors
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, \
-                             UPDATE_MULTI, Query, Getmore, Insert, \
-                             Update, Delete
+    UPDATE_MULTI, Query, Getmore, Insert, \
+    Update, Delete
 from twisted.internet import defer
+
 
 class Collection(object):
     def __init__(self, database, name):
@@ -25,13 +26,13 @@ class Collection(object):
         if "$" in name and not (name.startswith("oplog.$main") or
                                 name.startswith("$cmd")):
             raise errors.InvalidName("collection names must not "
-                              "contain '$': %r" % name)
+                                     "contain '$': %r" % name)
         if name[0] == "." or name[-1] == ".":
             raise errors.InvalidName("collection names must not start "
-                              "or end with '.': %r" % name)
+                                     "or end with '.': %r" % name)
         if "\x00" in name:
             raise errors.InvalidName("collection names must not contain the "
-                              "null character")
+                                     "null character")
 
         self._database = database
         self._collection_name = unicode(name)
@@ -88,7 +89,8 @@ class Collection(object):
     @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
         if cursor:
-            out = yield self.find_with_cursor(spec=spec, skip=skip, fields=fields, filter=filter, **kwargs)
+            out = yield self.find_with_cursor(spec=spec, skip=skip, fields=fields, filter=filter,
+                                              **kwargs)
             defer.returnValue(out)
         if spec is None:
             spec = SON()
@@ -297,9 +299,9 @@ class Collection(object):
         flags = kwargs.get('flags', 0)
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
-        if self._database._authenticated :
+        if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else :
+        else:
             proto = yield self._database.connection.getprotocol()
 
         proto.send_INSERT(insert)
@@ -329,9 +331,9 @@ class Collection(object):
         document = bson.BSON.encode(document)
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
-        if self._database._authenticated :
+        if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else :
+        else:
             proto = yield self._database.connection.getprotocol()
 
         proto.send_UPDATE(update)
@@ -363,9 +365,9 @@ class Collection(object):
 
         spec = bson.BSON.encode(spec)
         delete = Delete(flags=flags, collection=str(self), selector=spec)
-        if self._database._authenticated :
+        if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else :
+        else:
             proto = yield self._database.connection.getprotocol()
 
         proto.send_DELETE(delete)
@@ -390,8 +392,8 @@ class Collection(object):
             name = kwargs.pop("name")
 
         key = SON()
-        for k,v in sort_fields["orderby"]:
-            key.update({k:v})
+        for k, v in sort_fields["orderby"]:
+            key.update({k: v})
 
         index = SON(dict(
             ns=str(self),
@@ -441,8 +443,8 @@ class Collection(object):
         return d
 
     def rename(self, new_name):
-        cmd = SON([("renameCollection", str(self)), ("to", "%s.%s" % \
-            (str(self._database), new_name))])
+        cmd = SON([("renameCollection", str(self)),
+                   ("to", "%s.%s" % (str(self._database), new_name))])
         return self._database("admin")["$cmd"].find_one(cmd)
 
     def distinct(self, key, spec=None):
@@ -479,7 +481,7 @@ class Collection(object):
             return result.get("result")
 
         cmd = SON([("mapreduce", self._collection_name),
-                       ("map", map), ("reduce", reduce)])
+                   ("map", map), ("reduce", reduce)])
         cmd.update(**kwargs)
         d = self._database["$cmd"].find_one(cmd)
         d.addCallback(wrapper, full_response)

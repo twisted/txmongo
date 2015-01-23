@@ -2,8 +2,8 @@ Source: python-txmongo
 Section: python
 Priority: optional
 Maintainer: Christian Hergert <christian@hergert.me>
-Build-Depends: debhelper (>=7.0.50~), python-support (>= 0.6), cdbs (>= 0.4.49), python-dev, python-setuptools
-Standards-Version: 3.8.4
+Build-Depends: debhelper (>= 9~), python-support (>= 0.6), cdbs (>= 0.4.49), python-dev, python-setuptools
+Standards-Version: 3.9.6
 
 Package: python-txmongo
 Architecture: all

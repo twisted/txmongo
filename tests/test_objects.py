@@ -28,7 +28,7 @@ from twisted.internet import base, defer
 
 mongo_host="localhost"
 mongo_port=27017
-base.DelayedCall.debug = False
+base.DelayedCall.debug = True
 
 
 class TestMongoObjects(unittest.TestCase):

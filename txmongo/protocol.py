@@ -14,62 +14,70 @@ implementation can be shared. This includes BSON encoding and
 decoding as well as Exception types, when applicable.
 """
 
-import bson
-from   collections      import namedtuple
-from   pymongo          import errors
+from collections import namedtuple
 import struct
-from   twisted.internet import defer, protocol
-from   twisted.python   import failure, log
+
+import bson
+from pymongo import errors
+from twisted.internet import defer, protocol
+from twisted.python import failure, log
+
 
 INT_MAX = 2147483647
 
-OP_REPLY        = 1
-OP_MSG          = 1000
-OP_UPDATE       = 2001
-OP_INSERT       = 2002
-OP_QUERY        = 2004
-OP_GETMORE      = 2005
-OP_DELETE       = 2006
+OP_REPLY = 1
+OP_MSG = 1000
+OP_UPDATE = 2001
+OP_INSERT = 2002
+OP_QUERY = 2004
+OP_GETMORE = 2005
+OP_DELETE = 2006
 OP_KILL_CURSORS = 2007
 
 OP_NAMES = {
-    OP_REPLY:        'REPLY',
-    OP_MSG:          'MSG',
-    OP_UPDATE:       'UPDATE',
-    OP_INSERT:       'INSERT',
-    OP_QUERY:        'QUERY',
-    OP_GETMORE:      'GETMORE',
-    OP_DELETE:       'DELETE',
+    OP_REPLY: 'REPLY',
+    OP_MSG: 'MSG',
+    OP_UPDATE: 'UPDATE',
+    OP_INSERT: 'INSERT',
+    OP_QUERY: 'QUERY',
+    OP_GETMORE: 'GETMORE',
+    OP_DELETE: 'DELETE',
     OP_KILL_CURSORS: 'KILL_CURSORS'
 }
 
 DELETE_SINGLE_REMOVE = 1 << 0
 
-QUERY_TAILABLE_CURSOR   = 1 << 1
-QUERY_SLAVE_OK          = 1 << 2
-QUERY_OPLOG_REPLAY      = 1 << 3
+QUERY_TAILABLE_CURSOR = 1 << 1
+QUERY_SLAVE_OK = 1 << 2
+QUERY_OPLOG_REPLAY = 1 << 3
 QUERY_NO_CURSOR_TIMEOUT = 1 << 4
-QUERY_AWAIT_DATA        = 1 << 5
-QUERY_EXHAUST           = 1 << 6
-QUERY_PARTIAL           = 1 << 7
+QUERY_AWAIT_DATA = 1 << 5
+QUERY_EXHAUST = 1 << 6
+QUERY_PARTIAL = 1 << 7
 
-REPLY_CURSOR_NOT_FOUND   = 1 << 0
-REPLY_QUERY_FAILURE      = 1 << 1
+REPLY_CURSOR_NOT_FOUND = 1 << 0
+REPLY_QUERY_FAILURE = 1 << 1
 REPLY_SHARD_CONFIG_STALE = 1 << 2
-REPLY_AWAIT_CAPABLE      = 1 << 3
+REPLY_AWAIT_CAPABLE = 1 << 3
 
 UPDATE_UPSERT = 1 << 0
-UPDATE_MULTI  = 1 << 1
+UPDATE_MULTI = 1 << 1
 
 Msg = namedtuple('Msg', ['len', 'request_id', 'response_to', 'opcode', 'message'])
-KillCursors = namedtuple('KillCursors', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'n_cursors', 'cursors'])
+KillCursors = namedtuple('KillCursors',
+                         ['len', 'request_id', 'response_to', 'opcode', 'zero', 'n_cursors',
+                          'cursors'])
 
-class Delete(namedtuple('Delete', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'collection', 'flags', 'selector'])):
+
+class Delete(namedtuple('Delete',
+                        ['len', 'request_id', 'response_to', 'opcode', 'zero', 'collection',
+                         'flags', 'selector'])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_DELETE,
                 zero=0, collection='', flags=0, selector=None):
         return super(Delete, cls).__new__(cls, len, request_id, response_to,
-                                           opcode, zero, collection,
-                                           flags, selector)
+                                          opcode, zero, collection,
+                                          flags, selector)
+
 
 class Getmore(namedtuple('Getmore', ['len', 'request_id', 'response_to',
                                      'opcode', 'zero', 'collection',
@@ -80,6 +88,7 @@ class Getmore(namedtuple('Getmore', ['len', 'request_id', 'response_to',
                                            opcode, zero, collection,
                                            n_to_return, cursor_id)
 
+
 class Insert(namedtuple('Insert', ['len', 'request_id', 'response_to',
                                    'opcode', 'flags', 'collection',
                                    'documents'])):
@@ -87,6 +96,7 @@ class Insert(namedtuple('Insert', ['len', 'request_id', 'response_to',
                 flags=0, collection='', documents=None):
         return super(Insert, cls).__new__(cls, len, request_id, response_to,
                                           opcode, flags, collection, documents)
+
 
 class Reply(namedtuple('Reply', ['len', 'request_id', 'response_to', 'opcode',
                                  'response_flags', 'cursor_id',
@@ -104,6 +114,7 @@ class Reply(namedtuple('Reply', ['len', 'request_id', 'response_to', 'opcode',
                                          starting_from, n_returned,
                                          documents)
 
+
 class Query(namedtuple('Query', ['len', 'request_id', 'response_to', 'opcode',
                                  'flags', 'collection', 'n_to_skip',
                                  'n_to_return', 'query', 'fields'])):
@@ -120,6 +131,7 @@ class Query(namedtuple('Query', ['len', 'request_id', 'response_to', 'opcode',
                                          opcode, flags, collection, n_to_skip,
                                          n_to_return, query, fields)
 
+
 class Update(namedtuple('Update', ['len', 'request_id', 'response_to',
                                    'opcode', 'zero', 'collection', 'flags',
                                    'selector', 'update'])):
@@ -128,6 +140,7 @@ class Update(namedtuple('Update', ['len', 'request_id', 'response_to',
         return super(Update, cls).__new__(cls, len, request_id, response_to,
                                           opcode, zero, collection, flags,
                                           selector, update)
+
 
 class MongoClientProtocol(protocol.Protocol):
     __request_id = 1
@@ -205,6 +218,7 @@ class MongoClientProtocol(protocol.Protocol):
             iovec.append(struct.pack('<q', cursor))
         return self._send(iovec)
 
+
 class MongoServerProtocol(protocol.Protocol):
     __decoder = None
 
@@ -253,6 +267,7 @@ class MongoServerProtocol(protocol.Protocol):
 
     def handle_KILL_CURSORS(self, request):
         pass
+
 
 class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
     __connection_ready = None
@@ -360,6 +375,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
         defer.returnValue(document)
 
+
 class MongoDecoder:
     dataBuffer = None
 
@@ -391,13 +407,13 @@ class MongoDecoder:
                 raise errors.ConnectionFailure()
             name = msgdata[20:].split('\x00', 1)[0]
             offset = 20 + len(name) + 1
-            flags, = struct.unpack('<i', msgdata[offset:offset+4])
+            flags, = struct.unpack('<i', msgdata[offset:offset + 4])
             offset += 4
-            selectorlen, = struct.unpack('<i', msgdata[offset:offset+4])
-            selector = bson.BSON(msgdata[offset:offset+selectorlen])
+            selectorlen, = struct.unpack('<i', msgdata[offset:offset + 4])
+            selector = bson.BSON(msgdata[offset:offset + selectorlen])
             offset += selectorlen
-            updatelen, = struct.unpack('<i', msgdata[offset:offset+4])
-            update = bson.BSON(msgdata[offset:offset+updatelen])
+            updatelen, = struct.unpack('<i', msgdata[offset:offset + 4])
+            update = bson.BSON(msgdata[offset:offset + updatelen])
             return Update(*(header + (zero, name, flags, selector, update)))
         elif opcode == OP_INSERT:
             flags, = struct.unpack('<i', msgdata[16:20])
@@ -405,8 +421,8 @@ class MongoDecoder:
             offset = 20 + len(name) + 1
             docs = []
             while offset < len(msgdata):
-                doclen, = struct.unpack('<i', msgdata[offset:offset+4])
-                docdata = msgdata[offset:offset+doclen]
+                doclen, = struct.unpack('<i', msgdata[offset:offset + 4])
+                docdata = msgdata[offset:offset + doclen]
                 doc = bson.BSON(docdata)
                 docs.append(doc)
                 offset += doclen
@@ -415,16 +431,16 @@ class MongoDecoder:
             flags, = struct.unpack('<i', msgdata[16:20])
             name = msgdata[20:].split('\x00', 1)[0]
             offset = 20 + len(name) + 1
-            ntoskip, ntoreturn = struct.unpack('<ii', msgdata[offset:offset+8])
+            ntoskip, ntoreturn = struct.unpack('<ii', msgdata[offset:offset + 8])
             offset += 8
-            querylen, = struct.unpack('<i', msgdata[offset:offset+4])
-            querydata = msgdata[offset:offset+querylen]
+            querylen, = struct.unpack('<i', msgdata[offset:offset + 4])
+            querydata = msgdata[offset:offset + querylen]
             query = bson.BSON(querydata)
             offset += querylen
             fields = None
             if msglen > offset:
-                fieldslen, = struct.unpack('<i', msgdata[offset:offset+4])
-                fields = bson.BSON(msgdata[offset:offset+fieldslen])
+                fieldslen, = struct.unpack('<i', msgdata[offset:offset + 4])
+                fields = bson.BSON(msgdata[offset:offset + fieldslen])
             return Query(*(header + (flags, name, ntoskip, ntoreturn, query, fields)))
         elif opcode == OP_GETMORE:
             zero, = struct.unpack('<i', msgdata[16:20])
@@ -432,7 +448,7 @@ class MongoDecoder:
                 raise errors.ConnectionFailure()
             name = msgdata[20:].split('\x00', 1)[0]
             offset = 20 + len(name) + 1
-            ntoreturn, cursorid = struct.unpack('<iq', msgdata[offset:offset+12])
+            ntoreturn, cursorid = struct.unpack('<iq', msgdata[offset:offset + 12])
             return Getmore(*(header + (zero, name, ntoreturn, cursorid)))
         elif opcode == OP_DELETE:
             zero, = struct.unpack('<i', msgdata[16:20])
@@ -440,7 +456,7 @@ class MongoDecoder:
                 raise errors.ConnectionFailure()
             name = msgdata[20:].split('\x00', 1)[0]
             offset = 20 + len(name) + 1
-            flags, = struct.unpack('<i', msgdata[offset:offset+4])
+            flags, = struct.unpack('<i', msgdata[offset:offset + 4])
             offset += 4
             selector = bson.BSON(msgdata[offset:])
             return Delete(*(header + (zero, name, flags, selector)))
@@ -451,7 +467,7 @@ class MongoDecoder:
             offset = 24
             cursor_list = []
             for i in xrange(cursors[1]):
-                cursor, = struct.unpack('<q', msgdata[offset:offset+8])
+                cursor, = struct.unpack('<q', msgdata[offset:offset + 8])
                 cursor_list.append(cursor)
                 offset += 8
             return KillCursors(*(header + cursors + (cursor_list,)))
@@ -464,10 +480,10 @@ class MongoDecoder:
             docs = []
             offset = 36
             for i in xrange(reply[3]):
-                doclen, = struct.unpack('<i', msgdata[offset:offset+4])
+                doclen, = struct.unpack('<i', msgdata[offset:offset + 4])
                 if doclen > (msglen - offset):
                     raise errors.ConnectionFailure()
-                docdata = msgdata[offset:offset+doclen]
+                docdata = msgdata[offset:offset + doclen]
                 doc = bson.BSON(docdata)
                 docs.append(doc)
                 offset += doclen
