@@ -6,8 +6,6 @@ pep8
 coverage
 sphinx
 pdbpp
-nose
-nose-cov
 pytest
 pytest-cov
 diff-cover
