@@ -4,7 +4,7 @@ python-txmongo (0.6-1) stable; urgency=low
   * Added "find with cursor" like pymongo
   * Fixed import in database.py
 
- -- Bret Curtis <psi29a@gmail.com>  Fri, 02 Oct 2014 10:05:14 -0400
+ -- Bret Curtis <psi29a@gmail.com>  Fri, 02 Oct 2015 10:05:14 -0400
 
 python-txmongo (0.5-1) stable; urgency=low
 

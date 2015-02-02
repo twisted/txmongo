@@ -16,8 +16,6 @@
 
 The :mod:`gridfs` package is an implementation of GridFS on top of
 :mod:`pymongo`, exposing a file-like interface.
-
-.. mongodoc:: gridfs
 """
 from twisted.internet import defer
 from txmongo._gridfs.errors import (NoFile,
@@ -46,8 +44,6 @@ class GridFS(object):
 
         .. versionadded:: 1.6
            The `collection` parameter.
-
-        .. mongodoc:: gridfs
         """
         if not isinstance(database, Database):
             raise TypeError("database must be an instance of Database")

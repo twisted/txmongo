@@ -6,7 +6,7 @@ build
 .download_cache
 .coverage
 venv/
-docs/
+docs/build/
 _trial_temp/
 txmongo.egg-info
 .idea/
