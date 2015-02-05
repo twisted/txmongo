@@ -205,6 +205,18 @@ class TestCollection(unittest.TestCase):
         self.assertEqual([('loc', '2d')], index_info['loc_2d'])
 
     @defer.inlineCallbacks
+    def test_index_geo2dsphere(self):
+        db = self.db
+        coll = self.coll 
+        yield coll.drop_indexes()
+        geo_ix = yield coll.create_index(filter.sort(filter.GEO2DSPHERE("loc")))
+
+        self.assertEqual('loc_2dsphere', geo_ix)
+
+        index_info = yield coll.index_information()
+        self.assertEqual([('loc', '2dsphere')], index_info['loc_2dsphere'])
+
+    @defer.inlineCallbacks
     def test_index_haystack(self):
         db = self.db
         coll = self.coll
