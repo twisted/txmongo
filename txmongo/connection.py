@@ -245,6 +245,9 @@ class ConnectionPool(object):
         return 'Connection()'
 
 
+    def get_default_database(self):
+        return self[self.uri['database']]
+
     @defer.inlineCallbacks
     def authenticate_with_nonce (self,database,name,password) :
 
