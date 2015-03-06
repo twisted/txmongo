@@ -105,11 +105,14 @@ class Collection(object):
                     fields = ["_id"]
                 fields = self._fields_list_to_dict(fields)
 
-        if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
+        if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot, qf.comment)):
             if '$query' not in spec:
                 spec = {'$query': spec}
                 for k,v in filter.iteritems():
-                    spec['$' + k] = dict(v)
+                    if isinstance(v, (list, tuple)):
+                        spec['$' + k] = dict(v)
+                    else:
+                        spec['$' + k] = v
 
         if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)

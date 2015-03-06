@@ -108,3 +108,9 @@ class snapshot(_QueryFilter):
     def __init__(self):
         _QueryFilter.__init__(self)
         self["snapshot"] = True
+
+
+class comment(_QueryFilter):
+    def __init__(self, comment):
+        _QueryFilter.__init__(self)
+        self['comment'] = comment
