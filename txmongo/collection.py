@@ -12,7 +12,7 @@ from pymongo import errors
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, \
                              UPDATE_MULTI, Query, Getmore, Insert, \
-                             Update, Delete
+                             Update, Delete, KillCursors
 from twisted.internet import defer
 
 class Collection(object):
@@ -127,17 +127,28 @@ class Collection(object):
         reply = yield proto.send_QUERY(query)
         documents = reply.documents
         while reply.cursor_id:
-            if limit <= 0:
-                to_fetch = 0
+            if limit == 0:
+                to_fetch = 0    # no limit
+            elif limit < 0:
+                # We won't actually get here because MongoDB won't create cursor when limit < 0
+                to_fetch = None # close cursor
             else:
-                to_fetch = -1 if len(documents) > limit else limit - len(documents)
-            if to_fetch < 0:
+                to_fetch = limit - len(documents)
+                if to_fetch <= 0:
+                    to_fetch = None # close cursor
+
+            if to_fetch is None:
+                proto.send_KILL_CURSORS(KillCursors(
+                    n_cursors = 1,
+                    cursors = [ reply.cursor_id ]
+                ))
                 break
 
-            getmore = Getmore(collection=str(self),
-                              n_to_return=to_fetch,
-                              cursor_id=reply.cursor_id)
-            reply = yield proto.send_GETMORE(getmore)
+            reply = yield proto.send_GETMORE(Getmore(
+                collection = str(self),
+                n_to_return = to_fetch,
+                cursor_id = reply.cursor_id
+            ))
             documents.extend(reply.documents)
 
         if limit > 0:
