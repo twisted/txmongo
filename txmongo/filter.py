@@ -34,13 +34,19 @@ def GEO2D(keys):
     return _DIRECTION(keys, "2d")
 
 
+def GEO2DSPHERE(keys):
+    """
+    Two-dimensional geospatial index
+    http://www.mongodb.org/display/DOCS/Geospatial+Indexing
+    """
+    return _DIRECTION(keys, "2dsphere")
+
 def GEOHAYSTACK(keys):
     """
     Bucket-based geospatial index
     http://www.mongodb.org/display/DOCS/Geospatial+Haystack+Indexing
     """
     return _DIRECTION(keys, "geoHaystack")
-
 
 
 class _QueryFilter(defaultdict):
@@ -62,7 +68,7 @@ class _QueryFilter(defaultdict):
             for key, direction in index_list:
                 if not isinstance(key, types.StringTypes):
                     raise TypeError("Invalid %sing key: %s" % (name, repr(key)))
-                if direction not in (1, -1, "2d", "geoHaystack"):
+                if direction not in (1, -1, "2d", "2dsphere", "geoHaystack"):
                     raise TypeError("Invalid %sing direction: %s" % (name, direction))
                 self[operation] += tuple(((key, direction),))
         except Exception:

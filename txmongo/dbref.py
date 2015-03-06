@@ -18,6 +18,7 @@ from bson.son import SON
 from txmongo.collection import Collection
 import types
 
+
 class DBRef(object):
     """A reference to a document stored in a Mongo database.
     """
@@ -54,12 +55,14 @@ class DBRef(object):
         """Get the name of this DBRef's collection as unicode.
         """
         return self.__collection
+
     collection = property(collection)
 
     def id(self):
         """Get this DBRef's _id.
         """
         return self.__id
+
     id = property(id)
 
     def database(self):
@@ -70,6 +73,7 @@ class DBRef(object):
         .. versionadded:: 1.1.1
         """
         return self.__database
+
     database = property(database)
 
     def as_doc(self):
@@ -78,7 +82,7 @@ class DBRef(object):
         Generally not needed by application developers
         """
         doc = SON([("$ref", self.collection),
-                         ("$id", self.id)])
+                   ("$id", self.id)])
         if self.database is not None:
             doc["$db"] = self.database
         return doc

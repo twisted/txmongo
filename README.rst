@@ -1,9 +1,11 @@
-# MongoDB driver for Python Twisted
+MongoDB driver for Python Twisted
+=================================
 
 txmongo is a Python/Twisted driver for MongoDB that implements the wire
 protocol on non-blocking sockets. The API derives from the original pymongo.
 
-## Installing
+Installing
+----------
 
 You can use setuptools to install:
 
@@ -11,19 +13,23 @@ You can use setuptools to install:
 sudo python setup.py install
 ```
 
-## Docs and examples
+Docs and examples
+-----------------
 
 Generate them with `make docs`. You will need `epydoc` installed.
 There are some examples in the *examples/* directory.
 
-## Hacking
+Hacking
+-------
 
 Run `make env` to create clean hacking environment with `virtualenv`.
 Run `make` to torture your code with tests and code style tools.
 
-## Packages
+Packages
+--------
 
-### Debian
+Debian
+^^^^^^
 
 Packing for debian exists in *debian/*, you can build yourself a package
 (remember to update debian/changelog) if you make changes.
@@ -34,7 +40,8 @@ dpkg-buildpackage -b
 
 Then look for the package in your home directory.
 
-### Fedora
+Fedora
+^^^^^^
 
 ```sh
 rpmbuild -bb python-txmongo.spec

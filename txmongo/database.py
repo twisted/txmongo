@@ -3,8 +3,7 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-#from bson.son import SON
-#from pymongo import auth
+from bson.son import SON
 from twisted.internet import defer
 from txmongo.collection import Collection
 
@@ -73,7 +72,7 @@ class Database(object):
         def wrapper(results):
             names = [r["name"] for r in results]
             names = [n[len(str(self)) + 1:] for n in names
-                if n.startswith(str(self) + ".")]
+                     if n.startswith(str(self) + ".")]
             names = [n for n in names if "$" not in n]
             return names
 
@@ -91,8 +90,8 @@ class Database(object):
             raise TypeError("name must be an instance of basestring")
         if not isinstance(password, basestring):
             raise TypeError("password must be an instance of basestring")
-    
+
         """
         Authenticating
         """
-        yield self.connection.authenticate_with_nonce(self,name,password)
+        yield self.connection.authenticate_with_nonce(self, name, password)

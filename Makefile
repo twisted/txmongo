@@ -1,7 +1,6 @@
 # Unit-testing, docs, etc.
 
 VIRTUALENV?=virtualenv
-# VIRTUALENV?=virtualenv-2.6
 EPYDOC=epydoc
 TRIAL?=trial
 COVERAGE?=coverage
@@ -18,9 +17,8 @@ env:
 	echo "\n\n>> Run 'source env/bin/activate'"
 
 docs:
-	rm -fr docs
-	mkdir -p docs
-	$(EPYDOC) -v --html --output=docs txmongo
+	rm -fr docs/build/*
+	make -C docs html
 
 test:
 	$(TRIAL) -e tests

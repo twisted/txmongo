@@ -79,7 +79,8 @@ class TestCollection(unittest.TestCase):
         self.assertFailure(self.db.test.update({}, {}, 'a'), TypeError)
 
         self.assert_(isinstance(self.db.test, Collection))
-        self.assertEqual(-1, cmp(self.db.test, 7))
+        self.assertEqual(NotImplemented, self.db.test.__cmp__(7))
+        self.assertNotEqual(cmp(self.db.test, 7), 0)
         self.assertEqual(self.db.test, Collection(self.db, "test"))
         self.assertEqual(self.db.test.mike, self.db["test.mike"])
         self.assertEqual(self.db.test["mike"], self.db["test.mike"])
@@ -202,6 +203,18 @@ class TestCollection(unittest.TestCase):
 
         index_info = yield coll.index_information()
         self.assertEqual([('loc', '2d')], index_info['loc_2d'])
+
+    @defer.inlineCallbacks
+    def test_index_geo2dsphere(self):
+        db = self.db
+        coll = self.coll 
+        yield coll.drop_indexes()
+        geo_ix = yield coll.create_index(filter.sort(filter.GEO2DSPHERE("loc")))
+
+        self.assertEqual('loc_2dsphere', geo_ix)
+
+        index_info = yield coll.index_information()
+        self.assertEqual([('loc', '2dsphere')], index_info['loc_2dsphere'])
 
     @defer.inlineCallbacks
     def test_index_haystack(self):

@@ -3,4 +3,8 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-from txmongo._gridfs import *
+from txmongo._gridfs import GridFS, errors, grid_file
+
+assert GridFS
+assert errors
+assert grid_file

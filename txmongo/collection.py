@@ -11,9 +11,10 @@ import types
 from pymongo import errors
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, \
-                             UPDATE_MULTI, Query, Getmore, Insert, \
-                             Update, Delete, KillCursors
+    UPDATE_MULTI, Query, Getmore, Insert, \
+    Update, Delete, KillCursors
 from twisted.internet import defer
+
 
 class Collection(object):
     def __init__(self, database, name):
@@ -25,13 +26,13 @@ class Collection(object):
         if "$" in name and not (name.startswith("oplog.$main") or
                                 name.startswith("$cmd")):
             raise errors.InvalidName("collection names must not "
-                              "contain '$': %r" % name)
+                                     "contain '$': %r" % name)
         if name[0] == "." or name[-1] == ".":
             raise errors.InvalidName("collection names must not start "
-                              "or end with '.': %r" % name)
+                                     "or end with '.': %r" % name)
         if "\x00" in name:
             raise errors.InvalidName("collection names must not contain the "
-                              "null character")
+                                     "null character")
 
         self._database = database
         self._collection_name = unicode(name)
@@ -86,7 +87,11 @@ class Collection(object):
         return d
 
     @defer.inlineCallbacks
-    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
+    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
+        if cursor:
+            out = yield self.find_with_cursor(spec=spec, skip=skip, fields=fields, filter=filter,
+                                              **kwargs)
+            defer.returnValue(out)
         if spec is None:
             spec = SON()
 
@@ -108,7 +113,7 @@ class Collection(object):
         if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot, qf.comment)):
             if '$query' not in spec:
                 spec = {'$query': spec}
-                for k,v in filter.iteritems():
+                for k, v in filter.iteritems():
                     if isinstance(v, (list, tuple)):
                         spec['$' + k] = dict(v)
                     else:
@@ -116,7 +121,7 @@ class Collection(object):
 
         if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else :
+        else:
             proto = yield self._database.connection.getprotocol()
 
         flags = kwargs.get('flags', 0)
@@ -157,6 +162,77 @@ class Collection(object):
         as_class = kwargs.get('as_class', dict)
 
         defer.returnValue([d.decode(as_class=as_class) for d in documents])
+
+    def find_with_cursor(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
+        ''' find method that uses the cursor to only return a block of
+        results at a time.
+        Arguments are the same as with find()
+        returns deferred that results in a tuple: (docs, deferred) where
+        docs are the current page of results and deferred results in the next
+        tuple. When the cursor is exhausted, it will return the tuple
+        ([], None)
+        '''
+        if spec is None:
+            spec = SON()
+
+        if not isinstance(spec, types.DictType):
+            raise TypeError("spec must be an instance of dict")
+        if not isinstance(fields, (types.DictType, types.ListType, types.NoneType)):
+            raise TypeError("fields must be an instance of dict or list")
+        if not isinstance(skip, types.IntType):
+            raise TypeError("skip must be an instance of int")
+        if not isinstance(limit, types.IntType):
+            raise TypeError("limit must be an instance of int")
+
+        if fields is not None:
+            if not isinstance(fields, types.DictType):
+                if not fields:
+                    fields = ["_id"]
+                fields = self._fields_list_to_dict(fields)
+
+        if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
+            if '$query' not in spec:
+                spec = {'$query': spec}
+                for k, v in filter.iteritems():
+                    spec['$' + k] = dict(v)
+
+        as_class = kwargs.get('as_class', dict)
+        d = self._database.connection.getprotocol()
+
+        def after_connection(proto):
+            flags = kwargs.get('flags', 0)
+            query = Query(flags=flags, collection=str(self),
+                          n_to_skip=skip, n_to_return=limit,
+                          query=spec, fields=fields)
+
+            d = proto.send_QUERY(query)
+            d.addCallback(after_reply, proto)
+            return d
+
+        def after_reply(reply, proto, fetched=0):
+            documents = reply.documents
+            fetched = fetched + len(documents)
+            out = [d.decode(as_class=as_class) for d in documents]
+            if reply.cursor_id:
+                if limit <= 0:
+                    to_fetch = len(documents)
+                else:
+                    to_fetch = -1 if fetched < limit else len(documents)
+                if to_fetch < 0:
+                    nomore = defer.succeed(([], None))
+                    return (out, nomore)
+
+                getmore = Getmore(collection=str(self),
+                                  n_to_return=to_fetch,
+                                  cursor_id=reply.cursor_id)
+                d = proto.send_GETMORE(getmore)
+                d.addCallback(after_reply, proto, fetched)
+                return (out, d)
+            nomore = defer.succeed(([], None))
+            return (out, nomore)
+
+        d.addCallback(after_connection)
+        return d
 
     def find_one(self, spec=None, fields=None, **kwargs):
         if isinstance(spec, ObjectId):
@@ -237,9 +313,9 @@ class Collection(object):
         flags = kwargs.get('flags', 0)
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
-        if self._database._authenticated :
+        if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else :
+        else:
             proto = yield self._database.connection.getprotocol()
 
         proto.send_INSERT(insert)
@@ -269,9 +345,9 @@ class Collection(object):
         document = bson.BSON.encode(document)
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
-        if self._database._authenticated :
+        if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else :
+        else:
             proto = yield self._database.connection.getprotocol()
 
         proto.send_UPDATE(update)
@@ -303,9 +379,9 @@ class Collection(object):
 
         spec = bson.BSON.encode(spec)
         delete = Delete(flags=flags, collection=str(self), selector=spec)
-        if self._database._authenticated :
+        if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else :
+        else:
             proto = yield self._database.connection.getprotocol()
 
         proto.send_DELETE(delete)
@@ -330,8 +406,8 @@ class Collection(object):
             name = kwargs.pop("name")
 
         key = SON()
-        for k,v in sort_fields["orderby"]:
-            key.update({k:v})
+        for k, v in sort_fields["orderby"]:
+            key.update({k: v})
 
         index = SON(dict(
             ns=str(self),
@@ -381,8 +457,8 @@ class Collection(object):
         return d
 
     def rename(self, new_name):
-        cmd = SON([("renameCollection", str(self)), ("to", "%s.%s" % \
-            (str(self._database), new_name))])
+        cmd = SON([("renameCollection", str(self)),
+                   ("to", "%s.%s" % (str(self._database), new_name))])
         return self._database("admin")["$cmd"].find_one(cmd)
 
     def distinct(self, key, spec=None):
@@ -419,7 +495,7 @@ class Collection(object):
             return result.get("result")
 
         cmd = SON([("mapreduce", self._collection_name),
-                       ("map", map), ("reduce", reduce)])
+                   ("map", map), ("reduce", reduce)])
         cmd.update(**kwargs)
         d = self._database["$cmd"].find_one(cmd)
         d.addCallback(wrapper, full_response)

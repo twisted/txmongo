@@ -5,7 +5,11 @@ build
 
 .download_cache
 .coverage
-env
-docs
-_trial_temp
+venv/
+docs/build/
+_trial_temp/
 txmongo.egg-info
+.idea/
+dist/
+htmlcov/
+.tox/
