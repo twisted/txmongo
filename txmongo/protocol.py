@@ -62,7 +62,13 @@ UPDATE_UPSERT = 1 << 0
 UPDATE_MULTI  = 1 << 1
 
 Msg = namedtuple('Msg', ['len', 'request_id', 'response_to', 'opcode', 'message'])
-KillCursors = namedtuple('KillCursors', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'n_cursors', 'cursors'])
+
+class KillCursors(namedtuple('KillCursors', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'n_cursors', 'cursors'])):
+    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_KILL_CURSORS,
+                zero=0, n_cursors=0, cursors=None):
+        n_cursors = __builtins__['len'](cursors)
+        return super(KillCursors, cls).__new__(cls, len, request_id, response_to,
+                                            opcode, zero, n_cursors, cursors)
 
 class Delete(namedtuple('Delete', ['len', 'request_id', 'response_to', 'opcode', 'zero', 'collection', 'flags', 'selector'])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_DELETE,
@@ -199,7 +205,6 @@ class MongoClientProtocol(protocol.Protocol):
 
     def send_KILL_CURSORS(self, request):
         iovec = [struct.pack('<iii', *request[2:5]),
-                 request.collection.encode('ascii'), '\x00',
                  struct.pack('<i', len(request.cursors))]
         for cursor in request.cursors:
             iovec.append(struct.pack('<q', cursor))
