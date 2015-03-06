@@ -93,7 +93,7 @@ class hint(_QueryFilter):
             assert isinstance(index_list[0], (types.ListType, types.TupleType))
         except:
             index_list = (index_list,)
-        self._index_document("$hint", index_list)
+        self._index_document("hint", index_list)
 
 
 class explain(_QueryFilter):
