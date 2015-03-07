@@ -250,7 +250,10 @@ class ConnectionPool(object):
 
 
     def get_default_database(self):
-        return self[self.uri['database']]
+        if self.uri['database']:
+            return self[self.uri['database']]
+        else:
+            return None
 
     @defer.inlineCallbacks
     def authenticate_with_nonce(self, database, name, password):
