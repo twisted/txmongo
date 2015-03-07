@@ -88,7 +88,6 @@ class TestCollection(unittest.TestCase):
         self.assertEqual(self.db.test.test, self.db.test('test'))
 
         options = yield self.db.test.options()
-        print options
         self.assertIsInstance(options, dict)
 
         yield self.db.drop_collection('test')
