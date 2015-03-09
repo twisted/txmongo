@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from bson import BSON, ObjectId
 from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
+from txmongo.protocol import MongoClientProtocol
 
 mongo_host = "localhost"
 mongo_port = 27017
@@ -28,7 +30,8 @@ class TestMongoQueries(unittest.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
-        self.coll = self.conn.mydb.mycol
+        self.db = self.conn.mydb
+        self.coll = self.db.mycol
 
     @defer.inlineCallbacks
     def test_SingleCursorIteration(self):
@@ -109,6 +112,45 @@ class TestMongoQueries(unittest.TestCase):
 
         res = yield self.coll.group(keys, initial, reduce_, cond, final)
         self.assertEqual(len(res['retval']), 1)
+
+
+    @defer.inlineCallbacks
+    def test_CursorClosing(self):
+        def makeobj(): return { '_id': ObjectId(), 'x': 'a' * 1000 }
+
+        # Calculate number of objects in 4mb batch
+        obj_count_4mb = 4 * 1024**2 / len(BSON.encode(makeobj())) + 1
+
+        first_batch = 5
+        yield self.coll.insert([makeobj() for i in xrange(first_batch + obj_count_4mb)])
+        result = yield self.coll.find(limit = first_batch)
+
+        status = yield self.db['$cmd'].find_one({ 'serverStatus': 1 })
+        self.assertEqual(status['metrics']['cursor']['open']['total'], 0)
+
+    @defer.inlineCallbacks
+    def test_GetMoreCount(self):
+        class CallCounter(object):
+            def __init__(self, original):
+                self.call_count = 0
+                self.original = original
+
+            def __call__(self, this, *args, **kwargs):
+                self.call_count += 1
+                return self.original(this, *args, **kwargs)
+
+        counter = CallCounter(MongoClientProtocol.send_GETMORE)
+        MongoClientProtocol.send_GETMORE = counter
+
+        try:
+            yield self.coll.insert([{'x': 42} for i in xrange(20)])
+            yield self.coll.find({}, limit=10)
+
+            self.assertEqual(counter.call_count, 0)
+        finally:
+            MongoClientProtocol.send_GETMORE = counter.original
+
+
 
     @defer.inlineCallbacks
     def tearDown(self):

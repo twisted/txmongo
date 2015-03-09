@@ -99,7 +99,7 @@ class hint(_QueryFilter):
             assert isinstance(index_list[0], (types.ListType, types.TupleType))
         except:
             index_list = (index_list,)
-        self._index_document("$hint", index_list)
+        self._index_document("hint", index_list)
 
 
 class explain(_QueryFilter):
@@ -114,3 +114,9 @@ class snapshot(_QueryFilter):
     def __init__(self):
         _QueryFilter.__init__(self)
         self["snapshot"] = True
+
+
+class comment(_QueryFilter):
+    def __init__(self, comment):
+        _QueryFilter.__init__(self)
+        self['comment'] = comment

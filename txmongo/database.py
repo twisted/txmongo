@@ -32,6 +32,10 @@ class Database(object):
         return self[collection_name]
 
     @property
+    def name(self):
+        return self._database_name
+
+    @property
     def connection(self):
         return self.__factory
 

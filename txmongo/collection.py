@@ -12,7 +12,7 @@ from pymongo import errors
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, \
     UPDATE_MULTI, Query, Getmore, Insert, \
-    Update, Delete
+    Update, Delete, KillCursors
 from twisted.internet import defer
 
 
@@ -110,11 +110,14 @@ class Collection(object):
                     fields = ["_id"]
                 fields = self._fields_list_to_dict(fields)
 
-        if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
+        if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot, qf.comment)):
             if '$query' not in spec:
                 spec = {'$query': spec}
                 for k, v in filter.iteritems():
-                    spec['$' + k] = dict(v)
+                    if isinstance(v, (list, tuple)):
+                        spec['$' + k] = dict(v)
+                    else:
+                        spec['$' + k] = v
 
         if self._database._authenticated:
             proto = yield self._database.connection.get_authenticated_protocol(self._database)
@@ -129,17 +132,28 @@ class Collection(object):
         reply = yield proto.send_QUERY(query)
         documents = reply.documents
         while reply.cursor_id:
-            if limit <= 0:
-                to_fetch = 0
+            if limit == 0:
+                to_fetch = 0    # no limit
+            elif limit < 0:
+                # We won't actually get here because MongoDB won't create cursor when limit < 0
+                to_fetch = None # close cursor
             else:
-                to_fetch = -1 if len(documents) > limit else limit - len(documents)
-            if to_fetch < 0:
+                to_fetch = limit - len(documents)
+                if to_fetch <= 0:
+                    to_fetch = None # close cursor
+
+            if to_fetch is None:
+                proto.send_KILL_CURSORS(KillCursors(
+                    n_cursors = 1,
+                    cursors = [ reply.cursor_id ]
+                ))
                 break
 
-            getmore = Getmore(collection=str(self),
-                              n_to_return=to_fetch,
-                              cursor_id=reply.cursor_id)
-            reply = yield proto.send_GETMORE(getmore)
+            reply = yield proto.send_GETMORE(Getmore(
+                collection = str(self),
+                n_to_return = to_fetch,
+                cursor_id = reply.cursor_id
+            ))
             documents.extend(reply.documents)
 
         if limit > 0:
