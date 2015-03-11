@@ -28,6 +28,13 @@ mongo_uri = 'mongodb://{0}/'.format(mongo_host)
 
 
 class TestMongoAuth(unittest.TestCase):
+    """
+    NB: This testcase requires:
+        * auth=true in MongoDB configuration file
+        * no configured users
+        * localhost exception enabled (this is default)
+    """
+
     db1 = 'authtest1'
     db2 = 'authtest2'
     coll = 'mycol'
@@ -51,11 +58,22 @@ class TestMongoAuth(unittest.TestCase):
     def createUserAdmin(self):
         conn = self.__get_connection()
 
-        create_user = SON({'createUser': self.ua_login})
-        create_user.update({ 'pwd': self.ua_password, 'roles': [ { 'role': 'userAdminAnyDatabase', 'db': 'admin' } ] })
-        r = yield conn['admin']['$cmd'].find_one(create_user)
+        try:
+            create_user = SON({'createUser': self.ua_login})
+            create_user.update({ 'pwd': self.ua_password, 'roles': [ { 'role': 'userAdminAnyDatabase', 'db': 'admin' } ] })
+            r = yield conn['admin']['$cmd'].find_one(create_user)
 
-        yield conn.disconnect()
+            try:
+                # This should fail if authentication enabled in MongoDB since
+                # we've created user but didn't authenticated
+                yield conn[self.db1][self.coll].find_one()
+
+                yield conn['admin']['$cmd'].find_one({'dropUser': self.ua_login})
+                raise unittest.SkipTest('Authentication tests require authorization enabled in MongoDB configuration file')
+            except OperationFailure:
+                pass
+        finally:
+            yield conn.disconnect()
 
     @defer.inlineCallbacks
     def createDBUsers(self):
