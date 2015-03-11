@@ -38,22 +38,21 @@ class _Connection(ReconnectingClientFactory):
         self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
         self.__conf_loop.start(self.__conf_loop_seconds, now=False)
         self.connectionid = id
-        self.auth_set = set()
+
+        self.__auth_creds = {}
 
     def buildProtocol(self, addr):
         # Build the protocol.
         p = ReconnectingClientFactory.buildProtocol(self, addr)
 
-        # If we do not care about connecting to a slave, then we can simply
-        # return the protocol now and fire that we are ready.
-        if self.uri['options'].get('slaveok', False):
-            p.connectionReady().addCallback(lambda _: self.setInstance(instance=p))
-            return p
+        if not self.uri['options'].get('slaveok', False):
+            # Update our server configuration. This may disconnect if the node
+            # is not a master.
+            p.connectionReady().addCallback(lambda _: self.configure(p))
 
-        # Update our server configuration. This may disconnect if the node
-        # is not a master.
-        p.connectionReady().addCallback(lambda _: self.configure(p))
-
+        p.connectionReady()\
+            .addCallback(lambda _: self._auth_proto(p))\
+            .addCallback(lambda _: self.setInstance(instance=p))
         return p
 
     def configure(self, proto):
@@ -125,19 +124,14 @@ class _Connection(ReconnectingClientFactory):
             proto.fail(reason)
             return
 
-        # Notify deferreds waiting for completion.
-        self.setInstance(instance=proto)
-
     def clientConnectionFailed(self, connector, reason):
         self.instance = None
-        self.auth_set = set()
         if self.continueTrying:
             self.connector = connector
             self.retryNextHost()
 
     def clientConnectionLost(self, connector, reason):
         self.instance = None
-        self.auth_set = set()
         if self.continueTrying:
             self.connector = connector
             self.retryNextHost()
@@ -208,6 +202,24 @@ class _Connection(ReconnectingClientFactory):
         return self.__uri
 
 
+
+    @defer.inlineCallbacks
+    def _auth_proto(self, proto):
+        yield defer.DeferredList(
+            (proto.authenticate(database, username, password)
+            for database, (username, password) in self.__auth_creds.iteritems()),
+            consumeErrors=True
+        )
+
+    def authenticate(self, database, username, password):
+        self.__auth_creds[str(database)] = (username, password)
+
+        if self.instance:
+            return self.instance.authenticate(database, username, password)
+        else:
+            return defer.succeed(None)
+
+
 class ConnectionPool(object):
     __index = 0
     __pool = None
@@ -222,10 +234,12 @@ class ConnectionPool(object):
         if not uri.startswith('mongodb://'):
             uri = 'mongodb://' + uri
 
-        self.cred_cache = {}
         self.__uri = parse_uri(uri)
         self.__pool_size = pool_size
         self.__pool = [_Connection(self, self.__uri, i) for i in xrange(pool_size)]
+
+        if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
+            self.authenticate(self.__uri['database'], self.__uri['username'], self.__uri['password'])
 
         host, port = self.__uri['nodelist'][0]
         for factory in self.__pool:
@@ -255,44 +269,6 @@ class ConnectionPool(object):
         else:
             return None
 
-    @defer.inlineCallbacks
-    def authenticate_with_nonce(self, database, name, password):
-        database_name = str(database)
-        self.cred_cache[database_name] = (name, password)
-        current_connection = self.__pool[self.__index]
-        proto = yield self.getprotocol()
-
-        collection_name = database_name + '.$cmd'
-        query = Query(collection=collection_name, query={'getnonce': 1})
-        result = yield proto.send_QUERY(query)
-
-        result = result.documents[0].decode()
-
-        if result["ok"]:
-            nonce = result["nonce"]
-        else:
-            defer.returnValue(result["errmsg"])
-
-        key = auth._auth_key(nonce, name, password)
-
-        # hacky because order matters
-        auth_command = SON(authenticate=1)
-        auth_command['user'] = unicode(name)
-        auth_command['nonce'] = nonce
-        auth_command['key'] = key
-
-        query = Query(collection=str(collection_name), query=auth_command)
-        result = yield proto.send_QUERY(query)
-
-        result = result.documents[0].decode()
-
-        if result["ok"]:
-            database._authenticated = True
-            current_connection.auth_set.add(database_name)
-            defer.returnValue(result["ok"])
-        else:
-            del self.cred_cache[database_name]
-            defer.returnValue(result["errmsg"])
 
     def disconnect(self):
         for factory in self.__pool:
@@ -309,19 +285,15 @@ class ConnectionPool(object):
         return df
 
     @defer.inlineCallbacks
-    def get_authenticated_protocol(self, database):
-        # Get the next protocol available for communication in the pool
-        connection = self.__pool[self.__index]
-        database_name = str(database)
+    def authenticate(self, database, username, password):
+        try:
+            yield defer.gatherResults(
+                (connection.authenticate(database, username, password) for connection in self.__pool),
+                consumeErrors=True
+            )
+        except defer.FirstError as e:
+            raise e.subFailure
 
-        if database_name not in connection.auth_set:
-            name = self.cred_cache[database_name][0]
-            password = self.cred_cache[database_name][1]
-            yield self.authenticate_with_nonce(database, name, password)
-        else:
-            self.__index = (self.__index + 1) % self.__pool_size
-
-        defer.returnValue(connection.instance)
 
     def getprotocol(self):
         # Get the next protocol available for communication in the pool.
