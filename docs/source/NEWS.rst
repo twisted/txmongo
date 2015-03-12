@@ -17,11 +17,15 @@ Features
 
 - Add support for 2dsphere indexes, see http://docs.mongodb.org/manual/tutorial/build-a-2dsphere-index/
 - PEP8 across files as we work through them.
+- Authentication reimplemented for ConnectionPool support with multiple DBs.
 
 Bugfixes
 ^^^^^^^^
 
 - Fixed failing tests due to changes in Python in 2.6
+- Fixed limit not being respected, which should help performance.
+- Find now closes MongoDB cursors.
+- Fixed 'hint' filter to correctly serialize with double dollar signs.
 
 
 Improved Documentation
