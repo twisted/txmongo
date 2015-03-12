@@ -29,6 +29,7 @@ class Mongod(object):
                 '--dbpath', str(self.dbpath),
                 '--noprealloc', '--nojournal',
                 '--smallfiles', '--nssize', '1',
+                '--nohttpinterface',
                 ]
 
         if self.auth: args.append('--auth')
