@@ -119,10 +119,7 @@ class Collection(object):
                     else:
                         spec['$' + k] = v
 
-        if self._database._authenticated:
-            proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else:
-            proto = yield self._database.connection.getprotocol()
+        proto = yield self._database.connection.getprotocol()
 
         flags = kwargs.get('flags', 0)
         query = Query(flags=flags, collection=str(self),
@@ -313,10 +310,7 @@ class Collection(object):
         flags = kwargs.get('flags', 0)
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
-        if self._database._authenticated:
-            proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else:
-            proto = yield self._database.connection.getprotocol()
+        proto = yield self._database.connection.getprotocol()
 
         proto.send_INSERT(insert)
 
@@ -345,10 +339,7 @@ class Collection(object):
         document = bson.BSON.encode(document)
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
-        if self._database._authenticated:
-            proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else:
-            proto = yield self._database.connection.getprotocol()
+        proto = yield self._database.connection.getprotocol()
 
         proto.send_UPDATE(update)
 
@@ -379,10 +370,7 @@ class Collection(object):
 
         spec = bson.BSON.encode(spec)
         delete = Delete(flags=flags, collection=str(self), selector=spec)
-        if self._database._authenticated:
-            proto = yield self._database.connection.get_authenticated_protocol(self._database)
-        else:
-            proto = yield self._database.connection.getprotocol()
+        proto = yield self._database.connection.getprotocol()
 
         proto.send_DELETE(delete)
 

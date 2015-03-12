@@ -10,7 +10,6 @@ from txmongo.collection import Collection
 
 class Database(object):
     __factory = None
-    _authenticated = False
 
     def __init__(self, factory, database_name):
         self.__factory = factory
@@ -98,4 +97,4 @@ class Database(object):
         """
         Authenticating
         """
-        yield self.connection.authenticate_with_nonce(self, name, password)
+        yield self.connection.authenticate(self, name, password)

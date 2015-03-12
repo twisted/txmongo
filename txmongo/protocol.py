@@ -18,7 +18,7 @@ from collections import namedtuple
 import struct
 
 import bson
-from pymongo import errors
+from pymongo import errors, auth
 from twisted.internet import defer, protocol
 from twisted.python import failure, log
 
@@ -273,6 +273,9 @@ class MongoServerProtocol(protocol.Protocol):
         pass
 
 
+class MongoAuthenticationError(Exception): pass
+
+
 class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
     __connection_ready = None
     __deferreds = None
@@ -281,6 +284,8 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         MongoServerProtocol.__init__(self)
         self.__connection_ready = []
         self.__deferreds = {}
+
+        self.__auth_lock = defer.DeferredLock()
 
     def inflight(self):
         return len(self.__deferreds)
@@ -378,6 +383,40 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 raise errors.OperationFailure(err, code=code)
 
         defer.returnValue(document)
+
+
+
+    @defer.inlineCallbacks
+    def authenticate(self, database_name, username, password):
+        database_name = str(database_name)
+
+        yield self.__auth_lock.acquire()
+
+        try:
+            cmd_collection = database_name + '.$cmd'
+            result = yield self.send_QUERY(Query(collection=cmd_collection, query={'getnonce': 1}))
+            result = result.documents[0].decode()
+
+            if not result['ok']:
+                raise MongoAuthenticationError(result['errmsg'])
+
+            nonce = result['nonce']
+
+            auth_cmd = bson.SON(authenticate=1)
+            auth_cmd['user'] = unicode(username)
+            auth_cmd['nonce'] = nonce
+            auth_cmd['key'] = auth._auth_key(nonce, username, password)
+
+            result = yield self.send_QUERY(Query(collection=cmd_collection, query=auth_cmd))
+            result = result.documents[0].decode()
+
+            if not result['ok']:
+                raise MongoAuthenticationError(result['errmsg'])
+
+            defer.returnValue(result)
+
+        finally:
+            self.__auth_lock.release()
 
 
 class MongoDecoder:
