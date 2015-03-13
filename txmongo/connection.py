@@ -1,14 +1,9 @@
-# coding: utf-8
-# Copyright 2009-2014 The txmongo authors.  All rights reserved.
+# Copyright 2009-2015 The TxMongo Developers. All rights reserved.
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-import pymongo
-from pymongo import errors
+from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.uri_parser import parse_uri
-from pymongo import auth
-
-from bson.son import SON
 
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory
@@ -63,7 +58,7 @@ class _Connection(ReconnectingClientFactory):
             status of the instance.
             """
         if proto:
-            query = Query(collection='admin.$cmd', query={'ismaster': 1})
+            query = Query(collection="admin.$cmd", query={"ismaster": 1})
             df = proto.send_QUERY(query)
             df.addCallback(self._configureCallback, proto)
             return df
@@ -76,36 +71,36 @@ class _Connection(ReconnectingClientFactory):
             """
         # Make sure we got a result document.
         if len(reply.documents) != 1:
-            proto.fail(errors.OperationFailure('Invalid document length.'))
+            proto.fail(OperationFailure("Invalid document length."))
             return
 
         # Get the configuration document from the reply.
         config = reply.documents[0].decode()
 
         # Make sure the command was successful.
-        if not config.get('ok'):
-            code = config.get('code')
-            msg = config.get('err', 'Unknown error')
-            proto.fail(errors.OperationFailure(msg, code))
+        if not config.get("ok"):
+            code = config.get("code")
+            msg = config.get("err", "Unknown error")
+            proto.fail(OperationFailure(msg, code))
             return
 
         # Check that the replicaSet matches.
-        set_name = config.get('setName')
-        expected_set_name = self.uri['options'].get('setname')
+        set_name = config.get("setName")
+        expected_set_name = self.uri["options"].get("setname")
         if expected_set_name and (expected_set_name != set_name):
             # Log the invalid replica set failure.
-            msg = 'Mongo instance does not match requested replicaSet.'
-            reason = pymongo.errros.ConfigurationError(msg)
+            msg = "Mongo instance does not match requested replicaSet."
+            reason = ConfigurationError(msg)
             proto.fail(reason)
             return
 
         # Track max bson object size limit.
-        max_bson_size = config.get('maxBsonObjectSize')
+        max_bson_size = config.get("maxBsonObjectSize")
         if max_bson_size:
             proto.max_bson_size = max_bson_size
 
         # Track the other hosts in the replica set.
-        hosts = config.get('hosts')
+        hosts = config.get("hosts")
         if isinstance(hosts, list) and hosts:
             hostaddrs = []
             for host in hosts:
@@ -118,9 +113,9 @@ class _Connection(ReconnectingClientFactory):
             self.__discovered = hostaddrs
 
         # Check if this node is the master.
-        ismaster = config.get('ismaster')
+        ismaster = config.get("ismaster")
         if not ismaster:
-            reason = pymongo.errors.AutoReconnect('not master')
+            reason = AutoReconnect("not master")
             proto.fail(reason)
             return
 
@@ -171,12 +166,12 @@ class _Connection(ReconnectingClientFactory):
         delay = False
         self.__index += 1
 
-        allNodes = list(self.uri['nodelist']) + list(self.__discovered)
-        if self.__index >= len(allNodes):
+        all_nodes = list(self.uri["nodelist"]) + list(self.__discovered)
+        if self.__index >= len(all_nodes):
             self.__index = 0
             delay = True
 
-        connector.host, connector.port = allNodes[self.__index]
+        connector.host, connector.port = all_nodes[self.__index]
 
         if delay:
             self.retry(connector)
@@ -201,8 +196,6 @@ class _Connection(ReconnectingClientFactory):
     def uri(self):
         return self.__uri
 
-
-
     @defer.inlineCallbacks
     def _auth_proto(self, proto):
         yield defer.DeferredList(
@@ -226,22 +219,24 @@ class ConnectionPool(object):
     __pool_size = None
     __uri = None
 
-    def __init__(self, uri='mongodb://127.0.0.1:27017', pool_size=1, ssl_context_factory=None):
+    def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None):
         assert isinstance(uri, basestring)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
 
-        if not uri.startswith('mongodb://'):
-            uri = 'mongodb://' + uri
+        if not uri.startswith("mongodb://"):
+            uri = "mongodb://".join(uri)
 
         self.__uri = parse_uri(uri)
         self.__pool_size = pool_size
-        self.__pool = [_Connection(self, self.__uri, i) for i in xrange(pool_size)]
+        self.__pool = [_Connection(self, self.__uri, i) for i in range(pool_size)]
 
         if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
-            self.authenticate(self.__uri['database'], self.__uri['username'], self.__uri['password'])
+            self.authenticate(self.__uri['database'], self.__uri['username'],
+                              self.__uri['password'])
 
         host, port = self.__uri['nodelist'][0]
+
         for factory in self.__pool:
             if ssl_context_factory:
                 factory.connector = reactor.connectSSL(host, port, factory, ssl_context_factory)
@@ -258,17 +253,15 @@ class ConnectionPool(object):
         return self[name]
 
     def __repr__(self):
-        if self.uri['nodelist']:
-            return 'Connection(%r, %r)' % self.uri['nodelist'][0]
-        return 'Connection()'
-
+        if self.uri["nodelist"]:
+            return "Connection(%r, %r)" % self.uri["nodelist"][0]
+        return "Connection()"
 
     def get_default_database(self):
-        if self.uri['database']:
-            return self[self.uri['database']]
+        if self.uri["database"]:
+            return self[self.uri["database"]]
         else:
             return None
-
 
     def disconnect(self):
         for factory in self.__pool:
@@ -317,8 +310,8 @@ class ConnectionPool(object):
 ###
 
 class MongoConnection(ConnectionPool):
-    def __init__(self, host='127.0.0.1', port=27017, pool_size=1):
-        uri = 'mongodb://%s:%d/' % (host, port)
+    def __init__(self, host="127.0.0.1", port=27017, pool_size=1):
+        uri = "mongodb://%s:%d/" % (host, port)
         ConnectionPool.__init__(self, uri, pool_size=pool_size)
 
 

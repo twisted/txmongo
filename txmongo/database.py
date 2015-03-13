@@ -1,5 +1,4 @@
-# coding: utf-8
-# Copyright 2009-2014 The txmongo authors.  All rights reserved.
+# Copyright 2009-2015 The TxMongo Developers.  All rights reserved.
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
@@ -38,7 +37,7 @@ class Database(object):
     def connection(self):
         return self.__factory
 
-    def create_collection(self, name, options={}):
+    def create_collection(self, name, options=None):
         def wrapper(result, deferred, collection):
             if result.get("ok", 0.0):
                 deferred.callback(collection)

@@ -1,5 +1,4 @@
-# coding: utf-8
-# Copyright 2009-2014 The txmongo authors.  All rights reserved.
+# Copyright 2009-2014 The TxMongo Developers.  All rights reserved.
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
@@ -9,7 +8,7 @@ from collections import defaultdict
 """Query filters"""
 
 
-def _DIRECTION(keys, direction):
+def _direction(keys, direction):
     if isinstance(keys, types.StringTypes):
         return (keys, direction),
     elif isinstance(keys, (types.ListType, types.TupleType)):
@@ -18,12 +17,12 @@ def _DIRECTION(keys, direction):
 
 def ASCENDING(keys):
     """Ascending sort order"""
-    return _DIRECTION(keys, 1)
+    return _direction(keys, 1)
 
 
 def DESCENDING(keys):
     """Descending sort order"""
-    return _DIRECTION(keys, -1)
+    return _direction(keys, -1)
 
 
 def GEO2D(keys):
@@ -31,7 +30,7 @@ def GEO2D(keys):
     Two-dimensional geospatial index
     http://www.mongodb.org/display/DOCS/Geospatial+Indexing
     """
-    return _DIRECTION(keys, "2d")
+    return _direction(keys, "2d")
 
 
 def GEO2DSPHERE(keys):
@@ -39,14 +38,15 @@ def GEO2DSPHERE(keys):
     Two-dimensional geospatial index
     http://www.mongodb.org/display/DOCS/Geospatial+Indexing
     """
-    return _DIRECTION(keys, "2dsphere")
+    return _direction(keys, "2dsphere")
+
 
 def GEOHAYSTACK(keys):
     """
     Bucket-based geospatial index
     http://www.mongodb.org/display/DOCS/Geospatial+Haystack+Indexing
     """
-    return _DIRECTION(keys, "geoHaystack")
+    return _direction(keys, "geoHaystack")
 
 
 class _QueryFilter(defaultdict):
@@ -119,4 +119,4 @@ class snapshot(_QueryFilter):
 class comment(_QueryFilter):
     def __init__(self, comment):
         _QueryFilter.__init__(self)
-        self['comment'] = comment
+        self["comment"] = comment

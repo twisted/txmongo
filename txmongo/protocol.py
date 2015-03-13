@@ -1,5 +1,4 @@
-# coding: utf-8
-# Copyright 2009-2014 The txmongo authors.  All rights reserved.
+# Copyright 2009-2014 The TxMongo Developers.  All rights reserved.
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
@@ -7,7 +6,7 @@
 Low level connection to Mongo.
 
 This module contains the wire protocol implementation for txmongo.
-The various constants from the protocl are available as constants.
+The various constants from the protocol are available as constants.
 
 This implementation requires pymongo so that as much of the
 implementation can be shared. This includes BSON encoding and
@@ -17,9 +16,10 @@ decoding as well as Exception types, when applicable.
 from collections import namedtuple
 import struct
 
-import bson
-from pymongo import errors, auth
-from twisted.internet import defer, protocol
+from bson import BSON, SON
+from pymongo import auth
+from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure
+from twisted.internet import defer, protocol, error
 from twisted.python import failure, log
 
 
@@ -35,14 +35,14 @@ OP_DELETE = 2006
 OP_KILL_CURSORS = 2007
 
 OP_NAMES = {
-    OP_REPLY: 'REPLY',
-    OP_MSG: 'MSG',
-    OP_UPDATE: 'UPDATE',
-    OP_INSERT: 'INSERT',
-    OP_QUERY: 'QUERY',
-    OP_GETMORE: 'GETMORE',
-    OP_DELETE: 'DELETE',
-    OP_KILL_CURSORS: 'KILL_CURSORS'
+    OP_REPLY: "REPLY",
+    OP_MSG: "MSG",
+    OP_UPDATE: "UPDATE",
+    OP_INSERT: "INSERT",
+    OP_QUERY: "QUERY",
+    OP_GETMORE: "GETMORE",
+    OP_DELETE: "DELETE",
+    OP_KILL_CURSORS: "KILL_CURSORS"
 }
 
 DELETE_SINGLE_REMOVE = 1 << 0
@@ -74,9 +74,9 @@ class KillCursors(namedtuple('KillCursors', ['len', 'request_id', 'response_to',
                                                opcode, zero, n_cursors, cursors)
 
 
-class Delete(namedtuple('Delete',
-                        ['len', 'request_id', 'response_to', 'opcode', 'zero', 'collection',
-                         'flags', 'selector'])):
+class Delete(namedtuple("Delete",
+                        ["len", "request_id", "response_to", "opcode", "zero", "collection",
+                         "flags", "selector"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_DELETE,
                 zero=0, collection='', flags=0, selector=None):
         return super(Delete, cls).__new__(cls, len, request_id, response_to,
@@ -84,9 +84,9 @@ class Delete(namedtuple('Delete',
                                           flags, selector)
 
 
-class Getmore(namedtuple('Getmore', ['len', 'request_id', 'response_to',
-                                     'opcode', 'zero', 'collection',
-                                     'n_to_return', 'cursor_id'])):
+class Getmore(namedtuple("Getmore", ["len", "request_id", "response_to",
+                                     "opcode", "zero", "collection",
+                                     "n_to_return", "cursor_id"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_GETMORE,
                 zero=0, collection='', n_to_return=-1, cursor_id=-1):
         return super(Getmore, cls).__new__(cls, len, request_id, response_to,
@@ -94,18 +94,18 @@ class Getmore(namedtuple('Getmore', ['len', 'request_id', 'response_to',
                                            n_to_return, cursor_id)
 
 
-class Insert(namedtuple('Insert', ['len', 'request_id', 'response_to',
-                                   'opcode', 'flags', 'collection',
-                                   'documents'])):
+class Insert(namedtuple("Insert", ["len", "request_id", "response_to",
+                                   "opcode", "flags", "collection",
+                                   "documents"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_INSERT,
                 flags=0, collection='', documents=None):
         return super(Insert, cls).__new__(cls, len, request_id, response_to,
                                           opcode, flags, collection, documents)
 
 
-class Reply(namedtuple('Reply', ['len', 'request_id', 'response_to', 'opcode',
-                                 'response_flags', 'cursor_id',
-                                 'starting_from', 'n_returned', 'documents'])):
+class Reply(namedtuple("Reply", ["len", "request_id", "response_to", "opcode",
+                                 "response_flags", "cursor_id",
+                                 "starting_from", "n_returned", "documents"])):
     def __new__(cls, _len=0, request_id=0, response_to=0, opcode=OP_REPLY,
                 response_flags=0, cursor_id=0, starting_from=0,
                 n_returned=None, documents=None):
@@ -113,33 +113,33 @@ class Reply(namedtuple('Reply', ['len', 'request_id', 'response_to', 'opcode',
             documents = []
         if n_returned is None:
             n_returned = len(documents)
-        documents = [b if isinstance(b, bson.BSON) else bson.BSON.encode(b) for b in documents]
+        documents = [b if isinstance(b, BSON) else BSON.encode(b) for b in documents]
         return super(Reply, cls).__new__(cls, _len, request_id, response_to,
                                          opcode, response_flags, cursor_id,
                                          starting_from, n_returned,
                                          documents)
 
 
-class Query(namedtuple('Query', ['len', 'request_id', 'response_to', 'opcode',
-                                 'flags', 'collection', 'n_to_skip',
-                                 'n_to_return', 'query', 'fields'])):
+class Query(namedtuple("Query", ["len", "request_id", "response_to", "opcode",
+                                 "flags", "collection", "n_to_skip",
+                                 "n_to_return", "query", "fields"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_QUERY,
                 flags=0, collection='', n_to_skip=0, n_to_return=-1,
                 query=None, fields=None):
         if query is None:
             query = {}
-        if not isinstance(query, bson.BSON):
-            query = bson.BSON.encode(query)
-        if fields is not None and not isinstance(fields, bson.BSON):
-            fields = bson.BSON.encode(fields)
+        if not isinstance(query, BSON):
+            query = BSON.encode(query)
+        if fields is not None and not isinstance(fields, BSON):
+            fields = BSON.encode(fields)
         return super(Query, cls).__new__(cls, len, request_id, response_to,
                                          opcode, flags, collection, n_to_skip,
                                          n_to_return, query, fields)
 
 
-class Update(namedtuple('Update', ['len', 'request_id', 'response_to',
-                                   'opcode', 'zero', 'collection', 'flags',
-                                   'selector', 'update'])):
+class Update(namedtuple("Update", ["len", "request_id", "response_to",
+                                   "opcode", "zero", "collection", "flags",
+                                   "selector", "update"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_UPDATE,
                 zero=0, collection='', flags=0, selector=None, update=None):
         return super(Update, cls).__new__(cls, len, request_id, response_to,
@@ -150,22 +150,22 @@ class Update(namedtuple('Update', ['len', 'request_id', 'response_to',
 class MongoClientProtocol(protocol.Protocol):
     __request_id = 1
 
-    def getrequestid(self):
+    def get_request_id(self):
         return self.__request_id
 
-    def _send(self, iovec):
+    def _send(self, io_vector):
         request_id, self.__request_id = self.__request_id, self.__request_id + 1
         if self.__request_id >= INT_MAX:
             self.__request_id = 1
-        datalen = sum([len(chunk) for chunk in iovec]) + 8
-        datareq = struct.pack('<ii', datalen, request_id)
-        iovec.insert(0, datareq)
-        self.transport.write(''.join(iovec))
+        data_length = sum([len(chunk) for chunk in io_vector]) + 8
+        data_req = struct.pack("<ii", data_length, request_id)
+        io_vector.insert(0, data_req)
+        self.transport.write(''.join(io_vector))
         return request_id
 
     def send(self, request):
         opname = OP_NAMES[request.opcode]
-        sender = getattr(self, 'send_%s' % opname, None)
+        sender = getattr(self, "send_%s" % opname, None)
         if callable(sender):
             return sender(request)
         else:
@@ -218,8 +218,9 @@ class MongoClientProtocol(protocol.Protocol):
     def send_KILL_CURSORS(self, request):
         iovec = [struct.pack('<iii', *request[2:5]),
                  struct.pack('<i', len(request.cursors))]
+
         for cursor in request.cursors:
-            iovec.append(struct.pack('<q', cursor))
+            iovec.append(struct.pack("<q", cursor))
         return self._send(iovec)
 
 
@@ -242,7 +243,7 @@ class MongoServerProtocol(protocol.Protocol):
 
     def handle(self, request):
         opname = OP_NAMES[request.opcode]
-        handler = getattr(self, 'handle_%s' % opname, None)
+        handler = getattr(self, "handle_%s" % opname, None)
         if callable(handler):
             handler(request)
         else:
@@ -272,6 +273,9 @@ class MongoServerProtocol(protocol.Protocol):
     def handle_KILL_CURSORS(self, request):
         pass
 
+connectionDone = failure.Failure(error.ConnectionDone())
+connectionDone.cleanFailure()
+
 
 class MongoAuthenticationError(Exception): pass
 
@@ -296,7 +300,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
             for df in deferreds:
                 df.callback(self)
 
-    def connectionLost(self, reason):
+    def connectionLost(self, reason=connectionDone):
         if self.__deferreds:
             deferreds, self.__deferreds = self.__deferreds, {}
             for df in deferreds.itervalues():
@@ -333,14 +337,14 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
             df = self.__deferreds.pop(request.response_to)
             if request.response_flags & REPLY_QUERY_FAILURE:
                 doc = request.documents[0].decode()
-                code = doc.get('code')
-                msg = doc.get('$err', 'Unknown error')
+                code = doc.get("code")
+                msg = doc.get("$err", "Unknown error")
                 fail_conn = False
                 if code == 13435:
-                    err = errors.AutoReconnect(msg)
+                    err = AutoReconnect(msg)
                     fail_conn = True
                 else:
-                    err = errors.OperationFailure(msg, code)
+                    err = OperationFailure(msg, code)
                 df.errback(err)
                 if fail_conn:
                     self.transport.loseConnection()
@@ -354,18 +358,18 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         self.transport.loseConnection()
 
     @defer.inlineCallbacks
-    def getlasterror(self, db):
-        command = {'getlasterror': 1}
-        db = '%s.$cmd' % db.split('.', 1)[0]
+    def get_last_error(self, db):
+        command = {"getlasterror": 1}
+        db = "%s.$cmd" % db.split('.', 1)[0]
         uri = self.factory.uri
-        if 'w' in uri['options']:
-            command['w'] = int(uri['options']['w'])
-        if 'wtimeoutms' in uri['options']:
-            command['wtimeout'] = int(uri['options']['wtimeoutms'])
-        if 'fsync' in uri['options']:
-            command['fsync'] = bool(uri['options']['fsync'])
-        if 'journal' in uri['options']:
-            command['journal'] = bool(uri['options']['journal'])
+        if 'w' in uri["options"]:
+            command['w'] = int(uri["options"]['w'])
+        if "wtimeoutms" in uri["options"]:
+            command["wtimeout"] = int(uri["options"]["wtimeoutms"])
+        if "fsync" in uri["options"]:
+            command["fsync"] = bool(uri["options"]["fsync"])
+        if "journal" in uri["options"]:
+            command["journal"] = bool(uri["options"]["journal"])
 
         query = Query(collection=db, query=command)
         reply = yield self.send_QUERY(query)
@@ -373,14 +377,14 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         assert len(reply.documents) == 1
 
         document = reply.documents[0].decode()
-        err = document.get('err', None)
-        code = document.get('code', None)
+        err = document.get("err", None)
+        code = document.get("code", None)
 
         if err is not None:
             if code == 11000:
-                raise errors.DuplicateKeyError(err, code=code)
+                raise DuplicateKeyError(err, code=code)
             else:
-                raise errors.OperationFailure(err, code=code)
+                raise OperationFailure(err, code=code)
 
         defer.returnValue(document)
 
@@ -393,25 +397,25 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         yield self.__auth_lock.acquire()
 
         try:
-            cmd_collection = database_name + '.$cmd'
-            result = yield self.send_QUERY(Query(collection=cmd_collection, query={'getnonce': 1}))
+            cmd_collection = database_name + ".$cmd"
+            result = yield self.send_QUERY(Query(collection=cmd_collection, query={"getnonce": 1}))
             result = result.documents[0].decode()
 
-            if not result['ok']:
-                raise MongoAuthenticationError(result['errmsg'])
+            if not result["ok"]:
+                raise MongoAuthenticationError(result["errmsg"])
 
-            nonce = result['nonce']
+            nonce = result["nonce"]
 
-            auth_cmd = bson.SON(authenticate=1)
-            auth_cmd['user'] = unicode(username)
-            auth_cmd['nonce'] = nonce
-            auth_cmd['key'] = auth._auth_key(nonce, username, password)
+            auth_cmd = SON(authenticate=1)
+            auth_cmd["user"] = unicode(username)
+            auth_cmd["nonce"] = nonce
+            auth_cmd["key"] = auth._auth_key(nonce, username, password)
 
             result = yield self.send_QUERY(Query(collection=cmd_collection, query=auth_cmd))
             result = result.documents[0].decode()
 
-            if not result['ok']:
-                raise MongoAuthenticationError(result['errmsg'])
+            if not result["ok"]:
+                raise MongoAuthenticationError(result["errmsg"])
 
             defer.returnValue(result)
 
@@ -431,106 +435,106 @@ class MongoDecoder:
     def next(self):
         if len(self.dataBuffer) < 16:
             return None
-        msglen, = struct.unpack('<i', self.dataBuffer[:4])
-        if len(self.dataBuffer) < msglen:
+        message_length, = struct.unpack("<i", self.dataBuffer[:4])
+        if len(self.dataBuffer) < message_length:
             return None
-        if msglen < 16:
-            raise errors.ConnectionFailure()
-        msgdata = self.dataBuffer[:msglen]
-        self.dataBuffer = self.dataBuffer[msglen:]
-        return self.decode(msgdata)
+        if message_length < 16:
+            raise ConnectionFailure()
+        message_data = self.dataBuffer[:message_length]
+        self.dataBuffer = self.dataBuffer[message_length:]
+        return self.decode(message_data)
 
-    def decode(self, msgdata):
-        msglen = len(msgdata)
-        header = struct.unpack('<iiii', msgdata[:16])
+    @staticmethod
+    def decode(message_data):
+        message_length = len(message_data)
+        header = struct.unpack("<iiii", message_data[:16])
         opcode = header[3]
         if opcode == OP_UPDATE:
-            zero, = struct.unpack('<i', msgdata[16:20])
+            zero, = struct.unpack("<i", message_data[16:20])
             if zero != 0:
-                raise errors.ConnectionFailure()
-            name = msgdata[20:].split('\x00', 1)[0]
+                raise ConnectionFailure()
+            name = message_data[20:].split("\x00", 1)[0]
             offset = 20 + len(name) + 1
-            flags, = struct.unpack('<i', msgdata[offset:offset + 4])
+            flags, = struct.unpack("<i", message_data[offset:offset + 4])
             offset += 4
-            selectorlen, = struct.unpack('<i', msgdata[offset:offset + 4])
-            selector = bson.BSON(msgdata[offset:offset + selectorlen])
-            offset += selectorlen
-            updatelen, = struct.unpack('<i', msgdata[offset:offset + 4])
-            update = bson.BSON(msgdata[offset:offset + updatelen])
+            selector_length, = struct.unpack("<i", message_data[offset:offset + 4])
+            selector = BSON(message_data[offset:offset + selector_length])
+            offset += selector_length
+            update_length, = struct.unpack("<i", message_data[offset:offset + 4])
+            update = BSON(message_data[offset:offset + update_length])
             return Update(*(header + (zero, name, flags, selector, update)))
         elif opcode == OP_INSERT:
-            flags, = struct.unpack('<i', msgdata[16:20])
-            name = msgdata[20:].split('\x00', 1)[0]
+            flags, = struct.unpack("<i", message_data[16:20])
+            name = message_data[20:].split("\x00", 1)[0]
             offset = 20 + len(name) + 1
             docs = []
-            while offset < len(msgdata):
-                doclen, = struct.unpack('<i', msgdata[offset:offset + 4])
-                docdata = msgdata[offset:offset + doclen]
-                doc = bson.BSON(docdata)
+            while offset < len(message_data):
+                document_length, = struct.unpack("<i", message_data[offset:offset + 4])
+                docdata = message_data[offset:offset + document_length]
+                doc = BSON(docdata)
                 docs.append(doc)
-                offset += doclen
+                offset += document_length
             return Insert(*(header + (flags, name, docs)))
         elif opcode == OP_QUERY:
-            flags, = struct.unpack('<i', msgdata[16:20])
-            name = msgdata[20:].split('\x00', 1)[0]
+            flags, = struct.unpack("<i", message_data[16:20])
+            name = message_data[20:].split("\x00", 1)[0]
             offset = 20 + len(name) + 1
-            ntoskip, ntoreturn = struct.unpack('<ii', msgdata[offset:offset + 8])
+            number_to_skip, number_to_return = struct.unpack("<ii", message_data[offset:offset + 8])
             offset += 8
-            querylen, = struct.unpack('<i', msgdata[offset:offset + 4])
-            querydata = msgdata[offset:offset + querylen]
-            query = bson.BSON(querydata)
-            offset += querylen
+            query_length, = struct.unpack("<i", message_data[offset:offset + 4])
+            query_data = message_data[offset:offset + query_length]
+            query = BSON(query_data)
+            offset += query_length
             fields = None
-            if msglen > offset:
-                fieldslen, = struct.unpack('<i', msgdata[offset:offset + 4])
-                fields = bson.BSON(msgdata[offset:offset + fieldslen])
-            return Query(*(header + (flags, name, ntoskip, ntoreturn, query, fields)))
+            if message_length > offset:
+                fields_length, = struct.unpack("<i", message_data[offset:offset + 4])
+                fields = BSON(message_data[offset:offset + fields_length])
+            return Query(*(header + (flags, name, number_to_skip, number_to_return, query, fields)))
         elif opcode == OP_GETMORE:
-            zero, = struct.unpack('<i', msgdata[16:20])
+            zero, = struct.unpack("<i", message_data[16:20])
             if zero != 0:
-                raise errors.ConnectionFailure()
-            name = msgdata[20:].split('\x00', 1)[0]
+                raise ConnectionFailure()
+            name = message_data[20:].split("\x00", 1)[0]
             offset = 20 + len(name) + 1
-            ntoreturn, cursorid = struct.unpack('<iq', msgdata[offset:offset + 12])
-            return Getmore(*(header + (zero, name, ntoreturn, cursorid)))
+            number_to_return, cursorid = struct.unpack("<iq", message_data[offset:offset + 12])
+            return Getmore(*(header + (zero, name, number_to_return, cursorid)))
         elif opcode == OP_DELETE:
-            zero, = struct.unpack('<i', msgdata[16:20])
+            zero, = struct.unpack("<i", message_data[16:20])
             if zero != 0:
-                raise errors.ConnectionFailure()
-            name = msgdata[20:].split('\x00', 1)[0]
+                raise ConnectionFailure()
+            name = message_data[20:].split("\x00", 1)[0]
             offset = 20 + len(name) + 1
-            flags, = struct.unpack('<i', msgdata[offset:offset + 4])
+            flags, = struct.unpack("<i", message_data[offset:offset + 4])
             offset += 4
-            selector = bson.BSON(msgdata[offset:])
+            selector = BSON(message_data[offset:])
             return Delete(*(header + (zero, name, flags, selector)))
         elif opcode == OP_KILL_CURSORS:
-            cursors = struct.unpack('<ii', msgdata[16:24])
+            cursors = struct.unpack("<ii", message_data[16:24])
             if cursors[0] != 0:
-                raise errors.ConnectionFailure()
+                raise ConnectionFailure()
             offset = 24
             cursor_list = []
-            for i in xrange(cursors[1]):
-                cursor, = struct.unpack('<q', msgdata[offset:offset + 8])
+            for i in range(cursors[1]):
+                cursor, = struct.unpack("<q", message_data[offset:offset + 8])
                 cursor_list.append(cursor)
                 offset += 8
             return KillCursors(*(header + cursors + (cursor_list,)))
         elif opcode == OP_MSG:
-            if msgdata[-1] != '\x00':
-                raise errors.ConnectionFailure()
-            return Msg(*(header + (msgdata[16:-1].decode('ascii'),)))
+            if message_data[-1] != "\x00":
+                raise ConnectionFailure()
+            return Msg(*(header + (message_data[16:-1].decode("ascii"),)))
         elif opcode == OP_REPLY:
-            reply = struct.unpack('<iqii', msgdata[16:36])
+            reply = struct.unpack("<iqii", message_data[16:36])
             docs = []
             offset = 36
-            for i in xrange(reply[3]):
-                doclen, = struct.unpack('<i', msgdata[offset:offset + 4])
-                if doclen > (msglen - offset):
-                    raise errors.ConnectionFailure()
-                docdata = msgdata[offset:offset + doclen]
-                doc = bson.BSON(docdata)
+            for i in range(reply[3]):
+                document_length, = struct.unpack("<i", message_data[offset:offset + 4])
+                if document_length > (message_length - offset):
+                    raise ConnectionFailure()
+                docdata = message_data[offset:offset + document_length]
+                doc = BSON(docdata)
                 docs.append(doc)
-                offset += doclen
+                offset += document_length
             return Reply(*(header + reply + (docs,)))
         else:
-            raise errors.ConnectionFailure()
-        return header
+            raise ConnectionFailure()

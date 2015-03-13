@@ -1,18 +1,16 @@
-# coding: utf-8
-# Copyright 2009-2014 The txmongo authors.  All rights reserved.
+# Copyright 2009-2015 The TxMongo Developers.  All rights reserved.
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-import bson
-from bson import ObjectId
+import types
+
+from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
-import types
-from pymongo import errors
+from pymongo.errors import InvalidName
 from txmongo import filter as qf
-from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, \
-    UPDATE_MULTI, Query, Getmore, Insert, \
-    Update, Delete, KillCursors
+from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
+    Query, Getmore, Insert, Update, Delete, KillCursors
 from twisted.internet import defer
 
 
@@ -22,17 +20,14 @@ class Collection(object):
             raise TypeError("name must be an instance of basestring")
 
         if not name or ".." in name:
-            raise errors.InvalidName("collection names cannot be empty")
+            raise InvalidName("collection names cannot be empty")
         if "$" in name and not (name.startswith("oplog.$main") or
                                 name.startswith("$cmd")):
-            raise errors.InvalidName("collection names must not "
-                                     "contain '$': %r" % name)
+            raise InvalidName("collection names must not contain '$': %r" % name)
         if name[0] == "." or name[-1] == ".":
-            raise errors.InvalidName("collection names must not start "
-                                     "or end with '.': %r" % name)
+            raise InvalidName("collection names must not start or end with '.': %r" % name)
         if "\x00" in name:
-            raise errors.InvalidName("collection names must not contain the "
-                                     "null character")
+            raise InvalidName("collection names must not contain the null character")
 
         self._database = database
         self._collection_name = unicode(name)
@@ -59,7 +54,8 @@ class Collection(object):
     def __call__(self, collection_name):
         return self[collection_name]
 
-    def _fields_list_to_dict(self, fields):
+    @staticmethod
+    def _fields_list_to_dict(fields):
         """
         transform a list of fields from ["a", "b"] to {"a":1, "b":1}
         """
@@ -70,8 +66,9 @@ class Collection(object):
             as_dict[field] = 1
         return as_dict
 
-    def _gen_index_name(self, keys):
-        return u"_".join([u"%s_%s" % item for item in keys])
+    @staticmethod
+    def _gen_index_name(keys):
+        return u'_'.join([u"%s_%s" % item for item in keys])
 
     def options(self):
         def wrapper(result):
@@ -82,9 +79,9 @@ class Collection(object):
                 return options
             return {}
 
-        d = self._database.system.namespaces.find_one({"name": str(self)})
-        d.addCallback(wrapper)
-        return d
+        deferred_find_one = self._database.system.namespaces.find_one({"name": str(self)})
+        deferred_find_one.addCallback(wrapper)
+        return deferred_find_one
 
     @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
@@ -111,8 +108,8 @@ class Collection(object):
                 fields = self._fields_list_to_dict(fields)
 
         if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot, qf.comment)):
-            if '$query' not in spec:
-                spec = {'$query': spec}
+            if "$query" not in spec:
+                spec = {"$query": spec}
                 for k, v in filter.iteritems():
                     if isinstance(v, (list, tuple)):
                         spec['$' + k] = dict(v)
@@ -121,7 +118,7 @@ class Collection(object):
 
         proto = yield self._database.connection.getprotocol()
 
-        flags = kwargs.get('flags', 0)
+        flags = kwargs.get("flags", 0)
         query = Query(flags=flags, collection=str(self),
                       n_to_skip=skip, n_to_return=limit,
                       query=spec, fields=fields)
@@ -133,42 +130,42 @@ class Collection(object):
                 to_fetch = 0    # no limit
             elif limit < 0:
                 # We won't actually get here because MongoDB won't create cursor when limit < 0
-                to_fetch = None # close cursor
+                to_fetch = None  # close cursor
             else:
                 to_fetch = limit - len(documents)
                 if to_fetch <= 0:
-                    to_fetch = None # close cursor
+                    to_fetch = None  # close cursor
 
             if to_fetch is None:
                 proto.send_KILL_CURSORS(KillCursors(
-                    n_cursors = 1,
-                    cursors = [ reply.cursor_id ]
+                    n_cursors=1,
+                    cursors=[reply.cursor_id]
                 ))
                 break
 
             reply = yield proto.send_GETMORE(Getmore(
-                collection = str(self),
-                n_to_return = to_fetch,
-                cursor_id = reply.cursor_id
+                collection=str(self),
+                n_to_return=to_fetch,
+                cursor_id=reply.cursor_id
             ))
             documents.extend(reply.documents)
 
         if limit > 0:
             documents = documents[:limit]
 
-        as_class = kwargs.get('as_class', dict)
+        as_class = kwargs.get("as_class", dict)
 
         defer.returnValue([d.decode(as_class=as_class) for d in documents])
 
     def find_with_cursor(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
-        ''' find method that uses the cursor to only return a block of
+        """ find method that uses the cursor to only return a block of
         results at a time.
         Arguments are the same as with find()
         returns deferred that results in a tuple: (docs, deferred) where
         docs are the current page of results and deferred results in the next
         tuple. When the cursor is exhausted, it will return the tuple
         ([], None)
-        '''
+        """
         if spec is None:
             spec = SON()
 
@@ -188,55 +185,54 @@ class Collection(object):
                 fields = self._fields_list_to_dict(fields)
 
         if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
-            if '$query' not in spec:
-                spec = {'$query': spec}
+            if "$query" not in spec:
+                spec = {"$query": spec}
                 for k, v in filter.iteritems():
                     spec['$' + k] = dict(v)
 
-        as_class = kwargs.get('as_class', dict)
-        d = self._database.connection.getprotocol()
+        as_class = kwargs.get("as_class", dict)
+        deferred_protocol = self._database.connection.getprotocol()
 
         def after_connection(proto):
-            flags = kwargs.get('flags', 0)
+            flags = kwargs.get("flags", 0)
             query = Query(flags=flags, collection=str(self),
                           n_to_skip=skip, n_to_return=limit,
                           query=spec, fields=fields)
 
-            d = proto.send_QUERY(query)
-            d.addCallback(after_reply, proto)
-            return d
+            deferred_query = proto.send_QUERY(query)
+            deferred_query.addCallback(after_reply, proto)
+            return deferred_query
 
         def after_reply(reply, proto, fetched=0):
             documents = reply.documents
-            fetched = fetched + len(documents)
-            out = [d.decode(as_class=as_class) for d in documents]
+            fetched += len(documents)
+            out = [document.decode(as_class=as_class) for document in documents]
             if reply.cursor_id:
                 if limit <= 0:
                     to_fetch = len(documents)
                 else:
                     to_fetch = -1 if fetched < limit else len(documents)
                 if to_fetch < 0:
-                    nomore = defer.succeed(([], None))
-                    return (out, nomore)
+                    no_more = defer.succeed(([], None))
+                    return out, no_more
 
-                getmore = Getmore(collection=str(self),
-                                  n_to_return=to_fetch,
-                                  cursor_id=reply.cursor_id)
-                d = proto.send_GETMORE(getmore)
-                d.addCallback(after_reply, proto, fetched)
-                return (out, d)
-            nomore = defer.succeed(([], None))
-            return (out, nomore)
+                get_more = Getmore(collection=str(self), n_to_return=to_fetch,
+                                   cursor_id=reply.cursor_id)
+                d1 = proto.send_GETMORE(get_more)
+                d1.addCallback(after_reply, proto, fetched)
+                return out, d1
+            no_more = defer.succeed(([], None))
+            return out, no_more
 
-        d.addCallback(after_connection)
-        return d
+        deferred_protocol.addCallback(after_connection)
+        return deferred_protocol
 
     def find_one(self, spec=None, fields=None, **kwargs):
         if isinstance(spec, ObjectId):
-            spec = {'_id': spec}
-        df = self.find(spec=spec, limit=1, fields=fields, **kwargs)
-        df.addCallback(lambda r: r[0] if r else {})
-        return df
+            spec = {"_id": spec}
+        deferred_find = self.find(spec=spec, limit=1, fields=fields, **kwargs)
+        deferred_find.addCallback(lambda r: r[0] if r else {})
+        return deferred_find
 
     def count(self, spec=None, fields=None):
         def wrapper(result):
@@ -250,9 +246,9 @@ class Collection(object):
         spec = SON([("count", self._collection_name),
                     ("query", spec or SON()),
                     ("fields", fields)])
-        d = self._database["$cmd"].find_one(spec)
-        d.addCallback(wrapper)
-        return d
+        deferred_find_one = self._database["$cmd"].find_one(spec)
+        deferred_find_one.addCallback(wrapper)
+        return deferred_find_one
 
     def group(self, keys, initial, reduce, condition=None, finalize=None):
         body = {
@@ -262,9 +258,9 @@ class Collection(object):
         }
 
         if isinstance(keys, basestring):
-            body['$keyf'] = Code(keys)
+            body["$keyf"] = Code(keys)
         else:
-            body['key'] = self._fields_list_to_dict(keys)
+            body["key"] = self._fields_list_to_dict(keys)
 
         if condition:
             body["cond"] = condition
@@ -275,7 +271,7 @@ class Collection(object):
 
     def filemd5(self, spec):
         def wrapper(result):
-            return result.get('md5')
+            return result.get("md5")
 
         if not isinstance(spec, ObjectId):
             raise ValueError("filemd5 expected an objectid for its "
@@ -284,30 +280,30 @@ class Collection(object):
         spec = SON([("filemd5", spec),
                     ("root", self._collection_name)])
 
-        d = self._database['$cmd'].find_one(spec)
-        d.addCallback(wrapper)
-        return d
+        deferred_fine_one = self._database["$cmd"].find_one(spec)
+        deferred_fine_one.addCallback(wrapper)
+        return deferred_fine_one
 
     @defer.inlineCallbacks
     def insert(self, docs, safe=True, **kwargs):
         if isinstance(docs, types.DictType):
-            ids = docs.get('_id', ObjectId())
+            ids = docs.get("_id", ObjectId())
             docs["_id"] = ids
             docs = [docs]
         elif isinstance(docs, types.ListType):
             ids = []
             for doc in docs:
                 if isinstance(doc, types.DictType):
-                    id = doc.get('_id', ObjectId())
-                    ids.append(id)
-                    doc["_id"] = id
+                    oid = doc.get("_id", ObjectId())
+                    ids.append(oid)
+                    doc["_id"] = oid
                 else:
                     raise TypeError("insert takes a document or a list of documents")
         else:
             raise TypeError("insert takes a document or a list of documents")
 
-        docs = [bson.BSON.encode(d) for d in docs]
-        flags = kwargs.get('flags', 0)
+        docs = [BSON.encode(d) for d in docs]
+        flags = kwargs.get("flags", 0)
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
         proto = yield self._database.connection.getprotocol()
@@ -315,7 +311,7 @@ class Collection(object):
         proto.send_INSERT(insert)
 
         if safe:
-            yield proto.getlasterror(str(self._database))
+            yield proto.get_last_error(str(self._database))
 
         defer.returnValue(ids)
 
@@ -328,15 +324,15 @@ class Collection(object):
         if not isinstance(upsert, types.BooleanType):
             raise TypeError("upsert must be an instance of bool")
 
-        flags = kwargs.get('flags', 0)
+        flags = kwargs.get("flags", 0)
 
         if multi:
             flags |= UPDATE_MULTI
         if upsert:
             flags |= UPDATE_UPSERT
 
-        spec = bson.BSON.encode(spec)
-        document = bson.BSON.encode(document)
+        spec = BSON.encode(spec)
+        document = BSON.encode(document)
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
         proto = yield self._database.connection.getprotocol()
@@ -344,16 +340,16 @@ class Collection(object):
         proto.send_UPDATE(update)
 
         if safe:
-            ret = yield proto.getlasterror(str(self._database))
+            ret = yield proto.get_last_error(str(self._database))
             defer.returnValue(ret)
 
     def save(self, doc, safe=True, **kwargs):
         if not isinstance(doc, types.DictType):
             raise TypeError("cannot save objects of type %s" % type(doc))
 
-        objid = doc.get("_id")
-        if objid:
-            return self.update({"_id": objid}, doc, safe=safe, upsert=True, **kwargs)
+        oid = doc.get("_id")
+        if oid:
+            return self.update({"_id": oid}, doc, safe=safe, upsert=True, **kwargs)
         else:
             return self.insert(doc, safe=safe, **kwargs)
 
@@ -364,18 +360,18 @@ class Collection(object):
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict, not %s" % type(spec))
 
-        flags = kwargs.get('flags', 0)
+        flags = kwargs.get("flags", 0)
         if single:
             flags |= DELETE_SINGLE_REMOVE
 
-        spec = bson.BSON.encode(spec)
+        spec = BSON.encode(spec)
         delete = Delete(flags=flags, collection=str(self), selector=spec)
         proto = yield self._database.connection.getprotocol()
 
         proto.send_DELETE(delete)
 
         if safe:
-            ret = yield proto.getlasterror(str(self._database))
+            ret = yield proto.get_last_error(str(self._database))
             defer.returnValue(ret)
 
     def drop(self, **kwargs):
@@ -410,13 +406,13 @@ class Collection(object):
             kwargs["bucketSize"] = kwargs.pop("bucket_size")
 
         index.update(kwargs)
-        d = self._database.system.indexes.insert(index, safe=True)
-        d.addCallback(wrapper, name)
-        return d
+        deferred_insert = self._database.system.indexes.insert(index, safe=True)
+        deferred_insert.addCallback(wrapper, name)
+        return deferred_insert
 
     def ensure_index(self, sort_fields, **kwargs):
         # ensure_index is an alias of create_index since we are not
-        # keep an index cache same way pymongo does
+        # keeping an index cache same way pymongo does
         return self.create_index(sort_fields, **kwargs)
 
     def drop_index(self, index_identifier):
@@ -437,12 +433,12 @@ class Collection(object):
         def wrapper(raw):
             info = {}
             for idx in raw:
-                info[idx["name"]] = idx["key"].items()
+                info[idx["name"]] = idx
             return info
 
-        d = self._database.system.indexes.find({"ns": str(self)})
-        d.addCallback(wrapper)
-        return d
+        deferred_find = self._database.system.indexes.find({"ns": str(self)})
+        deferred_find.addCallback(wrapper)
+        return deferred_find
 
     def rename(self, new_name):
         cmd = SON([("renameCollection", str(self)),
@@ -485,37 +481,36 @@ class Collection(object):
         cmd = SON([("mapreduce", self._collection_name),
                    ("map", map), ("reduce", reduce)])
         cmd.update(**kwargs)
-        d = self._database["$cmd"].find_one(cmd)
-        d.addCallback(wrapper, full_response)
-        return d
+        deferred_find_one = self._database["$cmd"].find_one(cmd)
+        deferred_find_one.addCallback(wrapper, full_response)
+        return deferred_find_one
 
-    def find_and_modify(self, query={}, update=None, upsert=False, **kwargs):
+    def find_and_modify(self, query=None, update=None, upsert=False, **kwargs):
         def wrapper(result):
             no_obj_error = "No matching object found"
-            if not result['ok']:
+            if not result["ok"]:
                 if result["errmsg"] == no_obj_error:
                     return None
                 else:
                     raise ValueError("Unexpected Error: %s" % (result,))
-            return result.get('value')
+            return result.get("value")
 
-        if (not update and not kwargs.get('remove', None)):
+        if not update and not kwargs.get("remove", None):
             raise ValueError("Must either update or remove")
 
-        if (update and kwargs.get('remove', None)):
+        if update and kwargs.get("remove", None):
             raise ValueError("Can't do both update and remove")
 
         cmd = SON([("findAndModify", self._collection_name)])
         cmd.update(kwargs)
         # No need to include empty args
         if query:
-            cmd['query'] = query
+            cmd["query"] = query
         if update:
-            cmd['update'] = update
+            cmd["update"] = update
         if upsert:
-            cmd['upsert'] = upsert
+            cmd["upsert"] = upsert
 
-        d = self._database["$cmd"].find_one(cmd)
-        d.addCallback(wrapper)
-
-        return d
+        deferred_find_one = self._database["$cmd"].find_one(cmd)
+        deferred_find_one.addCallback(wrapper)
+        return deferred_find_one

@@ -14,11 +14,10 @@
 # limitations under the License.
 
 from twisted.trial import unittest
-from twisted.trial import runner
 from twisted.internet import base, defer
 import txmongo
 
-mongo_host = 'localhost'
+mongo_host = "localhost"
 mongo_port = 27017
 base.DelayedCall.debug = True
 
@@ -26,8 +25,8 @@ base.DelayedCall.debug = True
 class TestMongoConnection(unittest.TestCase):
 
     def setUp(self):
-        self.named_conn = txmongo.connection.ConnectionPool('mongodb://localhost/dbname')
-        self.unnamed_conn = txmongo.connection.ConnectionPool('mongodb://localhost/')
+        self.named_conn = txmongo.connection.ConnectionPool("mongodb://localhost/dbname")
+        self.unnamed_conn = txmongo.connection.ConnectionPool("mongodb://localhost/")
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -35,5 +34,6 @@ class TestMongoConnection(unittest.TestCase):
         yield self.unnamed_conn.disconnect()
 
     def test_GetDefaultDatabase(self):
-        self.assertEqual(self.named_conn.get_default_database().name, self.named_conn['dbname'].name)
+        self.assertEqual(self.named_conn.get_default_database().name,
+                         self.named_conn["dbname"].name)
         self.assertEqual(self.unnamed_conn.get_default_database(), None)

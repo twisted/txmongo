@@ -4,7 +4,6 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-import _local_path
 import sys
 import time
 
@@ -17,7 +16,7 @@ import txmongo
 def insertData(conn):
     print "inserting data..."
     collection = conn.foo.test
-    for x in xrange(10000):
+    for x in range(10000):
         d = collection.insert({"something":x*time.time()}, safe=True)
         d.addErrback(log.err)
     return d

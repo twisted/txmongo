@@ -4,10 +4,10 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-import _local_path
 import time
 import txmongo
 from twisted.internet import defer, reactor
+
 
 @defer.inlineCallbacks
 def example():
@@ -17,8 +17,8 @@ def example():
     test = foo.test  # `test` collection
 
     # insert some data
-    for x in xrange(10000):
-        result = yield test.insert({"something":x*time.time()}, safe=True)
+    for x in range(10000):
+        result = yield test.insert({"something": x*time.time()}, safe=True)
         print result
 
 if __name__ == '__main__':

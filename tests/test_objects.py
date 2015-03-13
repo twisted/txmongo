@@ -23,11 +23,10 @@ from txmongo import gridfs
 from txmongo import filter as qf
 from txmongo._gridfs import GridIn
 from twisted.trial import unittest
-from twisted.trial import runner
 from twisted.internet import base, defer
 
-mongo_host="localhost"
-mongo_port=27017
+mongo_host = "localhost"
+mongo_port = 27017
 base.DelayedCall.debug = True
 
 
@@ -49,24 +48,24 @@ class TestMongoObjects(unittest.TestCase):
         test = conn.foo.test
         
         # insert
-        doc = {"foo":"bar", "items":[1, 2, 3]}
+        doc = {"foo": "bar", "items": [1, 2, 3]}
         yield test.insert(doc, safe=True)
         result = yield test.find_one(doc)
-        self.assertEqual(result.has_key("_id"), True)
+        self.assertEqual("_id" in result, True)
         self.assertEqual(result["foo"], "bar")
         self.assertEqual(result["items"], [1, 2, 3])
         
         # insert preserves object id
-        doc.update({'_id': objectid.ObjectId()})
+        doc.update({"_id": objectid.ObjectId()})
         yield test.insert(doc, safe=True)
         result = yield test.find_one(doc)
-        self.assertEqual(result.get('_id'), doc.get('_id'))
+        self.assertEqual(result.get("_id"), doc.get("_id"))
         self.assertEqual(result["foo"], "bar")
         self.assertEqual(result["items"], [1, 2, 3])
 
         # update
-        yield test.update({"_id":result["_id"]}, {"$set":{"one":"two"}}, safe=True)
-        result = yield test.find_one({"_id":result["_id"]})
+        yield test.update({"_id": result["_id"]}, {"$set": {"one": "two"}}, safe=True)
+        result = yield test.find_one({"_id": result["_id"]})
         self.assertEqual(result["one"], "two")
 
         # delete
@@ -84,35 +83,35 @@ class TestMongoObjects(unittest.TestCase):
         test.drop()
 
         # insert with specific timestamp
-        doc1 = {'_id':objectid.ObjectId(),
-                'ts':timestamp.Timestamp(1, 2)}
+        doc1 = {"_id": objectid.ObjectId(),
+                "ts": timestamp.Timestamp(1, 2)}
         yield test.insert(doc1, safe=True)
 
         result = yield test.find_one(doc1)
-        self.assertEqual(result.get('ts').time, 1)
-        self.assertEqual(result.get('ts').inc, 2)
+        self.assertEqual(result.get("ts").time, 1)
+        self.assertEqual(result.get("ts").inc, 2)
 
         # insert with specific timestamp
-        doc2 = {'_id':objectid.ObjectId(),
-                'ts':timestamp.Timestamp(2, 1)}
+        doc2 = {"_id": objectid.ObjectId(),
+                "ts": timestamp.Timestamp(2, 1)}
         yield test.insert(doc2, safe=True)
 
         # the objects come back sorted by ts correctly.
         # (test that we stored inc/time in the right fields)
-        result = yield test.find(filter=qf.sort(qf.ASCENDING('ts')))
+        result = yield test.find(filter=qf.sort(qf.ASCENDING("ts")))
         self.assertEqual(len(result), 2)
-        self.assertEqual(result[0]['_id'], doc1['_id'])
-        self.assertEqual(result[1]['_id'], doc2['_id'])
+        self.assertEqual(result[0]["_id"], doc1["_id"])
+        self.assertEqual(result[1]["_id"], doc2["_id"])
 
         # insert with null timestamp
-        doc3 = {'_id':objectid.ObjectId(),
-                'ts':timestamp.Timestamp(0, 0)}
+        doc3 = {"_id": objectid.ObjectId(),
+                "ts": timestamp.Timestamp(0, 0)}
         yield test.insert(doc3, safe=True)
 
         # time field loaded correctly
-        result = yield test.find_one(doc3['_id'])
+        result = yield test.find_one(doc3["_id"])
         now = time.time()
-        self.assertTrue(now - 2 <= result['ts'].time <= now)
+        self.assertTrue(now - 2 <= result["ts"].time <= now)
 
         # delete
         yield test.remove(doc1["_id"], safe=True)
@@ -135,14 +134,13 @@ class TestGridFsObjects(unittest.TestCase):
         """ Tests gridfs objects """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
-        collection = db.fs
         
-        gfs = gridfs.GridFS(db) # Default collection
+        gfs = gridfs.GridFS(db)  # Default collection
         
-        gridin = GridIn(collection, filename='test', contentType="text/plain",
-                        chunk_size=2**2**2**2)
-        new_file = gfs.new_file(filename='test2', contentType="text/plain",
-                        chunk_size=2**2**2**2)
+        _ = GridIn(db.fs, filename="test", contentType="text/plain",
+                   chunk_size=2**2**2**2)
+        _ = gfs.new_file(filename="test2", contentType="text/plain",
+                         chunk_size=2**2**2**2)
         
         # disconnect
         yield conn.disconnect()
@@ -152,7 +150,6 @@ class TestGridFsObjects(unittest.TestCase):
         """ Tests gridfs operations """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
-        collection = db.fs
         
         # Don't forget to disconnect
         self.addCleanup(self._disconnect, conn)
@@ -166,37 +163,32 @@ class TestGridFsObjects(unittest.TestCase):
         
         try:
             # Tests writing to a new gridfs file
-            gfs = gridfs.GridFS(db) # Default collection
-            g_in = gfs.new_file(filename='optest', contentType="text/plain",
-                            chunk_size=2**2**2**2) # non-default chunk size used
+            gfs = gridfs.GridFS(db)  # Default collection
+            g_in = gfs.new_file(filename="optest", contentType="text/plain",
+                                chunk_size=2**2**2**2)  # non-default chunk size used
             # yielding to ensure writes complete before we close and close before we try to read
             yield g_in.write(in_file.read())
             yield g_in.close()
             
             # Tests reading from an existing gridfs file
-            g_out = yield gfs.get_last_version('optest')
+            g_out = yield gfs.get_last_version("optest")
             data = yield g_out.read()
             out_file.write(data)
             _id = g_out._id
-        except Exception,e:
+        except Exception, e:
             self.fail("Failed to communicate with the GridFS. " +
                       "Is MongoDB running? %s" % e)
         else:
             self.assertEqual(in_file.getvalue(), out_file.getvalue(),
-                         "Could not read the value from writing an input")        
+                             "Could not read the value from writing an input")
         finally:
             in_file.close()
             out_file.close()
             if g_out:
                 g_out.close()
 
-        
         listed_files = yield gfs.list()
-        self.assertEqual(['optest'], listed_files,
-                         "'optest' is the only expected file and we received %s" % listed_files)
+        self.assertEqual(["optest"], listed_files,
+                         "`optest` is the only expected file and we received %s" % listed_files)
         
         yield gfs.delete(_id)
-
-if __name__ == "__main__":
-    suite = runner.TrialSuite((TestMongoObjects, TestGridFsObjects))
-    suite.run()
