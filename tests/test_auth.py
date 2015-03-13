@@ -142,7 +142,7 @@ class TestMongoAuth(unittest.TestCase):
 
             n = pool_size + 1
 
-            yield defer.gatherResults(coll.insert({'x': 42}) for x in xrange(n))
+            yield defer.gatherResults([coll.insert({'x': 42}) for x in xrange(n)])
 
             cnt = yield coll.count()
             self.assertEqual(cnt, n)
@@ -163,7 +163,7 @@ class TestMongoAuth(unittest.TestCase):
         n = pool_size + 1
 
         try:
-            yield defer.gatherResults(coll.insert({'x': 42}) for x in xrange(n))
+            yield defer.gatherResults([coll.insert({'x': 42}) for x in xrange(n)])
 
             cnt = yield coll.count()
             self.assertEqual(cnt, n)
