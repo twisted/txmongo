@@ -123,7 +123,7 @@ class TestMongoQueries(unittest.TestCase):
 
         first_batch = 5
         yield self.coll.insert([make_object() for _ in range(first_batch + obj_count_4mb)])
-        _ = yield self.coll.find(limit=first_batch)
+        yield self.coll.find(limit=first_batch)
 
         status = yield self.db["$cmd"].find_one({"serverStatus": 1})
         self.assertEqual(status["metrics"]["cursor"]["open"]["total"], 0)
