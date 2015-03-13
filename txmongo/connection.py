@@ -206,8 +206,8 @@ class _Connection(ReconnectingClientFactory):
     @defer.inlineCallbacks
     def _auth_proto(self, proto):
         yield defer.DeferredList(
-            (proto.authenticate(database, username, password)
-            for database, (username, password) in self.__auth_creds.iteritems()),
+            [proto.authenticate(database, username, password)
+             for database, (username, password) in self.__auth_creds.iteritems()],
             consumeErrors=True
         )
 
@@ -288,7 +288,7 @@ class ConnectionPool(object):
     def authenticate(self, database, username, password):
         try:
             yield defer.gatherResults(
-                (connection.authenticate(database, username, password) for connection in self.__pool),
+                [connection.authenticate(database, username, password) for connection in self.__pool],
                 consumeErrors=True
             )
         except defer.FirstError as e:
