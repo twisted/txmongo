@@ -171,13 +171,13 @@ class TestIndexInfo(unittest.TestCase):
         yield db.test.create_index(filter.sort(filter.ASCENDING("hello")))
         ix_info = yield db.test.index_information()
         self.assertEqual(len(ix_info), 2)
-        self.assertIsNotNone(ix_info["hello_1"]["name"] == "hello_1")
+        self.assertEqual(ix_info["hello_1"]["name"], "hello_1")
 
         yield db.test.create_index(filter.sort(filter.DESCENDING("hello") +
                                                filter.ASCENDING("world")),
                                    unique=True, sparse=True)
         ix_info = yield db.test.index_information()
-        self.assertIsNotNone(ix_info["hello_1"]["name"] == "hello_1")
+        self.assertEqual(ix_info["hello_1"]["name"], "hello_1")
         self.assertEqual(len(ix_info), 3)
         self.assertEqual({"hello": -1, "world": 1}, ix_info["hello_-1_world_1"]["key"])
         self.assertEqual(True, ix_info["hello_-1_world_1"]["unique"])

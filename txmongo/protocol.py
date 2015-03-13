@@ -63,13 +63,13 @@ REPLY_AWAIT_CAPABLE = 1 << 3
 UPDATE_UPSERT = 1 << 0
 UPDATE_MULTI = 1 << 1
 
-Msg = namedtuple('Msg', ['len', 'request_id', 'response_to', 'opcode', 'message'])
+Msg = namedtuple("Msg", ["len", "request_id", "response_to", "opcode", "message"])
 
-class KillCursors(namedtuple('KillCursors', ['len', 'request_id', 'response_to', 'opcode',
-                                             'zero', 'n_cursors', 'cursors'])):
+class KillCursors(namedtuple("KillCursors", ["len", "request_id", "response_to", "opcode",
+                                             "zero", "n_cursors", "cursors"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_KILL_CURSORS,
                 zero=0, n_cursors=0, cursors=None):
-        n_cursors = __builtins__['len'](cursors)
+        n_cursors = __builtins__["len"](cursors)
         return super(KillCursors, cls).__new__(cls, len, request_id, response_to,
                                                opcode, zero, n_cursors, cursors)
 
@@ -172,52 +172,52 @@ class MongoClientProtocol(protocol.Protocol):
             log.msg("No sender for opcode: %d" % request.opcode)
 
     def send_REPLY(self, request):
-        iovec = [struct.pack('<iiiqii', *request[2:8])]
+        iovec = [struct.pack("<iiiqii", *request[2:8])]
         iovec.extend(request.documents)
         self._send(iovec)
 
     def send_MSG(self, request):
-        iovec = [struct.pack('<ii', *request[2:4]), request.message, '\x00']
+        iovec = [struct.pack("<ii", *request[2:4]), request.message, '\x00']
         return self._send(iovec)
 
     def send_UPDATE(self, request):
-        iovec = [struct.pack('<iii', *request[2:5]),
-                 request.collection.encode('ascii'), '\x00',
-                 struct.pack('<i', request.flags),
+        iovec = [struct.pack("<iii", *request[2:5]),
+                 request.collection.encode("ascii"), '\x00',
+                 struct.pack("<i", request.flags),
                  request.selector,
                  request.update]
         return self._send(iovec)
 
     def send_INSERT(self, request):
-        iovec = [struct.pack('<iii', *request[2:5]),
-                 request.collection.encode('ascii'), '\x00']
+        iovec = [struct.pack("<iii", *request[2:5]),
+                 request.collection.encode("ascii"), '\x00']
         iovec.extend(request.documents)
         return self._send(iovec)
 
     def send_QUERY(self, request):
-        iovec = [struct.pack('<iii', *request[2:5]),
-                 request.collection.encode('ascii'), '\x00',
-                 struct.pack('<ii', request.n_to_skip, request.n_to_return),
+        iovec = [struct.pack("<iii", *request[2:5]),
+                 request.collection.encode("ascii"), '\x00',
+                 struct.pack("<ii", request.n_to_skip, request.n_to_return),
                  request.query,
                  (request.fields or '')]
         return self._send(iovec)
 
     def send_GETMORE(self, request):
-        iovec = [struct.pack('<iii', *request[2:5]),
-                 request.collection.encode('ascii'), '\x00',
-                 struct.pack('<iq', request.n_to_return, request.cursor_id)]
+        iovec = [struct.pack("<iii", *request[2:5]),
+                 request.collection.encode("ascii"), '\x00',
+                 struct.pack("<iq", request.n_to_return, request.cursor_id)]
         return self._send(iovec)
 
     def send_DELETE(self, request):
-        iovec = [struct.pack('<iii', *request[2:5]),
-                 request.collection.encode('ascii'), '\x00',
-                 struct.pack('<i', request.flags),
+        iovec = [struct.pack("<iii", *request[2:5]),
+                 request.collection.encode("ascii"), '\x00',
+                 struct.pack("<i", request.flags),
                  request.selector]
         return self._send(iovec)
 
     def send_KILL_CURSORS(self, request):
-        iovec = [struct.pack('<iii', *request[2:5]),
-                 struct.pack('<i', len(request.cursors))]
+        iovec = [struct.pack("<iii", *request[2:5]),
+                 struct.pack("<i", len(request.cursors))]
 
         for cursor in request.cursors:
             iovec.append(struct.pack("<q", cursor))

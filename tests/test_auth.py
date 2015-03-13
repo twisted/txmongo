@@ -88,12 +88,12 @@ class TestMongoAuth(unittest.TestCase):
         create_user = SON({"createUser": self.login1})
         create_user.update({"pwd": self.password1, "roles": [{"role": "readWrite",
                                                               "db": self.db1}]})
-        _ = yield conn[self.db1]["$cmd"].find_one(create_user)
+        yield conn[self.db1]["$cmd"].find_one(create_user)
 
         create_user = SON({"createUser": self.login2})
         create_user.update({"pwd": self.password2, "roles": [{"role": "readWrite",
                                                               "db": self.db2}]})
-        _ = yield conn[self.db2]["$cmd"].find_one(create_user)
+        yield conn[self.db2]["$cmd"].find_one(create_user)
 
         yield conn.disconnect()
 

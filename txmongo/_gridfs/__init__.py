@@ -138,7 +138,7 @@ class GridFS(object):
                                               DESCENDING("uploadDate")))
 
         d = self.__files.find({"filename": filename},
-                              filter=filter.sort(DESCENDING('uploadDate')))
+                              filter=filter.sort(DESCENDING("uploadDate")))
         d.addCallback(self._cb_get_last_version, filename)
         return d
 

@@ -156,7 +156,7 @@ class TestGridFsObjects(unittest.TestCase):
         try:
             in_file = StringIO("Test input string")
             out_file = StringIO()
-        except Exception, e:
+        except Exception as e:
             self.fail("Failed to create memory files for testing: %s" % e)
 
         g_out = None
@@ -175,7 +175,7 @@ class TestGridFsObjects(unittest.TestCase):
             data = yield g_out.read()
             out_file.write(data)
             _id = g_out._id
-        except Exception, e:
+        except Exception as e:
             self.fail("Failed to communicate with the GridFS. " +
                       "Is MongoDB running? %s" % e)
         else:

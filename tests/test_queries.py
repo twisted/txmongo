@@ -75,13 +75,13 @@ class TestMongoQueries(unittest.TestCase):
     def test_SpecifiedFields(self):
         yield self.coll.insert([{k: v for k in "abcdefg"} for v in range(5)], safe=True)
         res = yield self.coll.find(fields={'a': 1, 'c': 1})
-        _ = yield self.coll.count(fields={'a': 1, 'c': 1})
+        yield self.coll.count(fields={'a': 1, 'c': 1})
         self.assertEqual(res[0].keys(), ['a', 'c', "_id"])
         res = yield self.coll.find(fields=['a', 'c'])
-        _ = yield self.coll.count(fields=['a', 'c'])
+        yield self.coll.count(fields=['a', 'c'])
         self.assertEqual(res[0].keys(), ['a', 'c', "_id"])
         res = yield self.coll.find(fields=[])
-        _ = yield self.coll.count(fields=[])
+        yield self.coll.count(fields=[])
         self.assertEqual(res[0].keys(), ["_id"])
         self.assertRaises(TypeError, self.coll._fields_list_to_dict, [1])
 
