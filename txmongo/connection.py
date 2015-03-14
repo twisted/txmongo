@@ -283,7 +283,7 @@ class ConnectionPool(object):
         return df
 
     @defer.inlineCallbacks
-    def authenticate(self, database, username, password, mechanism='DEFAULT'):
+    def authenticate(self, database, username, password, mechanism="DEFAULT"):
         try:
             yield defer.gatherResults(
                 [connection.authenticate(database, username, password, mechanism)

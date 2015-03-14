@@ -495,11 +495,11 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         yield self.__auth_lock.acquire()
 
         try:
-            if mechanism == 'MONGODB-CR':
+            if mechanism == "MONGODB-CR":
                 auth_func = self.authenticate_mongo_cr
-            elif mechanism == 'SCRAM-SHA-1':
+            elif mechanism == "SCRAM-SHA-1":
                 auth_func = self.authenticate_scram_sha1
-            elif mechanism == 'DEFAULT':
+            elif mechanism == "DEFAULT":
                 if self.max_wire_version >= 3:
                     auth_func = self.authenticate_scram_sha1
                 else:
