@@ -32,32 +32,29 @@ class TestAggregate(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Aggregate(self):
-        yield self.coll.insert([{'oh':'hai', 'lulz':123},
-                                {'oh':'kthxbye', 'lulz':456},
-                                {'oh':'hai', 'lulz':789},], safe=True)
+        yield self.coll.insert([{"oh": "hai", "lulz": 123},
+                                {"oh": "kthxbye", "lulz": 456},
+                                {"oh": "hai", "lulz": 789}, ], safe=True)
 
         res = yield self.coll.aggregate([
-                {'$project': {'oh':1, 'lolz':'$lulz'}}, 
-                {'$group': {'_id':'$oh', 'many_lolz': {'$sum':'$lolz'}}},
-                {'$sort': {'_id':1}}
-                ])
+            {"$project": {"oh": 1, "lolz": "$lulz"}},
+            {"$group": {"_id": "$oh", "many_lolz": {"$sum": "$lolz"}}},
+            {"$sort": {"_id": 1}}
+            ])
 
         self.assertEqual(len(res), 2)
-        self.assertEqual(res[0]['_id'], 'hai')
-        self.assertEqual(res[0]['many_lolz'], 912)
-        self.assertEqual(res[1]['_id'], 'kthxbye')
-        self.assertEqual(res[1]['many_lolz'], 456)
+        self.assertEqual(res[0]["_id"], "hai")
+        self.assertEqual(res[0]["many_lolz"], 912)
+        self.assertEqual(res[1]["_id"], "kthxbye")
+        self.assertEqual(res[1]["many_lolz"], 456)
 
-        res = yield self.coll.aggregate([
-                {'$match': {'oh':'hai'}}
-                ], full_response=True)
+        res = yield self.coll.aggregate([{"$match": {"oh": "hai"}}], full_response=True)
 
-        self.assertIn('ok', res)
-        self.assertIn('result', res)
-        self.assertEqual(len(res['result']), 2)
+        self.assertIn("ok", res)
+        self.assertIn("result", res)
+        self.assertEqual(len(res["result"]), 2)
 
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.coll.drop()
         yield self.conn.disconnect()
-

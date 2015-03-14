@@ -14,13 +14,12 @@
 # limitations under the License.
 
 from twisted.trial import unittest
-from twisted.trial import runner
 from twisted.internet import defer
 import txmongo
 import txmongo.filter as qf
 from pymongo.errors import OperationFailure
 
-mongo_host = 'localhost'
+mongo_host = "localhost"
 mongo_port = 27017
 
 
@@ -49,16 +48,16 @@ class TestMongoFilters(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Comment(self):
-        comment = 'hello world'
+        comment = "hello world"
 
         # Checking that $comment appears in profiler log
         yield self.db.system.profile.drop()
 
-        yield self.db['$cmd'].find_one({ 'profile': 2 })
+        yield self.db["$cmd"].find_one({"profile": 2})
         yield self.coll.find({}, filter=qf.comment(comment))
-        yield self.db['$cmd'].find_one({ 'profile': 0 })
+        yield self.db["$cmd"].find_one({"profile": 0})
 
-        cnt = yield self.db.system.profile.count({ 'query.$comment': comment })
+        cnt = yield self.db.system.profile.count({"query.$comment": comment})
 
         try:
             self.assertEqual(cnt, 1)

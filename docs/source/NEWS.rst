@@ -1,6 +1,39 @@
 Changelog
 =========
 
+Release 15.0 (UNRELEASED)
+-------------------------
+
+This is the first release using the Twisted versioning method.
+
+API Changes
+^^^^^^^^^^^
+
+- ``collections.index_information`` now mirrors PyMongo's method.
+- ``getrequestid`` is now ``get_request_id``
+
+Features
+^^^^^^^^
+
+- Add support for 2dsphere indexes, see http://docs.mongodb.org/manual/tutorial/build-a-2dsphere-index/
+- PEP8 across files as we work through them.
+- Authentication reimplemented for ConnectionPool support with multiple DBs.
+
+Bugfixes
+^^^^^^^^
+
+- Fixed failing tests due to changes in Python in 2.6
+- Fixed limit not being respected, which should help performance.
+- Find now closes MongoDB cursors.
+- Fixed 'hint' filter to correctly serialize with double dollar signs.
+
+
+Improved Documentation
+^^^^^^^^^^^^^^^^^^^^^^
+
+- Added, updated and reworked documentation using Sphinx.
+- The documentation is now hosted on https://txmongo.readthedocs.org/.
+
 
 Release 0.6 (2015-01-23)
 ------------------------
@@ -24,12 +57,6 @@ Bugfixes
 
 - Fixed import in database.py
 
-
-Improved Documentation
-^^^^^^^^^^^^^^^^^^^^^^
-
-- Added, updated and reworked documentation using Sphinx.
-- The documentation is now hosted on https://txmongo.readthedocs.org/.
 
 Release 0.5 (2014-10-02)
 ------------------------

@@ -7,7 +7,7 @@ class Mongod(object):
     # FIXME: this message might change in future versions of MongoDB
     # but waiting for this message is faster than pinging tcp port
     # so leaving this for now
-    success_message = 'waiting for connections on port'
+    success_message = "waiting for connections on port"
 
     def __init__(self, dbpath, port=27017, auth=False):
         self.__proc = None
@@ -24,29 +24,28 @@ class Mongod(object):
         d = defer.Deferred()
         self.__notify_waiting.append(d)
 
-        args = ['mongod',
-                '--port', str(self.port),
-                '--dbpath', str(self.dbpath),
-                '--noprealloc', '--nojournal',
-                '--smallfiles', '--nssize', '1',
-                '--nohttpinterface',
+        args = ["mongod",
+                "--port", str(self.port),
+                "--dbpath", str(self.dbpath),
+                "--noprealloc", "--nojournal",
+                "--smallfiles", "--nssize", "1",
+                "--nohttpinterface",
                 ]
 
-        if self.auth: args.append('--auth')
+        if self.auth: args.append("--auth")
 
-        self.__proc = reactor.spawnProcess(self, 'mongod', args)
+        self.__proc = reactor.spawnProcess(self, "mongod", args)
         return d
-
 
     def stop(self):
         if self.__end_reason is None:
             if self.__proc and self.__proc.pid:
                 d = defer.Deferred()
                 self.__notify_stop.append(d)
-                self.__proc.signalProcess('INT')
+                self.__proc.signalProcess("INT")
                 return d
             else:
-                return defer.fail('Not started yet')
+                return defer.fail("Not started yet")
         else:
             if self.__end_reason.check(ProcessDone):
                 return defer.succeed(None)

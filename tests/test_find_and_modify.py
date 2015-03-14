@@ -32,23 +32,22 @@ class TestFindAndModify(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Update(self):
-        yield self.coll.insert([{'oh':'hai', 'lulz':123},
-                {'oh':'kthxbye', 'lulz':456}], safe=True)
+        yield self.coll.insert([{"oh": "hai", "lulz": 123},
+                                {"oh": "kthxbye", "lulz": 456}], safe=True)
 
-        res = yield self.coll.find_one({'oh':'hai'})
-        self.assertEqual(res['lulz'], 123)
+        res = yield self.coll.find_one({"oh": "hai"})
+        self.assertEqual(res["lulz"], 123)
 
-        res = yield self.coll.find_and_modify({'o2h':'hai'},{'$inc':{'lulz':1}})
+        res = yield self.coll.find_and_modify({"o2h": "hai"}, {"$inc": {"lulz": 1}})
         self.assertEqual(res, None)
 
-        res = yield self.coll.find_and_modify({'oh':'hai'},{'$inc':{'lulz':1}})
-        #print res
-        self.assertEqual(res['lulz'], 123)
-        res = yield self.coll.find_and_modify({'oh':'hai'},{'$inc':{'lulz':1}},new=True)
-        self.assertEqual(res['lulz'], 125)
+        res = yield self.coll.find_and_modify({"oh": "hai"}, {"$inc": {"lulz": 1}})
+        self.assertEqual(res["lulz"], 123)
+        res = yield self.coll.find_and_modify({"oh": "hai"}, {"$inc": {"lulz": 1}}, new=True)
+        self.assertEqual(res["lulz"], 125)
 
-        res = yield self.coll.find_one({'oh':'kthxbye'})
-        self.assertEqual(res['lulz'], 456)
+        res = yield self.coll.find_one({"oh": "kthxbye"})
+        self.assertEqual(res["lulz"], 456)
 
 
     @defer.inlineCallbacks

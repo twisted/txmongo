@@ -8,8 +8,7 @@ include AUTHORS
 include CONTRIBUTORS
 prune Makefile
 prune debian
-recursive-include debian *.debhelper
-recursive-include debian *.substvars
+prune docs
 recursive-include examples *.py
 recursive-include examples *.sh
 recursive-include examples *.tac
