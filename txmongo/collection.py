@@ -84,6 +84,21 @@ class Collection(object):
         return deferred_find_one
 
 
+    @defer.inlineCallbacks
+    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
+        docs, dfr = yield self.find_with_cursor(spec=spec, skip=skip, limit=limit,
+                                                fields=fields, filter=filter, **kwargs)
+
+        if cursor:
+            defer.returnValue((docs, dfr))
+
+        result = []
+        while docs:
+            result.extend(docs)
+            docs, dfr = yield dfr
+
+        defer.returnValue(result)
+
     def __apply_find_filter(self, spec, filter):
         if filter:
             if "query" not in spec:
@@ -96,73 +111,6 @@ class Collection(object):
                     spec['$' + k] = v
 
         return spec
-
-    @defer.inlineCallbacks
-    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
-        if cursor:
-            out = yield self.find_with_cursor(spec=spec, skip=skip, limit=limit,
-                                              fields=fields, filter=filter, **kwargs)
-            defer.returnValue(out)
-        if spec is None:
-            spec = SON()
-
-        if not isinstance(spec, types.DictType):
-            raise TypeError("spec must be an instance of dict")
-        if not isinstance(fields, (types.DictType, types.ListType, types.NoneType)):
-            raise TypeError("fields must be an instance of dict or list")
-        if not isinstance(skip, types.IntType):
-            raise TypeError("skip must be an instance of int")
-        if not isinstance(limit, types.IntType):
-            raise TypeError("limit must be an instance of int")
-
-        if fields is not None:
-            if not isinstance(fields, types.DictType):
-                if not fields:
-                    fields = ["_id"]
-                fields = self._fields_list_to_dict(fields)
-
-        spec = self.__apply_find_filter(spec, filter)
-
-        proto = yield self._database.connection.getprotocol()
-
-        flags = kwargs.get("flags", 0)
-        query = Query(flags=flags, collection=str(self),
-                      n_to_skip=skip, n_to_return=limit,
-                      query=spec, fields=fields)
-
-        reply = yield proto.send_QUERY(query)
-        documents = reply.documents
-        while reply.cursor_id:
-            if limit == 0:
-                to_fetch = 0    # no limit
-            elif limit < 0:
-                # We won't actually get here because MongoDB won't create cursor when limit < 0
-                to_fetch = None  # close cursor
-            else:
-                to_fetch = limit - len(documents)
-                if to_fetch <= 0:
-                    to_fetch = None  # close cursor
-
-            if to_fetch is None:
-                proto.send_KILL_CURSORS(KillCursors(
-                    n_cursors=1,
-                    cursors=[reply.cursor_id]
-                ))
-                break
-
-            reply = yield proto.send_GETMORE(Getmore(
-                collection=str(self),
-                n_to_return=to_fetch,
-                cursor_id=reply.cursor_id
-            ))
-            documents.extend(reply.documents)
-
-        if limit > 0:
-            documents = documents[:limit]
-
-        as_class = kwargs.get("as_class", dict)
-
-        defer.returnValue([d.decode(as_class=as_class) for d in documents])
 
     def find_with_cursor(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
         """ find method that uses the cursor to only return a block of
