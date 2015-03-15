@@ -83,6 +83,20 @@ class Collection(object):
         deferred_find_one.addCallback(wrapper)
         return deferred_find_one
 
+
+    def __apply_find_filter(self, spec, filter):
+        if filter:
+            if "query" not in spec:
+                spec = {"$query": spec}
+
+            for k, v in filter.iteritems():
+                if isinstance(v, (list, tuple)):
+                    spec['$' + k] = dict(v)
+                else:
+                    spec['$' + k] = v
+
+        return spec
+
     @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
         if cursor:
@@ -107,14 +121,7 @@ class Collection(object):
                     fields = ["_id"]
                 fields = self._fields_list_to_dict(fields)
 
-        if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot, qf.comment)):
-            if "$query" not in spec:
-                spec = {"$query": spec}
-                for k, v in filter.iteritems():
-                    if isinstance(v, (list, tuple)):
-                        spec['$' + k] = dict(v)
-                    else:
-                        spec['$' + k] = v
+        spec = self.__apply_find_filter(spec, filter)
 
         proto = yield self._database.connection.getprotocol()
 
@@ -184,11 +191,7 @@ class Collection(object):
                     fields = ["_id"]
                 fields = self._fields_list_to_dict(fields)
 
-        if isinstance(filter, (qf.sort, qf.hint, qf.explain, qf.snapshot)):
-            if "$query" not in spec:
-                spec = {"$query": spec}
-                for k, v in filter.iteritems():
-                    spec['$' + k] = dict(v)
+        spec = self.__apply_find_filter(spec, filter)
 
         as_class = kwargs.get("as_class", dict)
         deferred_protocol = self._database.connection.getprotocol()
@@ -205,24 +208,38 @@ class Collection(object):
 
         def after_reply(reply, proto, fetched=0):
             documents = reply.documents
-            fetched += len(documents)
-            out = [document.decode(as_class=as_class) for document in documents]
-            if reply.cursor_id:
-                if limit <= 0:
-                    to_fetch = len(documents)
-                else:
-                    to_fetch = -1 if fetched < limit else len(documents)
-                if to_fetch < 0:
-                    no_more = defer.succeed(([], None))
-                    return out, no_more
+            docs_count = len(documents)
+            if limit > 0:
+                docs_count = min(docs_count, limit - fetched)
+            fetched += docs_count
 
-                get_more = Getmore(collection=str(self), n_to_return=to_fetch,
-                                   cursor_id=reply.cursor_id)
-                d1 = proto.send_GETMORE(get_more)
-                d1.addCallback(after_reply, proto, fetched)
-                return out, d1
-            no_more = defer.succeed(([], None))
-            return out, no_more
+            out = [document.decode(as_class=as_class) for document in documents[:docs_count]]
+
+            if reply.cursor_id:
+                if limit == 0:
+                    to_fetch = 0  # no limit
+                elif limit < 0:
+                    # We won't actually get here because MongoDB won't
+                    # create cursor when limit < 0
+                    to_fetch = None
+                else:
+                    to_fetch = limit - fetched
+                    if to_fetch <= 0:
+                        to_fetch = None  # close cursor
+
+                if to_fetch is None:
+                    proto.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
+                    return out, defer.succeed(([], None))
+
+                next_reply = proto.send_GETMORE(Getmore(
+                    collection=str(self), cursor_id=reply.cursor_id,
+                    n_to_return=to_fetch
+                ))
+                next_reply.addCallback(after_reply, proto, fetched)
+                return out, next_reply
+
+            return out, defer.succeed(([], None))
+
 
         deferred_protocol.addCallback(after_connection)
         return deferred_protocol
