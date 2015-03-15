@@ -100,8 +100,8 @@ class Collection(object):
     @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
         if cursor:
-            out = yield self.find_with_cursor(spec=spec, skip=skip, fields=fields, filter=filter,
-                                              **kwargs)
+            out = yield self.find_with_cursor(spec=spec, skip=skip, limit=limit,
+                                              fields=fields, filter=filter, **kwargs)
             defer.returnValue(out)
         if spec is None:
             spec = SON()

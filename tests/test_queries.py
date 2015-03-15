@@ -76,6 +76,25 @@ class TestMongoQueries(unittest.TestCase):
         self.assertEqual(total, 750)
 
     @defer.inlineCallbacks
+    def test_FindWithCursorLimit(self):
+        yield self.coll.insert([{'v': i} for i in range(750)], safe=True)
+
+        docs, d = yield self.coll.find_with_cursor(limit=150)
+        total = 0
+        while docs:
+            total += len(docs)
+            docs, d = yield d
+        self.assertEqual(total, 150)
+
+        # Same using find(cursor=True)
+        docs, d = yield self.coll.find(limit=150, cursor=True)
+        total = 0
+        while docs:
+            total += len(docs)
+            docs, d = yield d
+        self.assertEqual(total, 150)
+
+    @defer.inlineCallbacks
     def test_LargeData(self):
         yield self.coll.insert([{'v': ' '*(2**19)} for _ in range(4)], safe=True)
         res = yield self.coll.find()
