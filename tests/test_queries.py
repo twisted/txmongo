@@ -23,6 +23,16 @@ mongo_host = "localhost"
 mongo_port = 27017
 
 
+class _CallCounter(object):
+    def __init__(self, original):
+        self.call_count = 0
+        self.original = original
+
+    def __call__(self, this, *args, **kwargs):
+        self.call_count += 1
+        return self.original(this, *args, **kwargs)
+
+
 class TestMongoQueries(unittest.TestCase):
 
     timeout = 5
@@ -64,6 +74,25 @@ class TestMongoQueries(unittest.TestCase):
             total += len(docs)
             docs, d = yield d
         self.assertEqual(total, 750)
+
+    @defer.inlineCallbacks
+    def test_FindWithCursorLimit(self):
+        yield self.coll.insert([{'v': i} for i in range(750)], safe=True)
+
+        docs, d = yield self.coll.find_with_cursor(limit=150)
+        total = 0
+        while docs:
+            total += len(docs)
+            docs, d = yield d
+        self.assertEqual(total, 150)
+
+        # Same using find(cursor=True)
+        docs, d = yield self.coll.find(limit=150, cursor=True)
+        total = 0
+        while docs:
+            total += len(docs)
+            docs, d = yield d
+        self.assertEqual(total, 150)
 
     @defer.inlineCallbacks
     def test_LargeData(self):
@@ -113,42 +142,68 @@ class TestMongoQueries(unittest.TestCase):
         res = yield self.coll.group(keys, initial, reduce_, cond, final)
         self.assertEqual(len(res["retval"]), 1)
 
+    def __make_big_object(self):
+        return {"_id": ObjectId(), 'x': 'a' * 1000}
+
     @defer.inlineCallbacks
     def test_CursorClosing(self):
-        def make_object():
-            return {"_id": ObjectId(), 'x': 'a' * 1000}
-
         # Calculate number of objects in 4mb batch
-        obj_count_4mb = 4 * 1024**2 / len(BSON.encode(make_object())) + 1
+        obj_count_4mb = 4 * 1024**2 / len(BSON.encode(self.__make_big_object())) + 1
 
         first_batch = 5
-        yield self.coll.insert([make_object() for _ in range(first_batch + obj_count_4mb)])
-        yield self.coll.find(limit=first_batch)
+        yield self.coll.insert([self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
+        result = yield self.coll.find(limit=first_batch)
+
+        self.assertEqual(len(result), 5)
+
+        status = yield self.db["$cmd"].find_one({"serverStatus": 1})
+        self.assertEqual(status["metrics"]["cursor"]["open"]["total"], 0)
+
+    @defer.inlineCallbacks
+    def test_CursorClosingWithCursor(self):
+        # Calculate number of objects in 4mb batch
+        obj_count_4mb = 4 * 1024**2 / len(BSON.encode(self.__make_big_object())) + 1
+
+        first_batch = 5
+        yield self.coll.insert([self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
+
+        result = []
+        docs, dfr = yield self.coll.find_with_cursor({}, limit=first_batch)
+        while docs:
+            result.extend(docs)
+            docs, dfr = yield dfr
+
+        self.assertEqual(len(result), 5)
 
         status = yield self.db["$cmd"].find_one({"serverStatus": 1})
         self.assertEqual(status["metrics"]["cursor"]["open"]["total"], 0)
 
     @defer.inlineCallbacks
     def test_GetMoreCount(self):
-        class CallCounter(object):
-            def __init__(self, original):
-                self.call_count = 0
-                self.original = original
+        counter = _CallCounter(MongoClientProtocol.send_GETMORE)
+        self.patch(MongoClientProtocol, 'send_GETMORE', counter)
 
-            def __call__(self, this, *args, **kwargs):
-                self.call_count += 1
-                return self.original(this, *args, **kwargs)
+        yield self.coll.insert([{'x': 42} for _ in range(20)])
+        result = yield self.coll.find({}, limit=10)
 
-        counter = CallCounter(MongoClientProtocol.send_GETMORE)
-        MongoClientProtocol.send_GETMORE = counter
+        self.assertEqual(len(result), 10)
+        self.assertEqual(counter.call_count, 0)
 
-        try:
-            yield self.coll.insert([{'x': 42} for _ in range(20)])
-            yield self.coll.find({}, limit=10)
+    @defer.inlineCallbacks
+    def test_GetMoreCountWithCursor(self):
+        counter = _CallCounter(MongoClientProtocol.send_GETMORE)
+        self.patch(MongoClientProtocol, 'send_GETMORE', counter)
 
-            self.assertEqual(counter.call_count, 0)
-        finally:
-            MongoClientProtocol.send_GETMORE = counter.original
+        yield self.coll.insert([{'x': 42} for _ in range(20)])
+
+        result = []
+        docs, dfr = yield self.coll.find_with_cursor({}, limit=5)
+        while docs:
+            result.extend(docs)
+            docs, dfr = yield dfr
+
+        self.assertEqual(len(result), 5)
+        self.assertEqual(counter.call_count, 0)
 
     @defer.inlineCallbacks
     def tearDown(self):
