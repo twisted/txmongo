@@ -16,7 +16,11 @@ decoding as well as Exception types, when applicable.
 from collections import namedtuple
 import struct
 
-from bson import BSON, SON
+import base64
+import hmac
+from hashlib import sha1
+from random import SystemRandom
+from bson import BSON, SON, Binary
 from pymongo import auth
 from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure
 from twisted.internet import defer, protocol, error
@@ -284,6 +288,9 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
     __connection_ready = None
     __deferreds = None
 
+    min_wire_version = None
+    max_wire_version = None
+
     def __init__(self):
         MongoServerProtocol.__init__(self)
         self.__connection_ready = []
@@ -388,37 +395,121 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
         defer.returnValue(document)
 
+    def set_wire_versions(self, min_wire_version, max_wire_version):
+        self.min_wire_version = min_wire_version
+        self.max_wire_version = max_wire_version
+
+    @defer.inlineCallbacks
+    def __run_command(self, database, query):
+        cmd_collection = str(database) + ".$cmd"
+        response = yield self.send_QUERY(Query(collection=cmd_collection, query=query))
+        defer.returnValue(response.documents[0].decode())
+
+    @defer.inlineCallbacks
+    def authenticate_mongo_cr(self, database_name, username, password):
+        result = yield self.__run_command(database_name, {"getnonce": 1})
+
+        if not result["ok"]:
+            raise MongoAuthenticationError(result["errmsg"])
+
+        nonce = result["nonce"]
+
+        auth_cmd = SON(authenticate=1)
+        auth_cmd["user"] = unicode(username)
+        auth_cmd["nonce"] = nonce
+        auth_cmd["key"] = auth._auth_key(nonce, username, password)
+
+        result = yield self.__run_command(database_name, auth_cmd)
+
+        if not result["ok"]:
+            raise MongoAuthenticationError(result["errmsg"])
+
+        defer.returnValue(result)
+
+    @defer.inlineCallbacks
+    def authenticate_scram_sha1(self, database_name, username, password):
+        # Totally stolen from pymongo.auth
+
+        user = username.encode("utf-8").replace('=', "=3D").replace(',', "=2C")
+        nonce = base64.standard_b64encode(str(SystemRandom().random())[2:].encode("utf-8"))
+        first_bare = "n={0},r={1}".format(user, nonce)
+
+        cmd = SON([("saslStart", 1),
+                        ("mechanism", "SCRAM-SHA-1"),
+                        ("autoAuthorize", 1),
+                        ("payload", Binary("n,," + first_bare))])
+        result = yield self.__run_command(database_name, cmd)
+
+        server_first = result["payload"]
+        parsed = auth._parse_scram_response(server_first)
+        iterations = int(parsed['i'])
+        salt = parsed['s']
+        rnonce = parsed['r']
+        if not rnonce.startswith(nonce):
+            raise MongoAuthenticationError("Server returned an invalid nonce.")
+
+        without_proof = "c=biws,r=" + rnonce
+        salted_pass = auth._hi(auth._password_digest(username, password).encode("utf-8"),
+                               base64.standard_b64decode(salt),
+                               iterations)
+        client_key = hmac.HMAC(salted_pass, "Client Key", sha1).digest()
+        stored_key = sha1(client_key).digest()
+        auth_msg = ','.join((first_bare, server_first, without_proof))
+        client_sig = hmac.HMAC(stored_key, auth_msg, sha1).digest()
+        client_proof = "p=" + base64.standard_b64encode(auth._xor(client_key, client_sig))
+        client_final = ','.join((without_proof, client_proof))
+
+        server_key = hmac.HMAC(salted_pass, "Server Key", sha1).digest()
+        server_sig = base64.standard_b64encode(
+            hmac.HMAC(server_key, auth_msg, sha1).digest())
+
+        cmd = SON([("saslContinue", 1),
+                        ("conversationId", result["conversationId"]),
+                        ("payload", Binary(client_final))])
+        result = yield self.__run_command(database_name, cmd)
+
+        if not result["ok"]:
+            raise MongoAuthenticationError("Authentication failed")
+
+        parsed = auth._parse_scram_response(result["payload"])
+        if parsed['v'] != server_sig:
+            raise MongoAuthenticationError("Server returned an invalid signature.")
+
+        # Depending on how it's configured, Cyrus SASL (which the server uses)
+        # requires a third empty challenge.
+        if not result["done"]:
+            cmd = SON([("saslContinue", 1),
+                            ("conversationId", result["conversationId"]),
+                            ("payload", Binary(''))])
+            result = yield self.__run_command(database_name, cmd)
+            if not result["done"]:
+                raise MongoAuthenticationError("SASL conversation failed to complete.")
 
 
     @defer.inlineCallbacks
-    def authenticate(self, database_name, username, password):
+    def authenticate(self, database_name, username, password, mechanism):
         database_name = str(database_name)
+        username = unicode(username)
+        password = unicode(password)
 
         yield self.__auth_lock.acquire()
 
         try:
-            cmd_collection = database_name + ".$cmd"
-            result = yield self.send_QUERY(Query(collection=cmd_collection, query={"getnonce": 1}))
-            result = result.documents[0].decode()
+            if mechanism == "MONGODB-CR":
+                auth_func = self.authenticate_mongo_cr
+            elif mechanism == "SCRAM-SHA-1":
+                auth_func = self.authenticate_scram_sha1
+            elif mechanism == "DEFAULT":
+                if self.max_wire_version >= 3:
+                    auth_func = self.authenticate_scram_sha1
+                else:
+                    auth_func = self.authenticate_mongo_cr
+            else:
+                raise MongoAuthenticationError(
+                    "Unknown authentication mechanism: {0}".format(mechanism))
 
-            if not result["ok"]:
-                raise MongoAuthenticationError(result["errmsg"])
-
-            nonce = result["nonce"]
-
-            auth_cmd = SON(authenticate=1)
-            auth_cmd["user"] = unicode(username)
-            auth_cmd["nonce"] = nonce
-            auth_cmd["key"] = auth._auth_key(nonce, username, password)
-
-            result = yield self.send_QUERY(Query(collection=cmd_collection, query=auth_cmd))
-            result = result.documents[0].decode()
-
-            if not result["ok"]:
-                raise MongoAuthenticationError(result["errmsg"])
-
+            result = yield auth_func(database_name, username, password)
             defer.returnValue(result)
-
         finally:
             self.__auth_lock.release()
 

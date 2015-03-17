@@ -40,14 +40,16 @@ class _Connection(ReconnectingClientFactory):
         # Build the protocol.
         p = ReconnectingClientFactory.buildProtocol(self, addr)
 
+        ready_deferred = p.connectionReady()
+
         if not self.uri['options'].get('slaveok', False):
             # Update our server configuration. This may disconnect if the node
             # is not a master.
-            p.connectionReady().addCallback(lambda _: self.configure(p))
+            ready_deferred.addCallback(lambda _: self.configure(p))
 
-        p.connectionReady()\
+        ready_deferred\
             .addCallback(lambda _: self._auth_proto(p))\
-            .addCallback(lambda _: self.setInstance(instance=p))
+            .addBoth(lambda _: self.setInstance(instance=p))
         return p
 
     def configure(self, proto):
@@ -98,6 +100,9 @@ class _Connection(ReconnectingClientFactory):
         max_bson_size = config.get("maxBsonObjectSize")
         if max_bson_size:
             proto.max_bson_size = max_bson_size
+
+        proto.set_wire_versions(config.get("minWireVersion", 0),
+                                config.get("maxWireVersion", 0))
 
         # Track the other hosts in the replica set.
         hosts = config.get("hosts")
@@ -199,16 +204,16 @@ class _Connection(ReconnectingClientFactory):
     @defer.inlineCallbacks
     def _auth_proto(self, proto):
         yield defer.DeferredList(
-            [proto.authenticate(database, username, password)
-             for database, (username, password) in self.__auth_creds.iteritems()],
+            [proto.authenticate(database, username, password, mechanism)
+             for database, (username, password, mechanism) in self.__auth_creds.iteritems()],
             consumeErrors=True
         )
 
-    def authenticate(self, database, username, password):
-        self.__auth_creds[str(database)] = (username, password)
+    def authenticate(self, database, username, password, mechanism):
+        self.__auth_creds[str(database)] = (username, password, mechanism)
 
         if self.instance:
-            return self.instance.authenticate(database, username, password)
+            return self.instance.authenticate(database, username, password, mechanism)
         else:
             return defer.succeed(None)
 
@@ -278,10 +283,11 @@ class ConnectionPool(object):
         return df
 
     @defer.inlineCallbacks
-    def authenticate(self, database, username, password):
+    def authenticate(self, database, username, password, mechanism="DEFAULT"):
         try:
             yield defer.gatherResults(
-                [connection.authenticate(database, username, password) for connection in self.__pool],
+                [connection.authenticate(database, username, password, mechanism)
+                 for connection in self.__pool],
                 consumeErrors=True
             )
         except defer.FirstError as e:
