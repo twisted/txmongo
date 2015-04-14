@@ -164,7 +164,7 @@ class Collection(object):
                 docs_count = min(docs_count, limit - fetched)
             fetched += docs_count
 
-            if pymongo.version > '3':
+            if pymongo.version >= '3':
                 options = CodecOptions(document_class=as_class)
                 out = [document.decode(codec_options=options) for document in documents[:docs_count]]
             else:
