@@ -18,6 +18,7 @@ from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
 from txmongo.protocol import MongoClientProtocol
+from collections import OrderedDict
 
 mongo_host = "localhost"
 mongo_port = 27017
@@ -204,6 +205,16 @@ class TestMongoQueries(unittest.TestCase):
 
         self.assertEqual(len(result), 5)
         self.assertEqual(counter.call_count, 0)
+
+    @defer.inlineCallbacks
+    def test_AsClass(self):
+        yield self.coll.insert({'x': 42})
+
+        doc = yield self.coll.find_one({})
+        self.assertIs(type(doc), dict)
+
+        doc = yield self.coll.find_one({}, as_class=OrderedDict)
+        self.assertIs(type(doc), OrderedDict)
 
     @defer.inlineCallbacks
     def tearDown(self):

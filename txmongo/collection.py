@@ -7,6 +7,9 @@ import types
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
+import pymongo
+if pymongo.version >= '3':
+    from bson.codec_options import CodecOptions
 from pymongo.errors import InvalidName
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
@@ -161,7 +164,11 @@ class Collection(object):
                 docs_count = min(docs_count, limit - fetched)
             fetched += docs_count
 
-            out = [document.decode(as_class=as_class) for document in documents[:docs_count]]
+            if pymongo.version > '3':
+                options = CodecOptions(document_class=as_class)
+                out = [document.decode(codec_options=options) for document in documents[:docs_count]]
+            else:
+                out = [document.decode(as_class=as_class) for document in documents[:docs_count]]
 
             if reply.cursor_id:
                 if limit == 0:
