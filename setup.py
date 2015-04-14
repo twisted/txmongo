@@ -12,7 +12,7 @@ from distutils.errors import DistutilsPlatformError, DistutilsExecError
 from distutils.core import Extension
 
 
-requirements = ["twisted", "pymongo"]
+requirements = ["twisted", "pymongo==2.7"]
 try:
     import xml.etree.ElementTree
 except ImportError:
