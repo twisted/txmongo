@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 15.0 (UNRELEASED)
+Release 15.0 (2015-05-04)
 -------------------------
 
 This is the first release using the Twisted versioning method.
@@ -18,6 +18,7 @@ Features
 - Add support for 2dsphere indexes, see http://docs.mongodb.org/manual/tutorial/build-a-2dsphere-index/
 - PEP8 across files as we work through them.
 - Authentication reimplemented for ConnectionPool support with multiple DBs.
+- Add support for MongoDB 3.0
 
 Bugfixes
 ^^^^^^^^
