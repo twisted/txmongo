@@ -39,6 +39,12 @@ class TestMongoFilters(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Hint(self):
+        # Ensure there is no {x:1} index
+        yield self.coll.dropIndex([('x', 1)])
+
+        # find() should fail with 'bad hint' if hint specifier works correctly
+        self.assertFailure(self.coll.find({}, filter=qf.hint([('x', 1)])), OperationFailure)
+
         # create index and test it is honoured
         yield self.coll.create_index(qf.sort(qf.ASCENDING("x")), name="test_index")
         found_1 = yield self.coll.find({}, filter=qf.hint([('x', 1)]))
@@ -50,12 +56,6 @@ class TestMongoFilters(unittest.TestCase):
         self.assertFailure(self.coll.find({}, filter=qf.hint(["test_index", 1])), OperationFailure)
         self.assertFailure(self.coll.find({}, filter=qf.hint(qf.ASCENDING("test_index"))),
                            OperationFailure)
-
-        # Ensure there is no {x:1} index
-        yield self.coll.dropIndex([('x', 1)])
-
-        # find() should fail with 'bad hint' if hint specifier works correctly
-        self.assertFailure(self.coll.find({}, filter=qf.hint([('x', 1)])), OperationFailure)
 
     @defer.inlineCallbacks
     def test_Comment(self):
