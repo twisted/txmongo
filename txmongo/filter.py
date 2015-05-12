@@ -64,6 +64,10 @@ class _QueryFilter(defaultdict):
     def _index_document(self, operation, index_list):
         name = self.__class__.__name__
         try:
+            if operation == "hint" and len(index_list) == 1:
+                self[operation] += tuple(((index_list[0]),))
+                return
+
             assert isinstance(index_list, (types.ListType, types.TupleType))
             for key, direction in index_list:
                 if not isinstance(key, types.StringTypes):
@@ -71,6 +75,7 @@ class _QueryFilter(defaultdict):
                 if direction not in (1, -1, "2d", "2dsphere", "geoHaystack"):
                     raise TypeError("Invalid %sing direction: %s" % (name, direction))
                 self[operation] += tuple(((key, direction),))
+
         except Exception:
             raise TypeError("Invalid list of keys for %s: %s" % (name, repr(index_list)))
 
