@@ -84,7 +84,6 @@ class Collection(object):
         deferred_find_one.addCallback(wrapper)
         return deferred_find_one
 
-
     @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
         docs, dfr = yield self.find_with_cursor(spec=spec, skip=skip, limit=limit,
@@ -106,7 +105,9 @@ class Collection(object):
                 spec = {"$query": spec}
 
             for k, v in filter.iteritems():
-                if isinstance(v, (list, tuple)):
+                if k == 'hint' and isinstance(v[0], str):
+                    spec['$' + k] = v[0]
+                elif isinstance(v, (list, tuple)):
                     spec['$' + k] = dict(v)
                 else:
                     spec['$' + k] = v
