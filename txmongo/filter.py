@@ -93,13 +93,14 @@ class sort(_QueryFilter):
 class hint(_QueryFilter):
     """Adds a `hint`, telling Mongo the proper index to use for the query."""
 
-    def __init__(self, index_list):
+    def __init__(self, index_list_or_name):
         _QueryFilter.__init__(self)
-        try:
-            assert isinstance(index_list[0], (types.ListType, types.TupleType))
-        except:
-            index_list = (index_list,)
-        self._index_document("hint", index_list)
+        if isinstance(index_list_or_name, (list, tuple)):
+            if not isinstance(index_list_or_name[0], (list, tuple)):
+                index_list_or_name = (index_list_or_name,)
+            self._index_document("hint", index_list_or_name)
+        else:
+            self["hint"] = index_list_or_name
 
 
 class explain(_QueryFilter):
