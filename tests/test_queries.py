@@ -147,6 +147,14 @@ class TestMongoQueries(unittest.TestCase):
         return {"_id": ObjectId(), 'x': 'a' * 1000}
 
     @defer.inlineCallbacks
+    def __check_no_open_cursors(self):
+        status = yield self.db["$cmd"].find_one({"serverStatus": 1})
+        if "cursor" in status["metrics"]:
+            self.assertEqual(status["metrics"]["cursor"]["open"]["total"], 0)
+        else:
+            self.assertEqual(status["cursors"]["totalOpen"], 0)
+
+    @defer.inlineCallbacks
     def test_CursorClosing(self):
         # Calculate number of objects in 4mb batch
         obj_count_4mb = 4 * 1024**2 / len(BSON.encode(self.__make_big_object())) + 1
@@ -157,8 +165,7 @@ class TestMongoQueries(unittest.TestCase):
 
         self.assertEqual(len(result), 5)
 
-        status = yield self.db["$cmd"].find_one({"serverStatus": 1})
-        self.assertEqual(status["metrics"]["cursor"]["open"]["total"], 0)
+        yield self.__check_no_open_cursors()
 
     @defer.inlineCallbacks
     def test_CursorClosingWithCursor(self):
@@ -176,8 +183,7 @@ class TestMongoQueries(unittest.TestCase):
 
         self.assertEqual(len(result), 5)
 
-        status = yield self.db["$cmd"].find_one({"serverStatus": 1})
-        self.assertEqual(status["metrics"]["cursor"]["open"]["total"], 0)
+        yield self.__check_no_open_cursors()
 
     @defer.inlineCallbacks
     def test_GetMoreCount(self):
