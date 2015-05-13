@@ -15,6 +15,7 @@ decoding as well as Exception types, when applicable.
 
 from collections import namedtuple
 import struct
+import __builtin__
 
 import base64
 import hmac
@@ -73,7 +74,7 @@ class KillCursors(namedtuple("KillCursors", ["len", "request_id", "response_to",
                                              "zero", "n_cursors", "cursors"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_KILL_CURSORS,
                 zero=0, n_cursors=0, cursors=None):
-        n_cursors = __builtins__.len(cursors)
+        n_cursors = __builtin__.len(cursors)
         return super(KillCursors, cls).__new__(cls, len, request_id, response_to,
                                                opcode, zero, n_cursors, cursors)
 
