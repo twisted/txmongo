@@ -103,7 +103,7 @@ class TestMongoQueries(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_SpecifiedFields(self):
-        yield self.coll.insert([{k: v for k in "abcdefg"} for v in range(5)], safe=True)
+        yield self.coll.insert([dict((k, v) for k in "abcdefg") for v in range(5)], safe=True)
         res = yield self.coll.find(fields={'a': 1, 'c': 1})
         yield self.coll.count(fields={'a': 1, 'c': 1})
         self.assertEqual(res[0].keys(), ['a', 'c', "_id"])
