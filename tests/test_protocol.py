@@ -37,13 +37,11 @@ class _FakeTransport(object):
 
 class TestMongoProtocol(unittest.TestCase):
 
-    def __test_encode_decode(self, method, request):
-        # `method` is unbound send_* method of MongoClientProtocol
-
+    def __test_encode_decode(self, request):
         proto = MongoClientProtocol()
         proto.transport = _FakeTransport()
 
-        method(proto, request)
+        proto.send(request)
 
         decoder = MongoDecoder()
         decoder.feed(proto.transport.get_content())
@@ -59,27 +57,27 @@ class TestMongoProtocol(unittest.TestCase):
         request = Query(collection="coll", n_to_skip=123, n_to_return=456,
                         query=BSON.encode({'x': 42}),
                         fields=BSON.encode({'y': 1}))
-        self.__test_encode_decode(MongoClientProtocol.send_QUERY, request)
+        self.__test_encode_decode(request)
 
     def test_EncodeDecodeKillCursors(self):
         request = KillCursors(cursors=[0x12345678, 0x87654321])
-        self.__test_encode_decode(MongoClientProtocol.send_KILL_CURSORS, request)
+        self.__test_encode_decode(request)
 
     def test_EncodeDecodeGetmore(self):
         request = Getmore(collection="coll", cursor_id=0x12345678, n_to_return=5)
-        self.__test_encode_decode(MongoClientProtocol.send_GETMORE, request)
+        self.__test_encode_decode(request)
 
     def test_EncodeDecodeInsert(self):
         request = Insert(collection="coll", documents=[BSON.encode({'x': 42})])
-        self.__test_encode_decode(MongoClientProtocol.send_INSERT, request)
+        self.__test_encode_decode(request)
 
     def test_EncodeDecodeUpdate(self):
         request = Update(flags=UPDATE_MULTI|UPDATE_UPSERT, collection="coll",
                          selector=BSON.encode({'x': 42}),
                          update=BSON.encode({"$set": {'y': 123}}))
-        self.__test_encode_decode(MongoClientProtocol.send_UPDATE, request)
+        self.__test_encode_decode(request)
 
     def test_EncodeDecodeDelete(self):
         request = Delete(flags=DELETE_SINGLE_REMOVE, collection="coll",
                          selector=BSON.encode({'x': 42}))
-        self.__test_encode_decode(MongoClientProtocol.send_DELETE, request)
+        self.__test_encode_decode(request)
