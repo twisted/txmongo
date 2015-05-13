@@ -50,8 +50,8 @@ class TestAggregate(unittest.TestCase):
 
         res = yield self.coll.aggregate([{"$match": {"oh": "hai"}}], full_response=True)
 
-        self.assertIn("ok", res)
-        self.assertIn("result", res)
+        self.assertTrue("ok" in res)
+        self.assertTrue("result" in res)
         self.assertEqual(len(res["result"]), 2)
 
     @defer.inlineCallbacks

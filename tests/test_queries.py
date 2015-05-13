@@ -210,12 +210,12 @@ class TestMongoQueries(unittest.TestCase):
         yield self.coll.insert({'x': 42})
 
         doc = yield self.coll.find_one({})
-        self.assertIs(type(doc), dict)
+        self.assertTrue(type(doc) is dict)
 
         class CustomDict(dict): pass
 
         doc = yield self.coll.find_one({}, as_class=CustomDict)
-        self.assertIs(type(doc), CustomDict)
+        self.assertTrue(type(doc) is CustomDict)
 
     @defer.inlineCallbacks
     def tearDown(self):

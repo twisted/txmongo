@@ -86,7 +86,7 @@ class TestIndexInfo(unittest.TestCase):
         self.assertEqual(self.db.test.test, self.db.test("test"))
 
         options = yield self.db.test.options()
-        self.assertIsInstance(options, dict)
+        self.assertTrue(isinstance(options, dict))
 
         yield self.db.drop_collection("test")
         collection_names = yield self.db.collection_names()
