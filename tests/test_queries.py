@@ -106,13 +106,13 @@ class TestMongoQueries(unittest.TestCase):
         yield self.coll.insert([dict((k, v) for k in "abcdefg") for v in range(5)], safe=True)
         res = yield self.coll.find(fields={'a': 1, 'c': 1})
         yield self.coll.count(fields={'a': 1, 'c': 1})
-        self.assertEqual(res[0].keys(), ['a', 'c', "_id"])
+        self.assertTrue(all(x in ['a', 'c', "_id"] for x in res[0].keys()))
         res = yield self.coll.find(fields=['a', 'c'])
         yield self.coll.count(fields=['a', 'c'])
-        self.assertEqual(res[0].keys(), ['a', 'c', "_id"])
+        self.assertTrue(all(x in ['a', 'c', "_id"] for x in res[0].keys()))
         res = yield self.coll.find(fields=[])
         yield self.coll.count(fields=[])
-        self.assertEqual(res[0].keys(), ["_id"])
+        self.assertTrue(all(x in ["_id"] for x in res[0].keys()))
         self.assertRaises(TypeError, self.coll._fields_list_to_dict, [1])
 
     @defer.inlineCallbacks
