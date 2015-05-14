@@ -37,8 +37,17 @@ class TestMongoObjects(unittest.TestCase):
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         mydb = conn.mydb
         self.assertEqual(isinstance(mydb, database.Database), True)
+        self.assertEqual(repr(mydb), "Database(Connection('localhost', 27017), u'mydb')")
+        self.assertEqual(repr(mydb("mydb2")), repr(mydb.__call__("mydb2")))
         mycol = mydb.mycol
         self.assertEqual(isinstance(mycol, collection.Collection), True)
+        mycol2 = yield mydb.create_collection("mycol2")
+        self.assertEqual(isinstance(mycol2, collection.Collection), True)
+        mycol3 = yield mydb.create_collection("mycol3", {"size": 1000})
+        self.assertEqual(isinstance(mycol3, collection.Collection), True)
+        yield mydb.drop_collection("mycol3")
+        yield mydb.drop_collection(mycol3)
+        self.assertRaises(TypeError, mydb.drop_collection, None)
         yield conn.disconnect()
 
     @defer.inlineCallbacks
