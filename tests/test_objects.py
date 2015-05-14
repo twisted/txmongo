@@ -25,7 +25,7 @@ from txmongo._gridfs import GridIn
 from twisted.trial import unittest
 from twisted.internet import base, defer
 
-mongo_host = "localhost"
+mongo_host = "127.0.0.1"
 mongo_port = 27017
 base.DelayedCall.debug = True
 
