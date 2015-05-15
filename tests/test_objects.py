@@ -37,7 +37,7 @@ class TestMongoObjects(unittest.TestCase):
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         mydb = conn.mydb
         self.assertEqual(isinstance(mydb, database.Database), True)
-        self.assertEqual(repr(mydb), "Database(Connection('localhost', 27017), u'mydb')")
+        self.assertEqual(repr(mydb), "Database(Connection('127.0.0.1', 27017), u'mydb')")
         self.assertEqual(repr(mydb("mydb2")), repr(mydb.__call__("mydb2")))
         mycol = mydb.mycol
         self.assertEqual(isinstance(mycol, collection.Collection), True)
