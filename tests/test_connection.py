@@ -17,7 +17,7 @@ from twisted.trial import unittest
 from twisted.internet import base, defer
 import txmongo
 
-mongo_host = "localhost"
+mongo_host = "127.0.0.1"
 mongo_port = 27017
 base.DelayedCall.debug = True
 
@@ -25,8 +25,8 @@ base.DelayedCall.debug = True
 class TestMongoConnection(unittest.TestCase):
 
     def setUp(self):
-        self.named_conn = txmongo.connection.ConnectionPool("mongodb://localhost/dbname")
-        self.unnamed_conn = txmongo.connection.ConnectionPool("mongodb://localhost/")
+        self.named_conn = txmongo.connection.ConnectionPool("mongodb://127.0.0.1/dbname")
+        self.unnamed_conn = txmongo.connection.ConnectionPool("mongodb://127.0.0.1/")
 
     @defer.inlineCallbacks
     def tearDown(self):

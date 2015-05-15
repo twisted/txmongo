@@ -35,7 +35,7 @@ class _CallCounter(object):
 
 class TestMongoQueries(unittest.TestCase):
 
-    timeout = 5
+    timeout = 15
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -231,7 +231,7 @@ class TestMongoQueries(unittest.TestCase):
 
 class TestMongoQueriesEdgeCases(unittest.TestCase):
 
-    timeout = 5
+    timeout = 15
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -264,7 +264,7 @@ class TestMongoQueriesEdgeCases(unittest.TestCase):
 
 class TestLimit(unittest.TestCase):
 
-    timeout = 5
+    timeout = 15
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -327,7 +327,7 @@ class TestLimit(unittest.TestCase):
 
 class TestSkip(unittest.TestCase):
 
-    timeout = 5
+    timeout = 15
 
     @defer.inlineCallbacks
     def setUp(self):

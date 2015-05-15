@@ -17,7 +17,7 @@ from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
 
-mongo_host = "localhost"
+mongo_host = "127.0.0.1"
 mongo_port = 27017
 
 
