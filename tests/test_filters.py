@@ -99,7 +99,7 @@ class TestMongoFilters(unittest.TestCase):
     @defer.inlineCallbacks
     def test_Explain(self):
         result = yield self.coll.find({}, filter=qf.explain())
-        self.assertTrue("executionStats" in result[0])
+        self.assertTrue("executionStats" in result[0] or "nscanned" in result[0])
 
     @defer.inlineCallbacks
     def test_FilterMerge(self):
