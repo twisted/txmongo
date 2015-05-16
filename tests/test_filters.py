@@ -35,7 +35,9 @@ class TestMongoFilters(unittest.TestCase):
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.coll.drop()
+        yield self.db.system.profile.drop()
         yield self.conn.disconnect()
+
 
     @defer.inlineCallbacks
     def test_Hint(self):
@@ -57,21 +59,63 @@ class TestMongoFilters(unittest.TestCase):
         self.assertFailure(self.coll.find({}, filter=qf.hint(qf.ASCENDING("test_index"))),
                            OperationFailure)
 
+    def test_SortAscendingMultipleFields(self):
+        self.assertEqual(qf.sort(qf.ASCENDING(['x', 'y'])), qf.sort(qf.ASCENDING('x') +
+                                                                    qf.ASCENDING('y')))
+
+    def test_SortOneLevelList(self):
+        self.assertEqual(qf.sort([('x', 1)]), qf.sort(('x', 1)))
+
+    def test_SortInvalidKey(self):
+        self.assertRaises(TypeError, qf.sort, [(1, 2)])
+        self.assertRaises(TypeError, qf.sort, [('x', 3)])
+
+    def test_SortGeoIndexes(self):
+        self.assertEqual(qf.sort(qf.GEO2D('x')), qf.sort([('x', "2d")]))
+        self.assertEqual(qf.sort(qf.GEO2DSPHERE('x')), qf.sort([('x', "2dsphere")]))
+        self.assertEqual(qf.sort(qf.GEOHAYSTACK('x')), qf.sort([('x', "geoHaystack")]))
+
+    @defer.inlineCallbacks
+    def __test_simple_filter(self, filter, optionname, optionvalue):
+        # Checking that `optionname` appears in profiler log with specified value
+
+        yield self.db["$cmd"].find_one({"profile": 2})
+        yield self.coll.find({}, filter=filter)
+        yield self.db["$cmd"].find_one({"profile": 0})
+
+        cnt = yield self.db.system.profile.count({"query." + optionname: optionvalue})
+        self.assertEqual(cnt, 1)
+
     @defer.inlineCallbacks
     def test_Comment(self):
         comment = "hello world"
 
-        # Checking that $comment appears in profiler log
-        yield self.db.system.profile.drop()
+        yield self.__test_simple_filter(qf.comment(comment), "$comment", comment)
+
+    @defer.inlineCallbacks
+    def test_Snapshot(self):
+        yield self.__test_simple_filter(qf.snapshot(), "$snapshot", True)
+
+    @defer.inlineCallbacks
+    def test_Explain(self):
+        result = yield self.coll.find({}, filter=qf.explain())
+        self.assertTrue("executionStats" in result[0])
+
+    @defer.inlineCallbacks
+    def test_FilterMerge(self):
+        self.assertEqual(qf.sort(qf.ASCENDING('x') + qf.DESCENDING('y')),
+                         qf.sort(qf.ASCENDING('x')) + qf.sort(qf.DESCENDING('y')))
+
+        comment = "hello world"
 
         yield self.db["$cmd"].find_one({"profile": 2})
-        yield self.coll.find({}, filter=qf.comment(comment))
+        yield self.coll.find({}, filter=qf.sort(qf.ASCENDING('x')) + qf.comment(comment))
         yield self.db["$cmd"].find_one({"profile": 0})
 
-        cnt = yield self.db.system.profile.count({"query.$comment": comment})
+        cnt = yield self.db.system.profile.count({"query.$orderby.x": 1,
+                                                  "query.$comment": comment})
+        self.assertEqual(cnt, 1)
 
-        try:
-            self.assertEqual(cnt, 1)
-
-        finally:
-            yield self.db.system.profile.drop()
+    def test_Repr(self):
+        self.assertEqual(repr(qf.sort(qf.ASCENDING('x'))),
+                         "<mongodb QueryFilter: {'orderby': (('x', 1),)}>")
