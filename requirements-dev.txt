@@ -5,8 +5,6 @@ pep8
 coverage
 sphinx
 pdbpp
-pytest
-pytest-cov
 diff-cover
 wheel
 setuptools

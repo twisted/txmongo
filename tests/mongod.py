@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import tempfile
 import shutil
 
@@ -28,7 +27,7 @@ class Mongod(object):
     # so leaving this for now
     success_message = "waiting for connections on port"
 
-    def __init__(self, port=27017, auth=False, replset = None):
+    def __init__(self, port=27017, auth=False, replset=None):
         self.__proc = None
         self.__notify_waiting = []
         self.__notify_stop = []
@@ -57,7 +56,6 @@ class Mongod(object):
 
         if self.auth: args.append("--auth")
         if self.replset: args.extend(["--replSet", self.replset])
-
         self.__proc = reactor.spawnProcess(self, "mongod", args)
         return d
 

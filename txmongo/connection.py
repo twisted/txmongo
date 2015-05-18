@@ -240,7 +240,7 @@ class ConnectionPool(object):
         assert pool_size >= 1
 
         if not uri.startswith("mongodb://"):
-            uri = "mongodb://".join(uri)
+            uri = "mongodb://" + uri
 
         self.__uri = parse_uri(uri)
         self.__pool_size = pool_size
