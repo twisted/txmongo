@@ -66,8 +66,9 @@ class TestReplicaSet(unittest.TestCase):
             replstatus_req = master.admin["$cmd"].find_one({"replSetGetStatus": 1})
             ismaster, replstatus = yield defer.gatherResults([ismaster_req, replstatus_req])
 
-            startup = any(m["stateStr"].startswith("STARTUP") for m in replstatus["members"])
-            ready = ismaster["ismaster"] and not startup
+            initialized = replstatus["ok"]
+            startup = any(m["stateStr"].startswith("STARTUP") for m in replstatus.get("members", []))
+            ready = initialized and ismaster["ismaster"] and not startup
 
             if ready:
                 break
