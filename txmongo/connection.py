@@ -4,6 +4,7 @@
 
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.uri_parser import parse_uri
+from pymongo.read_preferences import ReadPreference
 
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory
@@ -15,7 +16,7 @@ from txmongo.protocol import MongoProtocol, Query
 
 class _Connection(ReconnectingClientFactory):
     __notify_ready = None
-    __discovered = None
+    __allnodes = None
     __index = -1
     __uri = None
     __conf_loop = None
@@ -26,7 +27,7 @@ class _Connection(ReconnectingClientFactory):
     maxDelay = 60
 
     def __init__(self, pool, uri, id):
-        self.__discovered = []
+        self.__allnodes = list(uri["nodelist"])
         self.__notify_ready = []
         self.__pool = pool
         self.__uri = uri
@@ -39,18 +40,30 @@ class _Connection(ReconnectingClientFactory):
     def buildProtocol(self, addr):
         # Build the protocol.
         p = ReconnectingClientFactory.buildProtocol(self, addr)
-
-        ready_deferred = p.connectionReady()
-
-        if not self.uri['options'].get('slaveok', False):
-            # Update our server configuration. This may disconnect if the node
-            # is not a master.
-            ready_deferred.addCallback(lambda _: self.configure(p))
-
-        ready_deferred\
-            .addCallback(lambda _: self._auth_proto(p))\
-            .addBoth(lambda _: self.setInstance(instance=p))
+        self._initializeProto(p)
         return p
+
+    @defer.inlineCallbacks
+    def _initializeProto(self, proto):
+        yield proto.connectionReady()
+        self.resetDelay()
+
+        uri_options = self.uri['options']
+        slaveok = uri_options.get('slaveok', False)
+        if 'readpreference' in uri_options:
+            slaveok = uri_options['readpreference'] not in (ReadPreference.PRIMARY.mode,
+                                                            ReadPreference.PRIMARY_PREFERRED.mode)
+
+        try:
+            if not slaveok:
+                # Update our server configuration. This may disconnect if the node
+                # is not a master.
+                yield self.configure(proto)
+
+            yield self._auth_proto(proto)
+            self.setInstance(instance=proto)
+        except Exception as e:
+            proto.fail(e)
 
     def configure(self, proto):
         """
@@ -73,8 +86,7 @@ class _Connection(ReconnectingClientFactory):
             """
         # Make sure we got a result document.
         if len(reply.documents) != 1:
-            proto.fail(OperationFailure("Invalid document length."))
-            return
+            raise OperationFailure("Invalid document length.")
 
         # Get the configuration document from the reply.
         config = reply.documents[0].decode()
@@ -83,8 +95,7 @@ class _Connection(ReconnectingClientFactory):
         if not config.get("ok"):
             code = config.get("code")
             msg = config.get("err", "Unknown error")
-            proto.fail(OperationFailure(msg, code))
-            return
+            raise OperationFailure(msg, code)
 
         # Check that the replicaSet matches.
         set_name = config.get("setName")
@@ -92,9 +103,7 @@ class _Connection(ReconnectingClientFactory):
         if expected_set_name and (expected_set_name != set_name):
             # Log the invalid replica set failure.
             msg = "Mongo instance does not match requested replicaSet."
-            reason = ConfigurationError(msg)
-            proto.fail(reason)
-            return
+            raise ConfigurationError(msg)
 
         # Track max bson object size limit.
         max_bson_size = config.get("maxBsonObjectSize")
@@ -107,22 +116,20 @@ class _Connection(ReconnectingClientFactory):
         # Track the other hosts in the replica set.
         hosts = config.get("hosts")
         if isinstance(hosts, list) and hosts:
-            hostaddrs = []
             for host in hosts:
                 if ':' not in host:
                     host = (host, 27017)
                 else:
                     host = host.split(':', 1)
                     host[1] = int(host[1])
-                hostaddrs.append(host)
-            self.__discovered = hostaddrs
+                    host = tuple(host)
+                if host not in self.__allnodes:
+                    self.__allnodes.append(host)
 
         # Check if this node is the master.
         ismaster = config.get("ismaster")
         if not ismaster:
-            reason = AutoReconnect("not master")
-            proto.fail(reason)
-            return
+            raise AutoReconnect("not master")
 
     def clientConnectionFailed(self, connector, reason):
         self.instance = None
@@ -171,12 +178,11 @@ class _Connection(ReconnectingClientFactory):
         delay = False
         self.__index += 1
 
-        all_nodes = list(self.uri["nodelist"]) + list(self.__discovered)
-        if self.__index >= len(all_nodes):
+        if self.__index >= len(self.__allnodes):
             self.__index = 0
             delay = True
 
-        connector.host, connector.port = all_nodes[self.__index]
+        connector.host, connector.port = self.__allnodes[self.__index]
 
         if delay:
             self.retry(connector)
@@ -184,6 +190,10 @@ class _Connection(ReconnectingClientFactory):
             connector.connect()
 
     def setInstance(self, instance=None, reason=None):
+        if instance == self.instance:
+            # Should not fail deferreds from __notify_ready if setInstance(None)
+            # called when instance is already None
+            return
         self.instance = instance
         deferreds, self.__notify_ready = self.__notify_ready, []
         if deferreds:

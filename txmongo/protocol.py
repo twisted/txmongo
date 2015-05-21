@@ -309,14 +309,24 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 df.callback(self)
 
     def connectionLost(self, reason=connectionDone):
+        # We need to clear factory.instance before failing deferreds
+        # because client code might immediately re-issue query when
+        # it catches AutoReconnect, so we must invalidate current
+        # connection before. Factory.clientConnectionFailed() is called
+        # too late.
+        self.factory.setInstance(None, reason)
+
+        autoreconnect = AutoReconnect()
+
         if self.__deferreds:
             deferreds, self.__deferreds = self.__deferreds, {}
             for df in deferreds.itervalues():
-                df.errback(reason)
+                df.errback(autoreconnect)
         deferreds, self.__connection_ready = self.__connection_ready, []
         if deferreds:
             for df in deferreds:
-                df.errback(reason)
+                df.errback(autoreconnect)
+
         protocol.Protocol.connectionLost(self, reason)
 
     def connectionReady(self):

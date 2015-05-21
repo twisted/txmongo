@@ -99,10 +99,7 @@ class TestMongoAuth(unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.__datadir = self.mktemp()
-        os.makedirs(self.__datadir)
-
-        self.__mongod = Mongod(self.__datadir, port=mongo_port, auth=True)
+        self.__mongod = Mongod(port=mongo_port, auth=True)
         yield self.__mongod.start()
 
         yield self.createUserAdmin()
@@ -124,7 +121,6 @@ class TestMongoAuth(unittest.TestCase):
             yield conn.disconnect()
         finally:
             yield self.__mongod.stop()
-            shutil.rmtree(self.__datadir)
 
     @defer.inlineCallbacks
     def test_AuthConnectionPool(self):
