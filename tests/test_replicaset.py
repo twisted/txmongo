@@ -66,8 +66,8 @@ class TestReplicaSet(unittest.TestCase):
             # to be sure that replica set is up and running, primary is elected and all
             # secondaries are in sync and ready to became new primary
 
-            ismaster_req = master.admin.command("ismaster")
-            replstatus_req = master.admin.command("replSetGetStatus")
+            ismaster_req = master.admin.command("ismaster", check=False)
+            replstatus_req = master.admin.command("replSetGetStatus", check=False)
             ismaster, replstatus = yield defer.gatherResults([ismaster_req, replstatus_req])
 
             initialized = replstatus["ok"]
