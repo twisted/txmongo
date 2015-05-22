@@ -55,7 +55,7 @@ class TestReplicaSet(unittest.TestCase):
 
         master_uri = "mongodb://localhost:{0}/?readPreference=secondaryPreferred".format(self.ports[0])
         master = ConnectionPool(master_uri)
-        yield master.admin["$cmd"].find_one({"replSetInitiate": self.rsconfig})
+        yield master.admin.command("replSetInitiate", self.rsconfig)
 
         ready = False
         n_tries = int(self.__init_timeout / self.__ping_interval)
@@ -66,8 +66,8 @@ class TestReplicaSet(unittest.TestCase):
             # to be sure that replica set is up and running, primary is elected and all
             # secondaries are in sync and ready to became new primary
 
-            ismaster_req = master.admin["$cmd"].find_one({"ismaster": 1})
-            replstatus_req = master.admin["$cmd"].find_one({"replSetGetStatus": 1})
+            ismaster_req = master.admin.command("ismaster")
+            replstatus_req = master.admin.command("replSetGetStatus")
             ismaster, replstatus = yield defer.gatherResults([ismaster_req, replstatus_req])
 
             initialized = replstatus["ok"]

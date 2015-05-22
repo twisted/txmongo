@@ -79,9 +79,9 @@ class TestMongoFilters(unittest.TestCase):
     def __test_simple_filter(self, filter, optionname, optionvalue):
         # Checking that `optionname` appears in profiler log with specified value
 
-        yield self.db["$cmd"].find_one({"profile": 2})
+        yield self.db.command("profile", 2)
         yield self.coll.find({}, filter=filter)
-        yield self.db["$cmd"].find_one({"profile": 0})
+        yield self.db.command("profile", 0)
 
         cnt = yield self.db.system.profile.count({"query." + optionname: optionvalue})
         self.assertEqual(cnt, 1)
@@ -108,9 +108,9 @@ class TestMongoFilters(unittest.TestCase):
 
         comment = "hello world"
 
-        yield self.db["$cmd"].find_one({"profile": 2})
+        yield self.db.command("profile", 2)
         yield self.coll.find({}, filter=qf.sort(qf.ASCENDING('x')) + qf.comment(comment))
-        yield self.db["$cmd"].find_one({"profile": 0})
+        yield self.db.command("profile", 0)
 
         cnt = yield self.db.system.profile.count({"query.$orderby.x": 1,
                                                   "query.$comment": comment})

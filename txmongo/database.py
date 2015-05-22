@@ -67,9 +67,7 @@ class Database(object):
             if "size" in options:
                 options["size"] = float(options["size"])
 
-            command = SON({"create": name})
-            command.update(options)
-            d = self["$cmd"].find_one(command)
+            d = self.command("create", name, **options)
             d.addCallback(wrapper, deferred, collection)
         else:
             deferred.callback(collection)
@@ -84,7 +82,7 @@ class Database(object):
         else:
             raise TypeError("name must be an instance of basestring or txmongo.Collection")
 
-        return self["$cmd"].find_one({"drop": unicode(name)})
+        return self.command("drop", unicode(name), check=False)
 
     def collection_names(self):
         def wrapper(results):

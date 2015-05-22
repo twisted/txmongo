@@ -62,17 +62,17 @@ class TestMongoAuth(unittest.TestCase):
         conn = self.__get_connection()
 
         try:
-            create_user = SON({"createUser": self.ua_login})
-            create_user.update({"pwd": self.ua_password, "roles": [{"role": "userAdminAnyDatabase",
-                                                                    "db": "admin"}]})
-            r = yield conn["admin"]["$cmd"].find_one(create_user)
+            r = yield conn.admin.command("createUser", self.ua_login,
+                                         pwd=self.ua_password,
+                                         roles=[{"role": "userAdminAnyDatabase",
+                                                 "db": "admin"}])
 
             try:
                 # This should fail if authentication enabled in MongoDB since
                 # we've created user but didn't authenticated
                 yield conn[self.db1][self.coll].find_one()
 
-                yield conn["admin"]["$cmd"].find_one({"dropUser": self.ua_login})
+                yield conn.admin.command("dropUser", self.ua_login)
                 raise unittest.SkipTest("Authentication tests require authorization enabled "
                                         "in MongoDB configuration file")
             except OperationFailure:
@@ -85,15 +85,15 @@ class TestMongoAuth(unittest.TestCase):
         conn = self.__get_connection()
         yield conn["admin"].authenticate(self.ua_login, self.ua_password)
 
-        create_user = SON({"createUser": self.login1})
-        create_user.update({"pwd": self.password1, "roles": [{"role": "readWrite",
-                                                              "db": self.db1}]})
-        yield conn[self.db1]["$cmd"].find_one(create_user)
+        yield conn[self.db1].command("createUser", self.login1,
+                                     pwd=self.password1,
+                                     roles=[{"role": "readWrite",
+                                             "db": self.db1}])
 
-        create_user = SON({"createUser": self.login2})
-        create_user.update({"pwd": self.password2, "roles": [{"role": "readWrite",
-                                                              "db": self.db2}]})
-        yield conn[self.db2]["$cmd"].find_one(create_user)
+        yield conn[self.db2].command("createUser", self.login2,
+                                    pwd=self.password2,
+                                    roles=[{"role": "readWrite",
+                                            "db": self.db2}])
 
         yield conn.disconnect()
 
@@ -115,9 +115,9 @@ class TestMongoAuth(unittest.TestCase):
 
             yield conn[self.db1][self.coll].drop()
             yield conn[self.db2][self.coll].drop()
-            yield conn[self.db1]["$cmd"].find_one({"dropUser": self.login1})
-            yield conn[self.db2]["$cmd"].find_one({"dropUser": self.login2})
-            yield conn["admin"]["$cmd"].find_one({"dropUser": self.ua_login})
+            yield conn[self.db1].command("dropUser", self.login1)
+            yield conn[self.db2].command("dropUser", self.login2)
+            yield conn["admin"].command("dropUser", self.ua_login)
             yield conn.disconnect()
         finally:
             yield self.__mongod.stop()

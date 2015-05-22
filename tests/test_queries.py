@@ -149,7 +149,7 @@ class TestMongoQueries(unittest.TestCase):
 
     @defer.inlineCallbacks
     def __check_no_open_cursors(self):
-        status = yield self.db["$cmd"].find_one({"serverStatus": 1})
+        status = yield self.db.command("serverStatus")
         if "cursor" in status["metrics"]:
             self.assertEqual(status["metrics"]["cursor"]["open"]["total"], 0)
         else:
