@@ -40,6 +40,9 @@ class TestReplicaSet(unittest.TestCase):
     # We assume first member to be master
     rsconfig["members"][0]["priority"] = 2
 
+    __init_timeout = 60
+    __ping_interval = 0.5
+
     def __sleep(self, delay):
         d = defer.Deferred()
         reactor.callLater(delay, d.callback, None)
@@ -55,8 +58,9 @@ class TestReplicaSet(unittest.TestCase):
         yield master.admin["$cmd"].find_one({"replSetInitiate": self.rsconfig})
 
         ready = False
-        for i in xrange(120):
-            yield self.__sleep(0.5)
+        n_tries = int(self.__init_timeout / self.__ping_interval)
+        for i in xrange(n_tries):
+            yield self.__sleep(self.__ping_interval)
 
             # My practice shows that we need to query both ismaster and replSetGetStatus
             # to be sure that replica set is up and running, primary is elected and all
@@ -75,7 +79,7 @@ class TestReplicaSet(unittest.TestCase):
 
         if not ready:
             yield self.tearDown()
-            raise Exception("ReplicaSet initialization took more than 60s")
+            raise Exception("ReplicaSet initialization took more than {0}s".format(self.__init_timeout))
 
         yield master.disconnect()
 
