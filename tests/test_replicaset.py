@@ -71,8 +71,9 @@ class TestReplicaSet(unittest.TestCase):
             ismaster, replstatus = yield defer.gatherResults([ismaster_req, replstatus_req])
 
             initialized = replstatus["ok"]
-            startup = any(m["stateStr"].startswith("STARTUP") for m in replstatus.get("members", []))
-            ready = initialized and ismaster["ismaster"] and not startup
+            ok_states = set(["PRIMARY", "SECONDARY"])
+            states_ready = all(m["stateStr"] in ok_states for m in replstatus.get("members", []))
+            ready = initialized and ismaster["ismaster"] and states_ready
 
             if ready:
                 break
