@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 from bson.son import SON
+from pymongo.helpers import _check_command_response
 from twisted.internet import defer
 from txmongo.collection import Collection
 
@@ -36,6 +37,21 @@ class Database(object):
     @property
     def connection(self):
         return self.__factory
+
+    @defer.inlineCallbacks
+    def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
+        if isinstance(command, basestring):
+            command = {command: value}
+        command.update(kwargs)
+
+        ns = self["$cmd"]
+        response = yield ns.find_one(command)
+
+        if check:
+            msg = "command {0} on namespace {1} failed: %s".format(repr(command), ns)
+            _check_command_response(response, msg, allowable_errors)
+
+        defer.returnValue(response)
 
     def create_collection(self, name, options=None):
         def wrapper(result, deferred, collection):

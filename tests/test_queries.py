@@ -14,6 +14,8 @@
 # limitations under the License.
 
 from bson import BSON, ObjectId
+from bson.son import SON
+from pymongo.errors import OperationFailure
 from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
@@ -380,3 +382,48 @@ class TestSkip(unittest.TestCase):
     def tearDown(self):
         yield self.coll.drop(safe=True)
         yield self.conn.disconnect()
+
+
+
+class TestCommand(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        self.db = self.conn.mydb
+        self.coll = self.db.mycol
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_SimpleCommand(self):
+        pong = yield self.db.command("ping")
+        self.assertEqual(pong["ok"], 1)
+
+    @defer.inlineCallbacks
+    def test_ComplexCommand(self):
+        yield self.coll.insert([{'x': 42}, {'y': 123}], safe=True)
+
+        # In form of command name, value and additional params
+        result = yield self.db.command("count", "mycol", query={'x': 42})
+        self.assertEqual(result['n'], 1)
+
+        # In form of SON object
+        result = yield self.db.command(SON([("count", "mycol"), ("query", {'y': 123})]))
+        self.assertEqual(result['n'], 1)
+
+    @defer.inlineCallbacks
+    def test_CheckResult(self):
+        yield self.coll.insert([{'x': 42}, {'y': 123}], safe=True)
+
+        # Passing number as collection name
+        self.assertFailure(self.db.command("count", 1234), OperationFailure)
+
+        result = yield self.db.command("count", 1234, check=False)
+        self.assertFalse(result["ok"])
+
+        result = yield self.db.command("count", 1234, check=True,
+                                       allowable_errors=["collection name missing"])
+        self.assertFalse(result["ok"])
