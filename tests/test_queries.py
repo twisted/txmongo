@@ -418,12 +418,12 @@ class TestCommand(unittest.TestCase):
     def test_CheckResult(self):
         yield self.coll.insert([{'x': 42}, {'y': 123}], safe=True)
 
-        # Passing number as collection name
-        self.assertFailure(self.db.command("count", 1234), OperationFailure)
+        # missing 'deletes' argument
+        self.assertFailure(self.db.command("delete", "mycol"), OperationFailure)
 
-        result = yield self.db.command("count", 1234, check=False)
+        result = yield self.db.command("delete", "mycol", check=False)
         self.assertFalse(result["ok"])
 
-        result = yield self.db.command("count", 1234, check=True,
-                                       allowable_errors=["collection name missing"])
+        result = yield self.db.command("delete", "mycol", check=True,
+                                       allowable_errors=["missing deletes field"])
         self.assertFalse(result["ok"])
