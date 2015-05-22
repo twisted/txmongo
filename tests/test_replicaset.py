@@ -55,7 +55,7 @@ class TestReplicaSet(unittest.TestCase):
         yield master.admin["$cmd"].find_one({"replSetInitiate": self.rsconfig})
 
         ready = False
-        for i in xrange(30):
+        for i in xrange(120):
             yield self.__sleep(0.5)
 
             # My practice shows that we need to query both ismaster and replSetGetStatus
@@ -75,7 +75,7 @@ class TestReplicaSet(unittest.TestCase):
 
         if not ready:
             yield self.tearDown()
-            raise Exception("ReplicaSet initialization took more than 15s")
+            raise Exception("ReplicaSet initialization took more than 60s")
 
         yield master.disconnect()
 
