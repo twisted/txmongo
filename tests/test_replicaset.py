@@ -13,16 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from bson.son import SON
 from pymongo.errors import OperationFailure, AutoReconnect
 from twisted.trial import unittest
-from twisted.internet import defer, base, reactor
+from twisted.internet import defer, reactor
 from txmongo.connection import MongoConnection, ConnectionPool, _Connection
 from txmongo.protocol import QUERY_SLAVE_OK
 
 from mongod import Mongod
-
-# base.DelayedCall.debug = True
 
 
 class TestReplicaSet(unittest.TestCase):

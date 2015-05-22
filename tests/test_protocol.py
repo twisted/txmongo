@@ -15,7 +15,6 @@
 
 from bson import BSON
 from twisted.trial import unittest
-from twisted.internet import defer
 
 from txmongo.protocol import MongoClientProtocol, MongoDecoder, Insert, Query, \
     KillCursors, Getmore, Update, Delete, UPDATE_MULTI, UPDATE_UPSERT, \
@@ -23,7 +22,7 @@ from txmongo.protocol import MongoClientProtocol, MongoDecoder, Insert, Query, \
 
 
 class _FakeTransport(object):
-    "Catches all content that MongoClientProtocol wants to send over the wire"
+    """Catches all content that MongoClientProtocol wants to send over the wire"""
 
     def __init__(self):
         self.data = []
@@ -51,7 +50,6 @@ class TestMongoProtocol(unittest.TestCase):
             # len and request_id are not filled in request object
             if field not in ("len", "request_id"):
                 self.assertEqual(dec_value, req_value)
-
 
     def test_EncodeDecodeQuery(self):
         request = Query(collection="coll", n_to_skip=123, n_to_return=456,
