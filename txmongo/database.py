@@ -41,7 +41,7 @@ class Database(object):
     @defer.inlineCallbacks
     def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
         if isinstance(command, basestring):
-            command = {command: value}
+            command = SON([(command, value)])
         command.update(kwargs)
 
         ns = self["$cmd"]
