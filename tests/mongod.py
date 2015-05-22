@@ -1,3 +1,22 @@
+# coding: utf-8
+# Copyright 2015 Ilya Skriblovsky <ilyaskriblovsky@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import os
+import tempfile
+import shutil
+
 from twisted.internet import defer, reactor
 from twisted.internet.error import ProcessDone
 
@@ -9,30 +28,35 @@ class Mongod(object):
     # so leaving this for now
     success_message = "waiting for connections on port"
 
-    def __init__(self, dbpath, port=27017, auth=False):
+    def __init__(self, port=27017, auth=False, replset = None):
         self.__proc = None
         self.__notify_waiting = []
         self.__notify_stop = []
         self.__output = ''
         self.__end_reason = None
 
-        self.dbpath = dbpath
+        self.__datadir = None
+
         self.port = port
         self.auth = auth
+        self.replset = replset
 
     def start(self):
+        self.__datadir = tempfile.mkdtemp()
+
         d = defer.Deferred()
         self.__notify_waiting.append(d)
 
         args = ["mongod",
                 "--port", str(self.port),
-                "--dbpath", str(self.dbpath),
+                "--dbpath", self.__datadir,
                 "--noprealloc", "--nojournal",
                 "--smallfiles", "--nssize", "1",
                 "--nohttpinterface",
                 ]
 
         if self.auth: args.append("--auth")
+        if self.replset: args.extend(["--replSet", self.replset])
 
         self.__proc = reactor.spawnProcess(self, "mongod", args)
         return d
@@ -71,3 +95,9 @@ class Mongod(object):
                 d.callback(None)
             else:
                 d.errback(reason)
+
+        if self.__datadir:
+            shutil.rmtree(self.__datadir)
+
+
+    def output(self): return self.__output
