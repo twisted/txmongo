@@ -41,9 +41,6 @@ class TestMongoFilters(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Hint(self):
-        # Ensure there is no {x:1} index
-        yield self.coll.drop_index(qf.sort([('x', 1)]))
-
         # find() should fail with 'bad hint' if hint specifier works correctly
         self.assertFailure(self.coll.find({}, filter=qf.hint([('x', 1)])), OperationFailure)
 

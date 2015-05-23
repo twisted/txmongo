@@ -394,7 +394,7 @@ class Collection(object):
 
         return self._database.command("deleteIndexes", self._collection_name,
                                       index=name,
-                                      check=False)
+                                      allowable_errors=["ns not found"])
 
     def drop_indexes(self):
         return self.drop_index("*")

@@ -82,7 +82,7 @@ class Database(object):
         else:
             raise TypeError("name must be an instance of basestring or txmongo.Collection")
 
-        return self.command("drop", unicode(name), check=False)
+        return self.command("drop", unicode(name), allowable_errors=["ns not found"])
 
     def collection_names(self):
         def wrapper(results):
