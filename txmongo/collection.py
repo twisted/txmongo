@@ -416,9 +416,7 @@ class Collection(object):
 
     def distinct(self, key, spec=None):
         def wrapper(result):
-            if result:
-                return result.get("values")
-            return {}
+            return result.get("values")
 
         params = {"key": key}
         if spec:
@@ -451,12 +449,13 @@ class Collection(object):
         return deferred_find_one
 
     def find_and_modify(self, query=None, update=None, upsert=False, **kwargs):
+        no_obj_error = "No matching object found"
         def wrapper(result):
-            no_obj_error = "No matching object found"
             if not result["ok"]:
                 if result["errmsg"] == no_obj_error:
                     return None
                 else:
+                    # Should never get here because of allowable_errors
                     raise ValueError("Unexpected Error: %s" % (result,))
             return result.get("value")
 
@@ -476,6 +475,7 @@ class Collection(object):
             params["upsert"] = upsert
 
         deferred_find_one = self._database.command("findAndModify", self._collection_name,
+                                                   allowable_errors=[no_obj_error],
                                                    **params)
         deferred_find_one.addCallback(wrapper)
         return deferred_find_one

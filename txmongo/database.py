@@ -55,10 +55,7 @@ class Database(object):
 
     def create_collection(self, name, options=None):
         def wrapper(result, deferred, collection):
-            if result.get("ok", 0.0):
-                deferred.callback(collection)
-            else:
-                deferred.errback(RuntimeError(result.get("errmsg", "unknown error")))
+            deferred.callback(collection)
 
         deferred = defer.Deferred()
         collection = Collection(self, name)
