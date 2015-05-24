@@ -21,7 +21,7 @@ class Database(object):
         return "Database(%r, %r)" % (self.__factory, self._database_name,)
 
     def __call__(self, database_name):
-        return Database(self._factory, database_name)
+        return Database(self.__factory, database_name)
 
     def __getitem__(self, collection_name):
         return Collection(self, collection_name)
