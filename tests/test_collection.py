@@ -268,3 +268,38 @@ class TestRename(unittest.TestCase):
         self.assertEqual(doc, {'x': 42})
 
         yield self.db.coll2.drop()
+
+
+class TestOptions(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        self.db = self.conn.mydb
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_Options(self):
+        coll = yield self.db.create_collection("opttest", {"capped": True, "size": 4096})
+        self.assertTrue(isinstance(coll, Collection))
+
+        opts = yield coll.options()
+        self.assertEqual(opts["capped"], True)
+        self.assertEqual(opts["size"], 4096)
+
+        yield coll.drop()
+
+    @defer.inlineCallbacks
+    def test_NonExistingCollection(self):
+        opts = yield self.db.nonexisting.options()
+        self.assertEqual(opts, {})
+
+    @defer.inlineCallbacks
+    def test_WithoutOptions(self):
+        coll = yield self.db.create_collection("opttest")
+        opts = yield coll.options()
+        self.assertEqual(opts, {})
+
+        yield coll.drop()
