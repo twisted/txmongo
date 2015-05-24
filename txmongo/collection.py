@@ -216,10 +216,9 @@ class Collection(object):
                 fields = ["_id"]
             fields = self._fields_list_to_dict(fields)
 
-        spec = SON([("count", self._collection_name),
-                    ("query", spec or SON()),
-                    ("fields", fields)])
-        deferred_find_one = self._database["$cmd"].find_one(spec)
+        deferred_find_one = self._database.command("count", self._collection_name,
+                                                   query=spec or SON(),
+                                                   fields=fields)
         deferred_find_one.addCallback(wrapper)
         return deferred_find_one
 
@@ -240,7 +239,7 @@ class Collection(object):
         if finalize:
             body["finalize"] = Code(finalize)
 
-        return self._database["$cmd"].find_one({"group": body})
+        return self._database.command("group", body)
 
     def filemd5(self, spec):
         def wrapper(result):
@@ -250,10 +249,7 @@ class Collection(object):
             raise ValueError("filemd5 expected an objectid for its "
                              "non-keyword argument")
 
-        spec = SON([("filemd5", spec),
-                    ("root", self._collection_name)])
-
-        deferred_fine_one = self._database["$cmd"].find_one(spec)
+        deferred_fine_one = self._database.command("filemd5", spec, root=self._collection_name)
         deferred_fine_one.addCallback(wrapper)
         return deferred_fine_one
 
@@ -396,8 +392,9 @@ class Collection(object):
         else:
             raise TypeError("index_identifier must be a name or instance of filter.sort")
 
-        cmd = SON([("deleteIndexes", self._collection_name), ("index", name)])
-        return self._database["$cmd"].find_one(cmd)
+        return self._database.command("deleteIndexes", self._collection_name,
+                                      index=name,
+                                      allowable_errors=["ns not found"])
 
     def drop_indexes(self):
         return self.drop_index("*")
@@ -414,21 +411,18 @@ class Collection(object):
         return deferred_find
 
     def rename(self, new_name):
-        cmd = SON([("renameCollection", str(self)),
-                   ("to", "%s.%s" % (str(self._database), new_name))])
-        return self._database("admin")["$cmd"].find_one(cmd)
+        to = "%s.%s" % (str(self._database), new_name)
+        return self._database("admin").command("renameCollection", str(self), to=to)
 
     def distinct(self, key, spec=None):
         def wrapper(result):
-            if result:
-                return result.get("values")
-            return {}
+            return result.get("values")
 
-        cmd = SON([("distinct", self._collection_name), ("key", key)])
+        params = {"key": key}
         if spec:
-            cmd["query"] = spec
+            params["query"] = spec
 
-        d = self._database["$cmd"].find_one(cmd)
+        d = self._database.command("distinct", self._collection_name, **params)
         d.addCallback(wrapper)
         return d
 
@@ -438,10 +432,7 @@ class Collection(object):
                 return result
             return result.get("result")
 
-        cmd = SON([("aggregate", self._collection_name),
-                   ("pipeline", pipeline)])
-
-        d = self._database["$cmd"].find_one(cmd)
+        d = self._database.command("aggregate", self._collection_name, pipeline=pipeline)
         d.addCallback(wrapper, full_response)
         return d
 
@@ -451,20 +442,20 @@ class Collection(object):
                 return result
             return result.get("result")
 
-        cmd = SON([("mapreduce", self._collection_name),
-                   ("map", map), ("reduce", reduce)])
-        cmd.update(**kwargs)
-        deferred_find_one = self._database["$cmd"].find_one(cmd)
+        params = {"map": map, "reduce": reduce}
+        params.update(**kwargs)
+        deferred_find_one = self._database.command("mapreduce", self._collection_name, **params)
         deferred_find_one.addCallback(wrapper, full_response)
         return deferred_find_one
 
     def find_and_modify(self, query=None, update=None, upsert=False, **kwargs):
+        no_obj_error = "No matching object found"
         def wrapper(result):
-            no_obj_error = "No matching object found"
             if not result["ok"]:
                 if result["errmsg"] == no_obj_error:
                     return None
                 else:
+                    # Should never get here because of allowable_errors
                     raise ValueError("Unexpected Error: %s" % (result,))
             return result.get("value")
 
@@ -474,16 +465,17 @@ class Collection(object):
         if update and kwargs.get("remove", None):
             raise ValueError("Can't do both update and remove")
 
-        cmd = SON([("findAndModify", self._collection_name)])
-        cmd.update(kwargs)
+        params = kwargs
         # No need to include empty args
         if query:
-            cmd["query"] = query
+            params["query"] = query
         if update:
-            cmd["update"] = update
+            params["update"] = update
         if upsert:
-            cmd["upsert"] = upsert
+            params["upsert"] = upsert
 
-        deferred_find_one = self._database["$cmd"].find_one(cmd)
+        deferred_find_one = self._database.command("findAndModify", self._collection_name,
+                                                   allowable_errors=[no_obj_error],
+                                                   **params)
         deferred_find_one.addCallback(wrapper)
         return deferred_find_one

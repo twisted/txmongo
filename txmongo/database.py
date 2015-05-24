@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 from bson.son import SON
+from pymongo.helpers import _check_command_response
 from twisted.internet import defer
 from txmongo.collection import Collection
 
@@ -37,12 +38,24 @@ class Database(object):
     def connection(self):
         return self.__factory
 
+    @defer.inlineCallbacks
+    def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
+        if isinstance(command, basestring):
+            command = SON([(command, value)])
+        command.update(kwargs)
+
+        ns = self["$cmd"]
+        response = yield ns.find_one(command)
+
+        if check:
+            msg = "command {0} on namespace {1} failed: %s".format(repr(command), ns)
+            _check_command_response(response, msg, allowable_errors)
+
+        defer.returnValue(response)
+
     def create_collection(self, name, options=None):
         def wrapper(result, deferred, collection):
-            if result.get("ok", 0.0):
-                deferred.callback(collection)
-            else:
-                deferred.errback(RuntimeError(result.get("errmsg", "unknown error")))
+            deferred.callback(collection)
 
         deferred = defer.Deferred()
         collection = Collection(self, name)
@@ -51,9 +64,7 @@ class Database(object):
             if "size" in options:
                 options["size"] = float(options["size"])
 
-            command = SON({"create": name})
-            command.update(options)
-            d = self["$cmd"].find_one(command)
+            d = self.command("create", name, **options)
             d.addCallback(wrapper, deferred, collection)
         else:
             deferred.callback(collection)
@@ -68,7 +79,7 @@ class Database(object):
         else:
             raise TypeError("name must be an instance of basestring or txmongo.Collection")
 
-        return self["$cmd"].find_one({"drop": unicode(name)})
+        return self.command("drop", unicode(name), allowable_errors=["ns not found"])
 
     def collection_names(self):
         def wrapper(results):

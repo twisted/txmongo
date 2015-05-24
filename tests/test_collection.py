@@ -228,17 +228,11 @@ class TestIndexInfo(unittest.TestCase):
         yield coll.create_index(filter.sort(filter.GEOHAYSTACK("pos") +
                                             filter.ASCENDING("type")), **{"bucket_size": 1})
 
-        # TODO: A db.command method has not been implemented yet.
-        # Sending command directly
-        command = SON([
-            ("geoSearch", "mycol"),
-            ("near", [33, 33]),
-            ("maxDistance", 6),
-            ("search", {"type": "restaurant"}),
-            ("limit", 30),
-        ])
-           
-        results = yield db["$cmd"].find_one(command)
+        results = yield db.command("geoSearch", "mycol",
+                                   near=[33, 33],
+                                   maxDistance=6,
+                                   search={"type": "restaurant"},
+                                   limit=30)
         self.assertEqual(2, len(results["results"]))
         self.assertEqual({
             "_id": _id,

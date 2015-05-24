@@ -14,6 +14,8 @@
 # limitations under the License.
 
 from bson import BSON, ObjectId
+from bson.son import SON
+from pymongo.errors import OperationFailure
 from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
@@ -147,7 +149,7 @@ class TestMongoQueries(unittest.TestCase):
 
     @defer.inlineCallbacks
     def __check_no_open_cursors(self):
-        status = yield self.db["$cmd"].find_one({"serverStatus": 1})
+        status = yield self.db.command("serverStatus")
         if "cursor" in status["metrics"]:
             self.assertEqual(status["metrics"]["cursor"]["open"]["total"], 0)
         else:
@@ -380,3 +382,48 @@ class TestSkip(unittest.TestCase):
     def tearDown(self):
         yield self.coll.drop(safe=True)
         yield self.conn.disconnect()
+
+
+
+class TestCommand(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        self.db = self.conn.mydb
+        self.coll = self.db.mycol
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_SimpleCommand(self):
+        pong = yield self.db.command("ping")
+        self.assertEqual(pong["ok"], 1)
+
+    @defer.inlineCallbacks
+    def test_ComplexCommand(self):
+        yield self.coll.insert([{'x': 42}, {'y': 123}], safe=True)
+
+        # In form of command name, value and additional params
+        result = yield self.db.command("count", "mycol", query={'x': 42})
+        self.assertEqual(result['n'], 1)
+
+        # In form of SON object
+        result = yield self.db.command(SON([("count", "mycol"), ("query", {'y': 123})]))
+        self.assertEqual(result['n'], 1)
+
+    @defer.inlineCallbacks
+    def test_CheckResult(self):
+        yield self.coll.insert([{'x': 42}, {'y': 123}], safe=True)
+
+        # missing 'deletes' argument
+        self.assertFailure(self.db.command("delete", "mycol"), OperationFailure)
+
+        result = yield self.db.command("delete", "mycol", check=False)
+        self.assertFalse(result["ok"])
+
+        result = yield self.db.command("delete", "mycol", check=True,
+                                       allowable_errors=["missing deletes field"])
+        self.assertFalse(result["ok"])
