@@ -21,7 +21,6 @@ from pymongo import errors
 
 from twisted.internet import defer
 from twisted.trial import unittest
-from unittest import SkipTest
 
 import txmongo
 
@@ -151,7 +150,7 @@ class TestIndexInfo(unittest.TestCase):
         # dropDups was removed from MongoDB v3.0
         ismaster = yield self.db.command("ismaster")
         if ismaster["maxWireVersion"] >= 3:
-            raise SkipTest()
+            raise unittest.SkipTest()
 
         yield self.coll.drop()
         yield self.coll.insert([{'b': 1}, {'b': 1}])
