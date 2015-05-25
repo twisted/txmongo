@@ -66,6 +66,7 @@ class Database(object):
 
             d = self.command("create", name, **options)
             d.addCallback(wrapper, deferred, collection)
+            d.addErrback(deferred.errback)
         else:
             deferred.callback(collection)
 

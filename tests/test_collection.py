@@ -297,3 +297,28 @@ class TestOptions(unittest.TestCase):
         self.assertEqual(opts, {})
 
         yield coll.drop()
+
+
+class TestCreateCollection(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        self.db = self.conn.mydb
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_Fail(self):
+        # Not using assertFailure() here because it doesn't wait until deferred is
+        # resolved or failed but there was a bug that made deferred hang forever
+        # in case if create_collection failed
+        try:
+            # Negative size
+            yield self.db.create_collection("opttest", {"size": -100})
+        except errors.OperationFailure as e:
+            pass
+        else:
+            self.fail()
+    test_Fail.timeout = 10
