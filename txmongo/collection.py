@@ -440,7 +440,7 @@ class Collection(object):
         def wrapper(result, full_response):
             if full_response:
                 return result
-            return result.get("result")
+            return result.get("results")
 
         params = {"map": map, "reduce": reduce}
         params.update(**kwargs)
