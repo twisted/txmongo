@@ -23,8 +23,6 @@ mongo_port = 27017
 
 class TestFindAndModify(unittest.TestCase):
 
-    timeout = 5
-
     @defer.inlineCallbacks
     def setUp(self):
         self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
