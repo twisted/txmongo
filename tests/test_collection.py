@@ -65,7 +65,7 @@ class TestIndexInfo(unittest.TestCase):
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes..t")
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes\x00t")
         self.assertRaises(TypeError, self.coll.save, "test")
-        self.assertRaises(ValueError, self.coll.filemd5, "test")
+        self.assertFailure(self.coll.filemd5("test"), ValueError)
         self.assertFailure(self.db.test.find(spec="test"), TypeError)
         self.assertFailure(self.db.test.find(fields="test"), TypeError)
         self.assertFailure(self.db.test.find(skip="test"), TypeError)
@@ -97,8 +97,8 @@ class TestIndexInfo(unittest.TestCase):
         db = self.db
         coll = self.coll
 
-        self.assertRaises(TypeError, coll.create_index, 5)
-        self.assertRaises(TypeError, coll.create_index, {"hello": 1})
+        self.assertFailure(coll.create_index(5), TypeError)
+        self.assertFailure(coll.create_index({"hello": 1}), TypeError)
 
         yield coll.insert({'c': 1})  # make sure collection exists.
 

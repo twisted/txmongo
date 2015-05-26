@@ -48,10 +48,9 @@ class TestFindAndModify(unittest.TestCase):
         self.assertEqual(res["lulz"], 456)
 
     def test_InvalidOptions(self):
-        self.assertRaises(ValueError, self.coll.find_and_modify)
-        self.assertRaises(ValueError, self.coll.find_and_modify,
-                          update={"$set": {'x': 42}},
-                          remove=True)
+        self.assertFailure(self.coll.find_and_modify(), ValueError)
+        self.assertFailure(self.coll.find_and_modify(update={"$set": {'x': 42}}, remove=True),
+                           ValueError)
 
     @defer.inlineCallbacks
     def test_Remove(self):
