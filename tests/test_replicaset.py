@@ -136,10 +136,12 @@ class TestReplicaSet(unittest.TestCase):
 
             yield self.__mongod[0].stop()
 
-            try:
-                result = yield conn.db.coll.find_one()
-            except AutoReconnect:
-                result = yield conn.db.coll.find_one()
+            while True:
+                try:
+                    result = yield conn.db.coll.find_one()
+                    break
+                except AutoReconnect:
+                    pass
 
             self.assertEqual(result['x'], 42)
         finally:
