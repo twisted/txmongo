@@ -427,3 +427,193 @@ class TestCommand(unittest.TestCase):
         result = yield self.db.command("delete", "mycol", check=True,
                                        allowable_errors=["missing deletes field"])
         self.assertFalse(result["ok"])
+
+
+class TestUpdate(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        self.db = self.conn.mydb
+        self.coll = self.db.mycol
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_SimpleUpdate(self):
+        yield self.coll.insert([{'x': 42}, {'x': 123}])
+
+        yield self.coll.update({}, {"$set": {'x': 456}})
+
+        docs = yield self.coll.find(fields={"_id": 0})
+
+        # Check that only one document was updated
+        self.assertTrue({'x': 456} in docs)
+        self.assertTrue(({'x': 42} in docs) or ({'x': 123} in docs))
+
+    @defer.inlineCallbacks
+    def test_MultiUpdate(self):
+        yield self.coll.insert([{'x': 42}, {'x': 123}])
+
+        yield self.coll.update({}, {"$set": {'x': 456}}, multi=True)
+
+        docs = yield self.coll.find(fields={"_id": 0})
+
+        self.assertEqual(len(docs), 2)
+        self.assertTrue(all(doc == {'x': 456} for doc in docs))
+
+    @defer.inlineCallbacks
+    def test_Upsert(self):
+        yield self.coll.update({}, {"$set": {'x': 42}}, upsert=True)
+        yield self.coll.update({}, {"$set": {'x': 123}}, upsert=True)
+
+        docs = yield self.coll.find(fields={"_id": 0})
+
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0], {'x': 123})
+
+
+class TestSave(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        self.db = self.conn.mydb
+        self.coll = self.db.mycol
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_Save(self):
+        self.assertRaises(TypeError, self.coll.save, 123)
+
+        yield self.coll.save({'x': 1})
+        id = ObjectId()
+        yield self.coll.save({"_id": id, 'x': 2})
+        yield self.coll.save({"_id": id, 'x': 3})
+
+        docs = yield self.coll.find()
+        self.assertTrue(any(doc['x'] == 1 for doc in docs))
+        self.assertTrue({"_id": id, 'x': 3} in docs)
+
+
+class TestRemove(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        self.db = self.conn.mydb
+        self.coll = self.db.mycol
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_RemoveOne(self):
+        docs = [{'x': 42}, {'x': 123}]
+        yield self.coll.insert(docs)
+        yield self.coll.remove({}, single=True)
+
+        remaining = yield self.coll.find()
+        self.assertEqual(len(remaining), 1)
+        self.assertTrue(remaining[0] in docs)
+
+    @defer.inlineCallbacks
+    def test_RemoveMulti(self):
+        yield self.coll.insert([{'x': 42}, {'x': 123}, {'y': 456}])
+        yield self.coll.remove({'x': {"$exists": True}})
+
+        remaining = yield self.coll.find(fields={"_id": 0})
+        self.assertEqual(remaining, [{'y': 456}])
+
+    @defer.inlineCallbacks
+    def test_RemoveById(self):
+        id = ObjectId()
+        yield self.coll.insert([{"_id": id, 'x': 42}, {'y': 123}])
+        yield self.coll.remove(id)
+
+        remaining = yield self.coll.find(fields={"_id": 0})
+        self.assertEqual(remaining, [{'y': 123}])
+
+    def test_RemoveInvalid(self):
+        self.assertFailure(self.coll.remove(123), TypeError)
+
+
+class TestDistinct(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        self.db = self.conn.mydb
+        self.coll = self.db.mycol
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_Simple(self):
+        yield self.coll.insert([{'x': 13}, {'x': 42}, {'x': 13}])
+
+        d = yield self.coll.distinct('x')
+        self.assertEqual(set(d), set([13, 42]))
+
+    @defer.inlineCallbacks
+    def test_WithQuery(self):
+        yield self.coll.insert([{'x': 13}, {'x': 42}, {'x': 123}, {'x': 42}])
+
+        d = yield self.coll.distinct('x', {'x': {"$gt": 20}})
+        self.assertEqual(set(d), set([42, 123]))
+
+
+class TestMapReduce(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        self.db = self.conn.mydb
+        self.coll = self.db.mycol
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_MapReduce(self):
+        yield self.coll.insert([
+            {"kid": "John", "grade": 5},
+            {"kid": "Kate", "grade": 4},
+            {"kid": "John", "grade": 4},
+            {"kid": "Kate", "grade": 4},
+            {"kid": "Adam", "grade": 4},
+            {"kid": "Kate", "grade": 2},
+            {"kid": "John", "grade": 5},
+        ])
+
+        map = """
+            function () {
+                emit(this.kid, this.grade);
+            }
+        """
+
+        reduce = """
+            function (key, values) {
+                return Array.sum(values);
+            }
+        """
+
+        result = yield self.coll.map_reduce(map, reduce, out={"inline": 1})
+        self.assertEqual(len(result), 3)
+        self.assertTrue({"_id": "John", "value": 14} in result)
+        self.assertTrue({"_id": "Kate", "value": 10} in result)
+        self.assertTrue({"_id": "Adam", "value": 4} in result)
+
+        result = yield self.coll.map_reduce(map, reduce, out={"inline": 1}, full_response=True)
+        self.assertTrue(result["ok"], 1)
+        self.assertTrue("counts" in result)
+        self.assertTrue("results" in result)

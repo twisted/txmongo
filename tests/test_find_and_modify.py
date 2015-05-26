@@ -23,8 +23,6 @@ mongo_port = 27017
 
 class TestFindAndModify(unittest.TestCase):
 
-    timeout = 5
-
     @defer.inlineCallbacks
     def setUp(self):
         self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
@@ -48,6 +46,26 @@ class TestFindAndModify(unittest.TestCase):
 
         res = yield self.coll.find_one({"oh": "kthxbye"})
         self.assertEqual(res["lulz"], 456)
+
+    def test_InvalidOptions(self):
+        self.assertRaises(ValueError, self.coll.find_and_modify)
+        self.assertRaises(ValueError, self.coll.find_and_modify,
+                          update={"$set": {'x': 42}},
+                          remove=True)
+
+    @defer.inlineCallbacks
+    def test_Remove(self):
+        yield self.coll.insert({'x': 42})
+        doc = yield self.coll.find_and_modify(remove=True)
+        self.assertEqual(doc['x'], 42)
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 0)
+
+    @defer.inlineCallbacks
+    def test_Upsert(self):
+        yield self.coll.find_and_modify({'x': 42}, update={"$set": {'y': 123}}, upsert=True)
+        docs = yield self.coll.find(fields={"_id": 0})
+        self.assertEqual(docs, [{'x': 42, 'y': 123}])
 
 
     @defer.inlineCallbacks

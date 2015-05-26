@@ -146,6 +146,21 @@ class TestIndexInfo(unittest.TestCase):
         yield self.assertFailure(ix, errors.DuplicateKeyError)
 
     @defer.inlineCallbacks
+    def test_create_index_dropdups(self):
+        # dropDups was removed from MongoDB v3.0
+        ismaster = yield self.db.command("ismaster")
+        if ismaster["maxWireVersion"] >= 3:
+            raise unittest.SkipTest()
+
+        yield self.coll.drop()
+        yield self.coll.insert([{'b': 1}, {'b': 1}])
+
+        ix = yield self.coll.create_index(filter.sort(filter.ASCENDING('b')),
+                                          unique=True, drop_dups=True)
+        docs = yield self.coll.find(fields={"_id": 0})
+        self.assertEqual(docs, [{'b': 1}])
+
+    @defer.inlineCallbacks
     def test_ensure_index(self):
         db = self.db
         coll = self.coll
@@ -239,6 +254,23 @@ class TestIndexInfo(unittest.TestCase):
             "pos": {"long": 34.2, "lat": 33.3},
             "type": "restaurant"
         }, results["results"][0])
+
+
+    @defer.inlineCallbacks
+    def test_drop_index(self):
+        yield self.coll.drop_indexes()
+
+        index = filter.sort(filter.ASCENDING("hello") + filter.DESCENDING("world"))
+
+        yield self.coll.create_index(index, name="myindex")
+        res = yield self.coll.drop_index("myindex")
+        self.assertEqual(res["ok"], 1)
+
+        yield self.coll.create_index(index)
+        res = yield self.coll.drop_index(index)
+        self.assertEqual(res["ok"], 1)
+
+        self.assertRaises(TypeError, self.coll.drop_index, 123)
 
 
 class TestRename(unittest.TestCase):
