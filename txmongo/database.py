@@ -53,24 +53,16 @@ class Database(object):
 
         defer.returnValue(response)
 
+    @defer.inlineCallbacks
     def create_collection(self, name, options=None):
-        def wrapper(result, deferred, collection):
-            deferred.callback(collection)
-
-        deferred = defer.Deferred()
         collection = Collection(self, name)
 
         if options:
             if "size" in options:
                 options["size"] = float(options["size"])
+            yield self.command("create", name, **options)
 
-            d = self.command("create", name, **options)
-            d.addCallback(wrapper, deferred, collection)
-            d.addErrback(deferred.errback)
-        else:
-            deferred.callback(collection)
-
-        return deferred
+        defer.returnValue(collection)
 
     def drop_collection(self, name_or_collection):
         if isinstance(name_or_collection, Collection):
@@ -82,17 +74,16 @@ class Database(object):
 
         return self.command("drop", unicode(name), allowable_errors=["ns not found"])
 
+    @defer.inlineCallbacks
     def collection_names(self):
-        def wrapper(results):
-            names = [r["name"] for r in results]
-            names = [n[len(str(self)) + 1:] for n in names
-                     if n.startswith(str(self) + ".")]
-            names = [n for n in names if "$" not in n]
-            return names
+        results = yield self["system.namespaces"].find()
 
-        d = self["system.namespaces"].find()
-        d.addCallback(wrapper)
-        return d
+        names = [r["name"] for r in results]
+        names = [n[len(str(self)) + 1:] for n in names
+                 if n.startswith(str(self) + ".")]
+        names = [n for n in names if "$" not in n]
+        defer.returnValue(names)
+
 
     @defer.inlineCallbacks
     def authenticate(self, name, password):

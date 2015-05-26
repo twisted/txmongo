@@ -65,6 +65,7 @@ class _Connection(ReconnectingClientFactory):
         except Exception as e:
             proto.fail(e)
 
+    @defer.inlineCallbacks
     def configure(self, proto):
         """
             Configures the protocol using the information gathered from the
@@ -72,18 +73,16 @@ class _Connection(ReconnectingClientFactory):
             BSON document size, replica set configuration, and the master
             status of the instance.
             """
-        if proto:
-            query = Query(collection="admin.$cmd", query={"ismaster": 1})
-            df = proto.send_QUERY(query)
-            df.addCallback(self._configureCallback, proto)
-            return df
-        return defer.succeed(None)
 
-    def _configureCallback(self, reply, proto):
-        """
-            Handle the reply from the "ismaster" query. The reply contains
-            configuration information about the peer.
-            """
+        if not proto:
+            defer.returnValue(None)
+
+        query = Query(collection="admin.$cmd", query={"ismaster": 1})
+        reply = yield proto.send_QUERY(query)
+
+        # Handle the reply from the "ismaster" query. The reply contains
+        # configuration information about the peer.
+
         # Make sure we got a result document.
         if len(reply.documents) != 1:
             raise OperationFailure("Invalid document length.")
@@ -304,6 +303,7 @@ class ConnectionPool(object):
             raise e.subFailure
 
 
+    @defer.inlineCallbacks
     def getprotocol(self):
         # Get the next protocol available for communication in the pool.
         connection = self.__pool[self.__index]
@@ -311,10 +311,11 @@ class ConnectionPool(object):
 
         # If the connection is already connected, just return it.
         if connection.instance:
-            return defer.succeed(connection.instance)
+            defer.returnValue(connection.instance)
 
         # Wait for the connection to connection.
-        return connection.notifyReady().addCallback(lambda c: c.instance)
+        yield connection.notifyReady()
+        defer.returnValue(connection.instance)
 
     @property
     def uri(self):

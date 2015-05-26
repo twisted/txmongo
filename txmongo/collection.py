@@ -71,18 +71,15 @@ class Collection(object):
     def _gen_index_name(keys):
         return u'_'.join([u"%s_%s" % item for item in keys])
 
+    @defer.inlineCallbacks
     def options(self):
-        def wrapper(result):
-            if result:
-                options = result.get("options", {})
-                if "create" in options:
-                    del options["create"]
-                return options
-            return {}
-
-        deferred_find_one = self._database.system.namespaces.find_one({"name": str(self)})
-        deferred_find_one.addCallback(wrapper)
-        return deferred_find_one
+        result = yield self._database.system.namespaces.find_one({"name": str(self)})
+        if not result:
+            result = {}
+        options = result.get("options", {})
+        if "create" in options:
+            del options["create"]
+        defer.returnValue(options)
 
 
     @defer.inlineCallbacks
@@ -200,27 +197,25 @@ class Collection(object):
         deferred_protocol.addCallback(after_connection)
         return deferred_protocol
 
+    @defer.inlineCallbacks
     def find_one(self, spec=None, fields=None, **kwargs):
         if isinstance(spec, ObjectId):
             spec = {"_id": spec}
-        deferred_find = self.find(spec=spec, limit=1, fields=fields, **kwargs)
-        deferred_find.addCallback(lambda r: r[0] if r else {})
-        return deferred_find
+        result = yield self.find(spec=spec, limit=1, fields=fields, **kwargs)
+        defer.returnValue(result[0] if result else {})
 
+
+    @defer.inlineCallbacks
     def count(self, spec=None, fields=None):
-        def wrapper(result):
-            return result["n"]
-
         if fields is not None:
             if not fields:
                 fields = ["_id"]
             fields = self._fields_list_to_dict(fields)
 
-        deferred_find_one = self._database.command("count", self._collection_name,
-                                                   query=spec or SON(),
-                                                   fields=fields)
-        deferred_find_one.addCallback(wrapper)
-        return deferred_find_one
+        result = yield self._database.command("count", self._collection_name,
+                                              query=spec or SON(),
+                                              fields=fields)
+        defer.returnValue(result["n"])
 
     def group(self, keys, initial, reduce, condition=None, finalize=None):
         body = {
@@ -241,17 +236,15 @@ class Collection(object):
 
         return self._database.command("group", body)
 
+    @defer.inlineCallbacks
     def filemd5(self, spec):
-        def wrapper(result):
-            return result.get("md5")
-
         if not isinstance(spec, ObjectId):
             raise ValueError("filemd5 expected an objectid for its "
                              "non-keyword argument")
 
-        deferred_fine_one = self._database.command("filemd5", spec, root=self._collection_name)
-        deferred_fine_one.addCallback(wrapper)
-        return deferred_fine_one
+        result = yield self._database.command("filemd5", spec, root=self._collection_name)
+        defer.returnValue(result.get("md5"))
+
 
     @defer.inlineCallbacks
     def insert(self, docs, safe=True, **kwargs):
@@ -346,10 +339,8 @@ class Collection(object):
     def drop(self, **kwargs):
         return self._database.drop_collection(self._collection_name)
 
+    @defer.inlineCallbacks
     def create_index(self, sort_fields, **kwargs):
-        def wrapper(result, name):
-            return name
-
         if not isinstance(sort_fields, qf.sort):
             raise TypeError("sort_fields must be an instance of filter.sort")
 
@@ -375,9 +366,8 @@ class Collection(object):
             kwargs["bucketSize"] = kwargs.pop("bucket_size")
 
         index.update(kwargs)
-        deferred_insert = self._database.system.indexes.insert(index, safe=True)
-        deferred_insert.addCallback(wrapper, name)
-        return deferred_insert
+        yield self._database.system.indexes.insert(index, safe=True)
+        defer.returnValue(name)
 
     def ensure_index(self, sort_fields, **kwargs):
         # ensure_index is an alias of create_index since we are not
@@ -399,65 +389,46 @@ class Collection(object):
     def drop_indexes(self):
         return self.drop_index("*")
 
+    @defer.inlineCallbacks
     def index_information(self):
-        def wrapper(raw):
-            info = {}
-            for idx in raw:
-                info[idx["name"]] = idx
-            return info
-
-        deferred_find = self._database.system.indexes.find({"ns": str(self)})
-        deferred_find.addCallback(wrapper)
-        return deferred_find
+        raw = yield self._database.system.indexes.find({"ns": str(self)})
+        info = {}
+        for idx in raw:
+            info[idx["name"]] = idx
+        defer.returnValue(info)
 
     def rename(self, new_name):
         to = "%s.%s" % (str(self._database), new_name)
         return self._database("admin").command("renameCollection", str(self), to=to)
 
+    @defer.inlineCallbacks
     def distinct(self, key, spec=None):
-        def wrapper(result):
-            return result.get("values")
-
         params = {"key": key}
         if spec:
             params["query"] = spec
 
-        d = self._database.command("distinct", self._collection_name, **params)
-        d.addCallback(wrapper)
-        return d
+        result = yield self._database.command("distinct", self._collection_name, **params)
+        defer.returnValue(result.get("values"))
 
+    @defer.inlineCallbacks
     def aggregate(self, pipeline, full_response=False):
-        def wrapper(result, full_response):
-            if full_response:
-                return result
-            return result.get("result")
+        raw = yield self._database.command("aggregate", self._collection_name, pipeline=pipeline)
+        if full_response:
+            defer.returnValue(raw)
+        defer.returnValue(raw.get("result"))
 
-        d = self._database.command("aggregate", self._collection_name, pipeline=pipeline)
-        d.addCallback(wrapper, full_response)
-        return d
-
+    @defer.inlineCallbacks
     def map_reduce(self, map, reduce, full_response=False, **kwargs):
-        def wrapper(result, full_response):
-            if full_response:
-                return result
-            return result.get("results")
-
         params = {"map": map, "reduce": reduce}
         params.update(**kwargs)
-        deferred_find_one = self._database.command("mapreduce", self._collection_name, **params)
-        deferred_find_one.addCallback(wrapper, full_response)
-        return deferred_find_one
+        raw = yield self._database.command("mapreduce", self._collection_name, **params)
+        if full_response:
+            defer.returnValue(raw)
+        defer.returnValue(raw.get("results"))
 
+    @defer.inlineCallbacks
     def find_and_modify(self, query=None, update=None, upsert=False, **kwargs):
         no_obj_error = "No matching object found"
-        def wrapper(result):
-            if not result["ok"]:
-                if result["errmsg"] == no_obj_error:
-                    return None
-                else:
-                    # Should never get here because of allowable_errors
-                    raise ValueError("Unexpected Error: %s" % (result,))
-            return result.get("value")
 
         if not update and not kwargs.get("remove", None):
             raise ValueError("Must either update or remove")
@@ -474,8 +445,13 @@ class Collection(object):
         if upsert:
             params["upsert"] = upsert
 
-        deferred_find_one = self._database.command("findAndModify", self._collection_name,
-                                                   allowable_errors=[no_obj_error],
-                                                   **params)
-        deferred_find_one.addCallback(wrapper)
-        return deferred_find_one
+        result = yield self._database.command("findAndModify", self._collection_name,
+                                              allowable_errors=[no_obj_error],
+                                              **params)
+        if not result["ok"]:
+            if result["errmsg"] == no_obj_error:
+                defer.returnValue(None)
+            else:
+                # Should never get here because of allowable_errors
+                raise ValueError("Unexpected Error: %s" % (result,))
+        defer.returnValue(result.get("value"))
