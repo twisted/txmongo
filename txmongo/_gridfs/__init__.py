@@ -24,6 +24,7 @@ from txmongo import filter
 from txmongo.filter import ASCENDING, DESCENDING
 from txmongo.database import Database
 
+assert GridOutIterator
 
 class GridFS(object):
     """An instance of GridFS on top of a single Database.

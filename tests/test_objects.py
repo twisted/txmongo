@@ -20,9 +20,8 @@ from bson import objectid, timestamp
 import txmongo
 from txmongo import database
 from txmongo import collection
-from txmongo import gridfs
+from txmongo.gridfs import GridFS, GridIn, GridOut, GridOutIterator, errors
 from txmongo import filter as qf
-from txmongo._gridfs import GridIn, GridOut, GridOutIterator, errors
 from twisted.trial import unittest
 from twisted.internet import base, defer
 from twisted import _version
@@ -147,7 +146,7 @@ class TestGridFsObjects(unittest.TestCase):
         db = conn.test
         db.fs.files.remove({})  # drop all objects there first
         db.fs.chunks.remove({})
-        _ = gridfs.GridFS(db)  # Default collection
+        _ = GridFS(db)  # Default collection
         with GridIn(db.fs, filename="test_with", contentType="text/plain", chunk_size=1024):
             pass
         grid_in_file = GridIn(db.fs, filename="test_1", contentType="text/plain",
@@ -200,7 +199,7 @@ class TestGridFsObjects(unittest.TestCase):
         db = conn.test
         db.fs.files.remove({})  # drop all objects there first
         db.fs.chunks.remove({})
-        gfs = gridfs.GridFS(db)  # Default collection
+        gfs = GridFS(db)  # Default collection
         yield gfs.delete(u"test")
 
         _ = gfs.new_file(filename="test_1", contentType="text/plain", chunk_size=65536)
@@ -208,7 +207,7 @@ class TestGridFsObjects(unittest.TestCase):
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
         db.fs.files.remove({})  # drop all objects there first
-        gfs = gridfs.GridFS(db)  # Default collection
+        gfs = GridFS(db)  # Default collection
         _ = yield gfs.put("0xDEADBEEF", filename="test_2", contentType="text/plain",
                           chunk_size=65536)
         # disconnect
@@ -216,7 +215,7 @@ class TestGridFsObjects(unittest.TestCase):
 
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
-        gfs = gridfs.GridFS(db)  # Default collection
+        gfs = GridFS(db)  # Default collection
         _ = yield gfs.get("test_3")
         # disconnect
         yield conn.disconnect()
@@ -228,7 +227,7 @@ class TestGridFsObjects(unittest.TestCase):
         db = conn.test
         db.fs.files.remove({})  # drop all objects there first
         db.fs.chunks.remove({})
-        gfs = gridfs.GridFS(db)  # Default collection
+        gfs = GridFS(db)  # Default collection
         new_file = gfs.new_file(filename="testName", contentType="text/plain", length=1048576,
                                 chunk_size=4096)
         yield new_file.write("0xDEADBEEF"*4096*2)
@@ -273,7 +272,7 @@ class TestGridFsObjects(unittest.TestCase):
         
         try:
             # Tests writing to a new gridfs file
-            gfs = gridfs.GridFS(db)  # Default collection
+            gfs = GridFS(db)  # Default collection
             g_in = gfs.new_file(filename="optest", contentType="text/plain",
                                 chunk_size=65536)  # non-default chunk size used
             # yielding to ensure writes complete before we close and close before we try to read
