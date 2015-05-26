@@ -1,8 +1,22 @@
-MongoDB driver for Python Twisted
-=================================
+TxMongo
+=======
+.. image:: https://travis-ci.org/twisted/txmongo.png?branch=master
+    :target: https://travis-ci.org/twisted/txmongo
 
-txmongo is a Python/Twisted driver for MongoDB that implements the wire
-protocol on non-blocking sockets. The API derives from the original pymongo.
+.. image:: https://coveralls.io/repos/twisted/txmongo/badge.svg?branch=master
+    :target: https://coveralls.io/r/twisted/txmongo?branch=master
+
+.. image:: https://badge.fury.io/py/txmongo.png
+    :target: https://pypi.python.org/pypi/txmongo
+
+
+
+TxMongo is an asynchronous Python/Twisted driver for MongoDB that implements the wire
+protocol on non-blocking sockets. The API derives from the original PyMongo.
+
+Compatibility
+-------------
+Python 2.6, 2.7 and PyPy.
 
 Installing
 ----------
@@ -16,7 +30,7 @@ sudo python setup.py install
 Docs and examples
 -----------------
 
-Generate them with `make docs`. You will need `epydoc` installed.
+Generate them with `make docs`. You will need `sphinx` installed.
 There are some examples in the *examples/* directory.
 
 Hacking
@@ -24,6 +38,8 @@ Hacking
 
 Run `make env` to create clean hacking environment with `virtualenv`.
 Run `make` to torture your code with tests and code style tools.
+
+Take a look in Makefile for commonly used commands and tools we use to develop.
 
 Packages
 --------

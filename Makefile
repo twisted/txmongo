@@ -13,7 +13,7 @@ env:
 	rm -fr env
 	mkdir -p .download_cache
 	$(VIRTUALENV) --no-site-packages env
-	env/bin/pip install --download-cache=.download_cache/ -r requirements.txt 
+	env/bin/pip install --download-cache=.download_cache/ -r requirements-dev.txt
 	echo "\n\n>> Run 'source env/bin/activate'"
 
 docs:

@@ -1,6 +1,47 @@
 Changelog
 =========
 
+Release 15.1 (UNRELEASED)
+-------------------------
+
+This is a major release in that while increasing code coverage to 91%
+( see https://coveralls.io/builds/2650466 ), we've also caught several
+bugs, added features and changed functionality to be more inline with PyMongo.
+
+This is no small thanks to travis-ci and coveralls while using tox to cover all iterations
+that we support.
+
+We can officially say that we are Python 2.6, 2.7 and PyPy compatible.
+
+API Changes
+^^^^^^^^^^^
+
+- Better handling of replica-sets, we now raise an ``autoreconnect`` when master is unreachable.
+- Changed the behaviour of ``find`` and ``find_one`` to return ``None`` instead of an empty
+ dict ``{}`` when no result is found.
+
+Features
+^^^^^^^^
+
+- Added ``db.command`` function, just like PyMongo.
+- Added support for named indexes in ``filter``.
+- Replaced all traditional deferred callbacks (and errbacks) to use @defer.inlineCallbacks
+
+Bugfixes
+^^^^^^^^
+
+- Fixed typo in ``map_reduce()`` when returning results.
+- Fixed hang in ``create_collection()`` in case of error.
+- Fixed typo in ``rename()`` that wasn't using the write factory.
+- Fixed exception in ``drop_index`` that was being thrown when dropping a non-existent collection.
+This makes the function idempotent.
+- Fixed URI prefixing when "mongodb://" is not present in URI string in ``connection``.
+- Fixed fail-over when using replica-sets in ``connection``.  It now raises ``autoreconnect`` when
+ there is a problem with the existing master. It is then up to the client code to reconnect to the
+ new master.
+- Fixed number of cursors in protocol so that it works with py2.6, py2.6 and pypy.
+
+
 Release 15.0 (2015-05-04)
 -------------------------
 
