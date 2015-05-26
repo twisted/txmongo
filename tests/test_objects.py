@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import time
 from StringIO import StringIO
 
@@ -19,11 +20,11 @@ from bson import objectid, timestamp
 import txmongo
 from txmongo import database
 from txmongo import collection
-from txmongo import gridfs
+from txmongo.gridfs import GridFS, GridIn, GridOut, GridOutIterator, errors
 from txmongo import filter as qf
-from txmongo._gridfs import GridIn
 from twisted.trial import unittest
 from twisted.internet import base, defer
+from twisted import _version
 
 mongo_host = "127.0.0.1"
 mongo_port = 27017
@@ -139,26 +140,125 @@ class TestGridFsObjects(unittest.TestCase):
         yield conn.disconnect()
     
     @defer.inlineCallbacks
+    def test_GridFileObjects(self):
+        """ Tests gridfs objects """
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        db = conn.test
+        db.fs.files.remove({})  # drop all objects there first
+        db.fs.chunks.remove({})
+        _ = GridFS(db)  # Default collection
+        with GridIn(db.fs, filename="test_with", contentType="text/plain", chunk_size=1024):
+            pass
+        grid_in_file = GridIn(db.fs, filename="test_1", contentType="text/plain",
+                              content_type="text/plain", chunk_size=2**2**2**2)
+        self.assertFalse(grid_in_file.closed)
+        if _version.version.major >= 15:
+            with self.assertRaises(TypeError):
+                yield grid_in_file.write(1)
+            with self.assertRaises(TypeError):
+                yield grid_in_file.write(u"0xDEADBEEF")
+            with self.assertRaises(AttributeError):
+                _ = grid_in_file.test
+        grid_in_file.test = 1
+        yield grid_in_file.write("0xDEADBEEF")
+        yield grid_in_file.write("0xDEADBEEF"*1048576)
+        fake_doc = {"_id": "test_id", "length": 1048576}
+        grid_out_file = GridOut(db.fs, fake_doc)
+        if _version.version.major >= 15:
+            with self.assertRaises(AttributeError):
+                _ = grid_out_file.testing
+        self.assertEqual(0, grid_out_file.tell())
+        grid_out_file.seek(1024)
+        self.assertEqual(1024, grid_out_file.tell())
+        grid_out_file.seek(1024, os.SEEK_CUR)
+        self.assertEqual(2048, grid_out_file.tell())
+        grid_out_file.seek(0, os.SEEK_END)
+        self.assertEqual(1048576, grid_out_file.tell())
+        self.assertRaises(IOError, grid_out_file.seek, 0, 4)
+        self.assertRaises(IOError, grid_out_file.seek, -1)
+        self.assertTrue("'_id': 'test_id'" in repr(grid_out_file))
+        yield grid_in_file.writelines(["0xDEADBEEF", "0xDEADBEAF"])
+        yield grid_in_file.close()
+        if _version.version.major >= 15:
+            with self.assertRaises(AttributeError):
+                grid_in_file.test = 2
+        self.assertEqual(1, grid_in_file.test)
+        if _version.version.major >= 15:
+            with self.assertRaises(AttributeError):
+                _ = grid_in_file.test_none
+        self.assertTrue(grid_in_file.closed)
+        if _version.version.major >= 15:
+            with self.assertRaises(ValueError):
+                yield grid_in_file.write("0xDEADBEEF")
+        yield conn.disconnect()
+
+    @defer.inlineCallbacks
     def test_GridFsObjects(self):
         """ Tests gridfs objects """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
-        
-        gfs = gridfs.GridFS(db)  # Default collection
-        
-        _ = GridIn(db.fs, filename="test", contentType="text/plain",
-                   chunk_size=2**2**2**2)
-        _ = gfs.new_file(filename="test2", contentType="text/plain",
-                         chunk_size=2**2**2**2)
-        
+        db.fs.files.remove({})  # drop all objects there first
+        db.fs.chunks.remove({})
+        gfs = GridFS(db)  # Default collection
+        yield gfs.delete(u"test")
+
+        _ = gfs.new_file(filename="test_1", contentType="text/plain", chunk_size=65536)
+        yield conn.disconnect()
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        db = conn.test
+        db.fs.files.remove({})  # drop all objects there first
+        gfs = GridFS(db)  # Default collection
+        _ = yield gfs.put("0xDEADBEEF", filename="test_2", contentType="text/plain",
+                          chunk_size=65536)
         # disconnect
         yield conn.disconnect()
-        
+
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        db = conn.test
+        gfs = GridFS(db)  # Default collection
+        _ = yield gfs.get("test_3")
+        # disconnect
+        yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_GridFsIteration(self):
+        """ Tests gridfs iterator """
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        db = conn.test
+        db.fs.files.remove({})  # drop all objects there first
+        db.fs.chunks.remove({})
+        gfs = GridFS(db)  # Default collection
+        new_file = gfs.new_file(filename="testName", contentType="text/plain", length=1048576,
+                                chunk_size=4096)
+        yield new_file.write("0xDEADBEEF"*4096*2)
+        yield new_file.close()
+        fake_doc = {"_id": new_file._id, "name": "testName", "length": 4096*2, "chunkSize": 4096,
+                    "contentType": "text/plain"}
+        grid_out_file = GridOut(db.fs, fake_doc)
+        iterator = GridOutIterator(grid_out_file, db.fs.chunks)
+        next_it = yield iterator.next()
+        self.assertEqual(len(next_it), 4096)
+        _ = yield iterator.next()
+        next_it = yield iterator.next()
+        self.assertEqual(next_it, None)
+
+        fake_bad_doc = {"_id": "bad_id", "name": "testName", "length": 4096*2,
+                        "chunkSize": 4096, "contentType": "text/plain"}
+        grid_bad_out_file = GridOut(db.fs, fake_bad_doc)
+        bad_iterator = GridOutIterator(grid_bad_out_file, db.fs.chunks)
+        if _version.version.major >= 15:
+            with self.assertRaises(errors.CorruptGridFile):
+                next_it = yield bad_iterator.next()
+
+        # disconnect
+        yield conn.disconnect()
+
     @defer.inlineCallbacks
     def test_GridFsOperations(self):
         """ Tests gridfs operations """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
+        db.fs.files.remove({})  # Drop files first TODO: iterate through files and delete them
         
         # Don't forget to disconnect
         self.addCleanup(self._disconnect, conn)
@@ -172,9 +272,9 @@ class TestGridFsObjects(unittest.TestCase):
         
         try:
             # Tests writing to a new gridfs file
-            gfs = gridfs.GridFS(db)  # Default collection
+            gfs = GridFS(db)  # Default collection
             g_in = gfs.new_file(filename="optest", contentType="text/plain",
-                                chunk_size=2**2**2**2)  # non-default chunk size used
+                                chunk_size=65536)  # non-default chunk size used
             # yielding to ensure writes complete before we close and close before we try to read
             yield g_in.write(in_file.read())
             yield g_in.close()

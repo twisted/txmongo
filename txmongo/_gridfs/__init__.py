@@ -18,15 +18,13 @@ The :mod:`gridfs` package is an implementation of GridFS on top of
 :mod:`pymongo`, exposing a file-like interface.
 """
 from twisted.internet import defer
-from txmongo._gridfs.errors import (NoFile,
-                                    UnsupportedAPI)
-from txmongo._gridfs.grid_file import (GridIn,
-                                       GridOut)
+from txmongo._gridfs.errors import NoFile
+from txmongo._gridfs.grid_file import GridIn, GridOut, GridOutIterator
 from txmongo import filter
-from txmongo.filter import (ASCENDING,
-                            DESCENDING)
+from txmongo.filter import ASCENDING, DESCENDING
 from txmongo.database import Database
 
+assert GridOutIterator
 
 class GridFS(object):
     """An instance of GridFS on top of a single Database.
@@ -181,20 +179,3 @@ class GridFS(object):
            Removed the `collection` argument.
         """
         return self.__files.distinct("filename")
-
-    def open(self, *args, **kwargs):
-        """No longer supported.
-
-        .. versionchanged:: 1.6
-           The open method is no longer supported.
-        """
-        raise UnsupportedAPI("The open method is no longer supported.")
-
-    def remove(self, *args, **kwargs):
-        """No longer supported.
-
-        .. versionchanged:: 1.6
-           The remove method is no longer supported.
-        """
-        raise UnsupportedAPI("The remove method is no longer supported. "
-                             "Please use the delete method instead.")
