@@ -226,6 +226,11 @@ class TestMongoQueries(unittest.TestCase):
         self.assertTrue(type(doc) is CustomDict)
 
     @defer.inlineCallbacks
+    def test_FindOneNone(self):
+        doc = yield self.coll.find_one()
+        self.assertEqual(doc, None)
+
+    @defer.inlineCallbacks
     def tearDown(self):
         yield self.coll.drop()
         yield self.conn.disconnect()

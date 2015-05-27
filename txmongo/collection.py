@@ -202,7 +202,7 @@ class Collection(object):
         if isinstance(spec, ObjectId):
             spec = {"_id": spec}
         result = yield self.find(spec=spec, limit=1, fields=fields, **kwargs)
-        defer.returnValue(result[0] if result else {})
+        defer.returnValue(result[0] if result else None)
 
 
     @defer.inlineCallbacks

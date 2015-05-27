@@ -17,7 +17,7 @@ API Changes
 ^^^^^^^^^^^
 
 - Better handling of replica-sets, we now raise an ``autoreconnect`` when master is unreachable.
-- Changed the behaviour of ``find`` and ``find_one`` to return ``None`` instead of an empty
+- Changed the behaviour of ``find_one`` to return ``None`` instead of an empty
  dict ``{}`` when no result is found.
 
 Features
