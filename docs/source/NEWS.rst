@@ -18,7 +18,7 @@ API Changes
 
 - Better handling of replica-sets, we now raise an ``autoreconnect`` when master is unreachable.
 - Changed the behaviour of ``find_one`` to return ``None`` instead of an empty
- dict ``{}`` when no result is found.
+  dict ``{}`` when no result is found.
 
 Features
 ^^^^^^^^
@@ -32,13 +32,13 @@ Bugfixes
 
 - Fixed typo in ``map_reduce()`` when returning results.
 - Fixed hang in ``create_collection()`` in case of error.
-- Fixed typo in ``rename()`` that wasn't using the write factory.
+- Fixed typo in ``rename()`` that wasn't using the right factory.
 - Fixed exception in ``drop_index`` that was being thrown when dropping a non-existent collection.
-This makes the function idempotent.
+  This makes the function idempotent.
 - Fixed URI prefixing when "mongodb://" is not present in URI string in ``connection``.
 - Fixed fail-over when using replica-sets in ``connection``.  It now raises ``autoreconnect`` when
- there is a problem with the existing master. It is then up to the client code to reconnect to the
- new master.
+  there is a problem with the existing master. It is then up to the client code to reconnect to the
+  new master.
 - Fixed number of cursors in protocol so that it works with py2.6, py2.6 and pypy.
 
 
