@@ -68,6 +68,8 @@ REPLY_AWAIT_CAPABLE = 1 << 3
 UPDATE_UPSERT = 1 << 0
 UPDATE_MULTI = 1 << 1
 
+INSERT_CONTINUE_ON_ERROR = 1 << 0
+
 Msg = namedtuple("Msg", ["len", "request_id", "response_to", "opcode", "message"])
 
 class KillCursors(namedtuple("KillCursors", ["len", "request_id", "response_to", "opcode",
