@@ -13,6 +13,15 @@ from twisted.python import log
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
 
+# PyMongo 2.x defines ReadPreference.XXX as ints while 3.0 defines them
+# as objects with `mode` integer attribute
+try:
+    _PRIMARY_READ_PREFERENCES = set([ReadPreference.PRIMARY.mode,
+                                     ReadPreference.PRIMARY_PREFERRED.mode])
+except AttributeError:
+    _PRIMARY_READ_PREFERENCES = set([ReadPreference.PRIMARY,
+                                     ReadPreference.PRIMARY_PREFERRED])
+
 
 class _Connection(ReconnectingClientFactory):
     __notify_ready = None
@@ -51,8 +60,7 @@ class _Connection(ReconnectingClientFactory):
         uri_options = self.uri['options']
         slaveok = uri_options.get('slaveok', False)
         if 'readpreference' in uri_options:
-            slaveok = uri_options['readpreference'] not in (ReadPreference.PRIMARY.mode,
-                                                            ReadPreference.PRIMARY_PREFERRED.mode)
+            slaveok = uri_options['readpreference'] not in _PRIMARY_READ_PREFERENCES
 
         try:
             if not slaveok:
