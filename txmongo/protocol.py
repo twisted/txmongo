@@ -378,18 +378,10 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         self.transport.loseConnection()
 
     @defer.inlineCallbacks
-    def get_last_error(self, db):
-        command = {"getlasterror": 1}
+    def get_last_error(self, db, **options):
+        command = SON([("getlasterror", 1)])
         db = "%s.$cmd" % db.split('.', 1)[0]
-        uri = self.factory.uri
-        if 'w' in uri["options"]:
-            command['w'] = int(uri["options"]['w'])
-        if "wtimeoutms" in uri["options"]:
-            command["wtimeout"] = int(uri["options"]["wtimeoutms"])
-        if "fsync" in uri["options"]:
-            command["fsync"] = bool(uri["options"]["fsync"])
-        if "journal" in uri["options"]:
-            command["journal"] = bool(uri["options"]["journal"])
+        command.update(options)
 
         query = Query(collection=db, query=command)
         reply = yield self.send_QUERY(query)

@@ -4,6 +4,7 @@
 
 import types
 
+import warnings
 import bson
 from bson import BSON, ObjectId
 from bson.code import Code
@@ -13,10 +14,11 @@ from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
     Query, Getmore, Insert, Update, Delete, KillCursors
 from twisted.internet import defer
+from txmongo.write_concern import WriteConcern
 
 
 class Collection(object):
-    def __init__(self, database, name):
+    def __init__(self, database, name, write_concern=None):
         if not isinstance(name, basestring):
             raise TypeError("name must be an instance of basestring")
 
@@ -32,6 +34,7 @@ class Collection(object):
 
         self._database = database
         self._collection_name = unicode(name)
+        self.__write_concern = write_concern
 
     def __str__(self):
         return "%s.%s" % (str(self._database), self._collection_name)
@@ -54,6 +57,10 @@ class Collection(object):
 
     def __call__(self, collection_name):
         return self[collection_name]
+
+    @property
+    def write_concern(self):
+        return self.__write_concern or self._database.write_concern
 
     @staticmethod
     def _fields_list_to_dict(fields):
@@ -246,8 +253,27 @@ class Collection(object):
         defer.returnValue(result.get("md5"))
 
 
+    def _get_write_concern(self, safe=None, **wc_options):
+        from_opts = WriteConcern(**wc_options)
+        if from_opts.document:
+            return from_opts
+
+        if safe == True:
+            if self.write_concern.acknowledged:
+                return self.write_concern
+            else:
+                # Edge case: MongoConnection(w=0).db.coll.insert(..., safe=True)
+                # In this case safe=True must issue getLastError without args
+                # even if connection-level write concern was unacknowledged
+                return WriteConcern()
+        elif safe == False:
+            return WriteConcern(w=0)
+
+        return self.write_concern
+
+
     @defer.inlineCallbacks
-    def insert(self, docs, safe=True, **kwargs):
+    def insert(self, docs, safe=None, flags=0, **kwargs):
         if isinstance(docs, types.DictType):
             ids = docs.get("_id", ObjectId())
             docs["_id"] = ids
@@ -265,28 +291,26 @@ class Collection(object):
             raise TypeError("insert takes a document or a list of documents")
 
         docs = [BSON.encode(d) for d in docs]
-        flags = kwargs.get("flags", 0)
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
         proto = yield self._database.connection.getprotocol()
 
         proto.send_INSERT(insert)
 
-        if safe:
-            yield proto.get_last_error(str(self._database))
+        write_concern = self._get_write_concern(safe, **kwargs)
+        if write_concern.acknowledged:
+            yield proto.get_last_error(str(self._database), **write_concern.document)
 
         defer.returnValue(ids)
 
     @defer.inlineCallbacks
-    def update(self, spec, document, upsert=False, multi=False, safe=True, **kwargs):
+    def update(self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs):
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict")
         if not isinstance(document, types.DictType):
             raise TypeError("document must be an instance of dict")
         if not isinstance(upsert, types.BooleanType):
             raise TypeError("upsert must be an instance of bool")
-
-        flags = kwargs.get("flags", 0)
 
         if multi:
             flags |= UPDATE_MULTI
@@ -301,11 +325,12 @@ class Collection(object):
 
         proto.send_UPDATE(update)
 
-        if safe:
-            ret = yield proto.get_last_error(str(self._database))
+        write_concern = self._get_write_concern(safe, **kwargs)
+        if write_concern.acknowledged:
+            ret = yield proto.get_last_error(str(self._database), **write_concern.document)
             defer.returnValue(ret)
 
-    def save(self, doc, safe=True, **kwargs):
+    def save(self, doc, safe=None, **kwargs):
         if not isinstance(doc, types.DictType):
             raise TypeError("cannot save objects of type %s" % type(doc))
 
@@ -316,13 +341,12 @@ class Collection(object):
             return self.insert(doc, safe=safe, **kwargs)
 
     @defer.inlineCallbacks
-    def remove(self, spec, safe=True, single=False, **kwargs):
+    def remove(self, spec, safe=None, single=False, flags=0, **kwargs):
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict, not %s" % type(spec))
 
-        flags = kwargs.get("flags", 0)
         if single:
             flags |= DELETE_SINGLE_REMOVE
 
@@ -332,8 +356,9 @@ class Collection(object):
 
         proto.send_DELETE(delete)
 
-        if safe:
-            ret = yield proto.get_last_error(str(self._database))
+        write_concern = self._get_write_concern(safe, **kwargs)
+        if write_concern.acknowledged:
+            ret = yield proto.get_last_error(str(self._database), **write_concern.document)
             defer.returnValue(ret)
 
     def drop(self, **kwargs):
