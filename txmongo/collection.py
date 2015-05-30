@@ -4,7 +4,6 @@
 
 import types
 
-import warnings
 import bson
 from bson import BSON, ObjectId
 from bson.code import Code
