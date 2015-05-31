@@ -46,9 +46,18 @@ class TestReplicaSet(unittest.TestCase):
         return d
 
     @defer.inlineCallbacks
+    def __check_reachable(self, port):
+        uri = "mongodb://localhost:{0}/?readPreference=secondaryPreferred".format(port)
+        conn = ConnectionPool(uri)
+        cmd = yield conn.admin.command("ismaster", check=False)
+        yield conn.disconnect()
+
+    @defer.inlineCallbacks
     def setUp(self):
         self.__mongod = [Mongod(port=p, replset=self.rsname) for p in self.ports]
         yield defer.gatherResults([mongo.start() for mongo in self.__mongod])
+
+        yield defer.gatherResults([self.__check_reachable(port) for port in self.ports])
 
         master_uri = "mongodb://localhost:{0}/?readPreference=secondaryPreferred".format(self.ports[0])
         master = ConnectionPool(master_uri)
