@@ -12,6 +12,7 @@ from twisted.python import log
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
+from txmongo.write_concern import WriteConcern
 
 # PyMongo 2.x defines ReadPreference.XXX as ints while 3.0 defines them
 # as objects with `mode` integer attribute
@@ -241,7 +242,9 @@ class ConnectionPool(object):
     __pool_size = None
     __uri = None
 
-    def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None):
+    __wc_possible_options = set(['w', "wtimeout", 'j', "fsync"])
+
+    def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None, **kwargs):
         assert isinstance(uri, basestring)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
@@ -250,6 +253,12 @@ class ConnectionPool(object):
             uri = "mongodb://" + uri
 
         self.__uri = parse_uri(uri)
+
+        wc_options = self.__uri['options'].copy()
+        wc_options.update(kwargs)
+        wc_options = dict((k, v) for k, v in wc_options.items() if k in self.__wc_possible_options)
+        self.__write_concern = WriteConcern(**wc_options)
+
         self.__pool_size = pool_size
         self.__pool = [_Connection(self, self.__uri, i) for i in range(pool_size)]
 
@@ -264,6 +273,10 @@ class ConnectionPool(object):
                 factory.connector = reactor.connectSSL(host, port, factory, ssl_context_factory)
             else:
                 factory.connector = reactor.connectTCP(host, port, factory)
+
+    @property
+    def write_concern(self):
+        return self.__write_concern
 
     def getprotocols(self):
         return self.__pool
@@ -335,9 +348,9 @@ class ConnectionPool(object):
 ###
 
 class MongoConnection(ConnectionPool):
-    def __init__(self, host="127.0.0.1", port=27017, pool_size=1):
+    def __init__(self, host="127.0.0.1", port=27017, pool_size=1, **kwargs):
         uri = "mongodb://%s:%d/" % (host, port)
-        ConnectionPool.__init__(self, uri, pool_size=pool_size)
+        ConnectionPool.__init__(self, uri, pool_size=pool_size, **kwargs)
 
 
 lazyMongoConnectionPool = MongoConnection

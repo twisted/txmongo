@@ -20,8 +20,9 @@ if 'reset' in inspect.getargspec(_check_command_response).args:
 class Database(object):
     __factory = None
 
-    def __init__(self, factory, database_name):
+    def __init__(self, factory, database_name, write_concern=None):
         self.__factory = factory
+        self.__write_concern = write_concern
         self._database_name = unicode(database_name)
 
     def __str__(self):
@@ -31,7 +32,7 @@ class Database(object):
         return "Database(%r, %r)" % (self.__factory, self._database_name,)
 
     def __call__(self, database_name):
-        return Database(self.__factory, database_name)
+        return Database(self.__factory, database_name, self.__write_concern)
 
     def __getitem__(self, collection_name):
         return Collection(self, collection_name)
@@ -46,6 +47,10 @@ class Database(object):
     @property
     def connection(self):
         return self.__factory
+
+    @property
+    def write_concern(self):
+        return self.__write_concern or self.__factory.write_concern
 
     @defer.inlineCallbacks
     def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
