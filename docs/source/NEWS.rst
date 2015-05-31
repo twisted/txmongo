@@ -25,6 +25,16 @@ Features
 
 - Added ``db.command`` function, just like PyMongo.
 - Added support for named indexes in ``filter``.
+- ``insert()``, ``update()``, ``save()`` and ``remove()`` now support write-concern options via
+  named args: ``w``, ``wtimeout``, ``j``, ``fsync``. ``safe`` argument is still supported for
+  backward compatibility.
+- Default write-concern can be specified for ``Connection`` using named arguments in constructor
+  or by URI options.
+- Write-concern options can also be set for ``Database`` and ``Collection`` with ``write_concern``
+  named argument of their constructors. In this case write-concern is specified by instance of
+  ``txmongo.write_concern.WriteConcern`` class which is the same as
+  ``pymongo.write_concern.WriteConcern`` of PyMongo 3.0.
+- ``txmongo.protocol.INSERT_CONTINUE_ON_ERROR`` flag defined for using with ``insert()``
 - Replaced all traditional deferred callbacks (and errbacks) to use @defer.inlineCallbacks
 
 Bugfixes
