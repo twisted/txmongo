@@ -14,6 +14,7 @@
 # limitations under the License.
 
 from mock import Mock, patch
+from pymongo.errors import ConfigurationError
 from twisted.internet import defer
 from twisted.trial import unittest
 from txmongo.connection import MongoConnection, ConnectionPool
@@ -150,3 +151,49 @@ class TestWriteConcern(unittest.TestCase):
         finally:
             yield coll.drop()
             yield conn.disconnect()
+
+
+class TestWriteConcernClass(unittest.TestCase):
+
+    def test_wtimeout(self):
+        wc = WriteConcern(wtimeout=123)
+        self.assertEqual(wc.document['wtimeout'], 123)
+
+        self.assertRaises(TypeError, WriteConcern, wtimeout=123.456)
+
+    def test_j(self):
+        wc = WriteConcern(j=True)
+        self.assertEqual(wc.document['j'], True)
+
+        self.assertRaises(TypeError, WriteConcern, j=1)
+
+    def test_fsync(self):
+        wc = WriteConcern(fsync=True)
+        self.assertEqual(wc.document['fsync'], True)
+
+        self.assertRaises(TypeError, WriteConcern, fsync=1)
+        # Can't set both j and fsync
+        self.assertRaises(ConfigurationError, WriteConcern, j=True, fsync=True)
+
+    def test_w(self):
+        WriteConcern(w=0)
+
+        # Can't set w=0 with any other options
+        self.assertRaises(ConfigurationError, WriteConcern, w=0, j=True)
+        self.assertRaises(ConfigurationError, WriteConcern, w=0, wtimeout=100)
+        self.assertRaises(ConfigurationError, WriteConcern, w=0, fsync=True)
+
+        self.assertRaises(TypeError, WriteConcern, w=1.5)
+
+    def test_repr(self):
+        kwargs = {'w': 2, "wtimeout": 500, 'j': True}
+        expected_repr = "WriteConcern({0})".format(", ".join("{0}={1}".format(k, v)
+                                                   for k, v in kwargs.iteritems()))
+        self.assertEqual(repr(WriteConcern(**kwargs)), expected_repr)
+
+        self.assertEqual(repr(WriteConcern()), "WriteConcern()")
+
+    def test_cmp(self):
+        self.assertEqual(WriteConcern(w=2, wtimeout=500), WriteConcern(wtimeout=500, w=2))
+        self.assertNotEqual(WriteConcern(w=2, wtimeout=500),
+                            WriteConcern(wtimeout=500, w=2, j=True))
