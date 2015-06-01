@@ -9,9 +9,13 @@ from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
 from pymongo.errors import InvalidName
+from pymongo.helpers import _check_write_command_response
+from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult
+from pymongo.common import validate_ok_for_update, validate_is_mapping, \
+    validate_boolean
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
-    Query, Getmore, Insert, Update, Delete, KillCursors
+    Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
 from twisted.internet import defer
 from txmongo.write_concern import WriteConcern
 
@@ -60,6 +64,18 @@ class Collection(object):
     @property
     def write_concern(self):
         return self.__write_concern or self._database.write_concern
+
+    def with_options(self, **kwargs):
+        """Get a clone of collection changing the specified settings."""
+        # PyMongo's method gets several positional arguments. We support
+        # only write_concern for now which is the 3rd positional argument.
+        # So we are using **kwargs here to force user's code to specify
+        # write_concern as named argument, so adding other args in future
+        # won't break compatibility
+        write_concern = kwargs.get('write_concern') or self.__write_concern
+
+        return Collection(self._database, self._collection_name,
+                          write_concern=write_concern)
 
     @staticmethod
     def _fields_list_to_dict(fields):
@@ -303,6 +319,39 @@ class Collection(object):
         defer.returnValue(ids)
 
     @defer.inlineCallbacks
+    def _insert_one_or_many(self, documents, ordered=True):
+        if self.write_concern.acknowledged:
+            inserted_ids = []
+            for doc in documents:
+                if "_id" not in doc:
+                    doc["_id"] = ObjectId()
+                inserted_ids.append(doc["_id"])
+
+            command = SON([("insert", self._collection_name),
+                           ("documents", documents),
+                           ("ordered", ordered),
+                           ("writeConcern", self.write_concern.document)])
+            response = yield self._database.command(command)
+            _check_write_command_response([[0, response]])
+        else:
+            # falling back to OP_INSERT in case of unacknowledged op
+            flags = INSERT_CONTINUE_ON_ERROR if not ordered else 0
+            inserted_ids = yield self.insert(documents, flags=flags)
+
+        defer.returnValue(inserted_ids)
+
+    @defer.inlineCallbacks
+    def insert_one(self, document):
+        inserted_ids = yield self._insert_one_or_many([document])
+        defer.returnValue(InsertOneResult(inserted_ids[0], self.write_concern.acknowledged))
+
+    @defer.inlineCallbacks
+    def insert_many(self, documents, ordered=True):
+        inserted_ids = yield self._insert_one_or_many(documents, ordered)
+        defer.returnValue(InsertManyResult(inserted_ids, self.write_concern.acknowledged))
+
+
+    @defer.inlineCallbacks
     def update(self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs):
         if not isinstance(spec, types.DictType):
             raise TypeError("spec must be an instance of dict")
@@ -328,6 +377,47 @@ class Collection(object):
         if write_concern.acknowledged:
             ret = yield proto.get_last_error(str(self._database), **write_concern.document)
             defer.returnValue(ret)
+
+
+    @defer.inlineCallbacks
+    def _update(self, filter, update, upsert, multi):
+        validate_is_mapping("filter", filter)
+        validate_boolean("upsert", upsert)
+
+        if self.write_concern.acknowledged:
+            updates = [SON([('q', filter), ('u', update),
+                            ("upsert", upsert), ("multi", multi)])]
+
+            command = SON([("update", self._collection_name),
+                           ("updates", updates),
+                           ("writeConcern", self.write_concern.document)])
+            raw_response = yield self._database.command(command)
+            _check_write_command_response([[0, raw_response]])
+
+            # Extract upserted_id from returned array
+            if raw_response.get("upserted"):
+                raw_response["upserted"] = raw_response["upserted"][0]["_id"]
+
+        else:
+            yield self.update(filter, update, upsert=upsert, multi=multi)
+            raw_response = None
+
+        defer.returnValue(raw_response)
+
+
+    @defer.inlineCallbacks
+    def update_one(self, filter, update, upsert=False):
+        validate_ok_for_update(update)
+
+        raw_response = yield self._update(filter, update, upsert, multi=False)
+        defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
+
+    @defer.inlineCallbacks
+    def update_many(self, filter, update, upsert=False):
+        validate_ok_for_update(update)
+
+        raw_response = yield self._update(filter, update, upsert, multi=True)
+        defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
 
     def save(self, doc, safe=None, **kwargs):
         if not isinstance(doc, types.DictType):
