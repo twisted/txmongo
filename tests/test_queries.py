@@ -684,6 +684,53 @@ class TestUpdateOne(_SingleCollectionTest):
         yield self.assertFailure(self.coll.update_one({'x': 1}, {'y': 123}), ValueError)
 
 
+class TestReplaceOne(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestReplaceOne, self).setUp()
+        yield self.coll.insert_many([{'x': 1}, {'x': 2}])
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.replace_one({'x': {"$exists": True}}, {'y': 123})
+        self.assertTrue(isinstance(result, UpdateResult))
+        self.assertEqual(result.acknowledged, True)
+        self.assertEqual(result.matched_count, 1)
+        self.assertEqual(result.modified_count, 1)
+        self.assertEqual(result.upserted_id, None)
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.replace_one({'x': {"$exists": True}}, {'y': 123})
+        self.assertTrue(isinstance(result, UpdateResult))
+        self.assertEqual(result.acknowledged, False)
+
+    @defer.inlineCallbacks
+    def test_UpsertAcknowledged(self):
+        result = yield self.coll.replace_one({'x': 5}, {'y': 123}, upsert=True)
+        self.assertTrue(isinstance(result.upserted_id, ObjectId))
+
+        doc = yield self.coll.find_one({"_id": result.upserted_id}, fields={"_id": 0})
+        self.assertEqual(doc, {'y': 123})
+
+    @defer.inlineCallbacks
+    def test_UpsertUnacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.replace_one({'x': 5}, {'y': 123}, upsert=True)
+        self.assertEqual(result.acknowledged, False)
+
+        doc = yield self.coll.find_one({"y": {"$exists": True}}, fields={"_id": 0})
+        self.assertEqual(doc, {'y': 123})
+
+    @defer.inlineCallbacks
+    def test_InvalidReplace(self):
+        # replace_one does not allow $-operators, only whole document replace
+        yield self.assertFailure(self.coll.replace_one({'x': 1}, {"$set": {'y': 123}}),
+                                 ValueError)
+
+
 class TestUpdateMany(_SingleCollectionTest):
 
     @defer.inlineCallbacks

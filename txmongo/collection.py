@@ -11,8 +11,8 @@ from bson.son import SON
 from pymongo.errors import InvalidName
 from pymongo.helpers import _check_write_command_response
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult
-from pymongo.common import validate_ok_for_update, validate_is_mapping, \
-    validate_boolean
+from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
+    validate_is_mapping, validate_boolean
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
     Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
@@ -72,7 +72,7 @@ class Collection(object):
         # So we are using **kwargs here to force user's code to specify
         # write_concern as named argument, so adding other args in future
         # won't break compatibility
-        write_concern = kwargs.get('write_concern') or self.__write_concern
+        write_concern = kwargs.get("write_concern") or self.__write_concern
 
         return Collection(self._database, self._collection_name,
                           write_concern=write_concern)
@@ -417,6 +417,13 @@ class Collection(object):
         validate_ok_for_update(update)
 
         raw_response = yield self._update(filter, update, upsert, multi=True)
+        defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
+
+    @defer.inlineCallbacks
+    def replace_one(self, filter, replacement, upsert=False):
+        validate_ok_for_replace(replacement)
+
+        raw_response = yield self._update(filter, replacement, upsert, multi=False)
         defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
 
     def save(self, doc, safe=None, **kwargs):
