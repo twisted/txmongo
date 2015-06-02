@@ -12,16 +12,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import time
 from StringIO import StringIO
 
+import os
 from bson import objectid, timestamp
 import txmongo
 from txmongo import database
 from txmongo import collection
 from txmongo.gridfs import GridFS, GridIn, GridOut, GridOutIterator, errors
 from txmongo import filter as qf
+from txmongo._gridfs.errors import NoFile
 from twisted.trial import unittest
 from twisted.internet import base, defer
 from twisted import _version
@@ -146,7 +147,9 @@ class TestGridFsObjects(unittest.TestCase):
         db = conn.test
         db.fs.files.remove({})  # drop all objects there first
         db.fs.chunks.remove({})
+        self.assertRaises(TypeError, GridFS, None)
         _ = GridFS(db)  # Default collection
+        self.assertRaises(TypeError, GridIn, None)
         with GridIn(db.fs, filename="test_with", contentType="text/plain", chunk_size=1024):
             pass
         grid_in_file = GridIn(db.fs, filename="test_1", contentType="text/plain",
@@ -163,6 +166,7 @@ class TestGridFsObjects(unittest.TestCase):
         yield grid_in_file.write("0xDEADBEEF")
         yield grid_in_file.write("0xDEADBEEF"*1048576)
         fake_doc = {"_id": "test_id", "length": 1048576}
+        self.assertRaises(TypeError, GridOut, None, None)
         grid_out_file = GridOut(db.fs, fake_doc)
         if _version.version.major >= 15:
             with self.assertRaises(AttributeError):
@@ -273,6 +277,10 @@ class TestGridFsObjects(unittest.TestCase):
         try:
             # Tests writing to a new gridfs file
             gfs = GridFS(db)  # Default collection
+            if _version.version.major >= 15:
+                with self.assertRaises(NoFile):
+                    yield gfs.get_last_version("optest")
+
             g_in = gfs.new_file(filename="optest", contentType="text/plain",
                                 chunk_size=65536)  # non-default chunk size used
             # yielding to ensure writes complete before we close and close before we try to read

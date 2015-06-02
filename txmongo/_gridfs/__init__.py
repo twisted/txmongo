@@ -115,6 +115,7 @@ class GridFS(object):
 
         defer.returnValue(GridOut(self.__collection, doc))
 
+    @defer.inlineCallbacks
     def get_last_version(self, filename):
         """Get a file from GridFS by ``"filename"``.
 
@@ -132,22 +133,14 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        self.__files.ensure_index(filter.sort(ASCENDING("filename") +
-                                              DESCENDING("uploadDate")))
+        self.__files.ensure_index(filter.sort(ASCENDING("filename") + DESCENDING("uploadDate")))
 
-        d = self.__files.find({"filename": filename},
-                              filter=filter.sort(DESCENDING("uploadDate")))
-        d.addCallback(self._cb_get_last_version, filename)
-        return d
-
-    # cursor.limit(-1).sort("uploadDate", -1)#DESCENDING)
-
-    def _cb_get_last_version(self, docs, filename):
-        try:
-            grid_file = docs[0]
-            return GridOut(self.__collection, grid_file)
-        except IndexError:
+        doc = yield self.__files.find_one({"filename": filename},
+                                          filter=filter.sort(DESCENDING("uploadDate")))
+        if doc is None:
             raise NoFile("no file in gridfs with filename %r" % filename)
+
+        defer.returnValue(GridOut(self.__collection, doc))
 
     # TODO add optional safe mode for chunk removal?
     def delete(self, file_id):
