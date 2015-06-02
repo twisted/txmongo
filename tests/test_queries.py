@@ -18,11 +18,13 @@ from bson.son import SON
 from pymongo.errors import OperationFailure, WriteError
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult
+from pymongo.collection import ReturnDocument
 from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
 from txmongo.protocol import MongoClientProtocol
 from txmongo.write_concern import WriteConcern
+import txmongo.filter as qf
 
 mongo_host = "localhost"
 mongo_port = 27017
@@ -124,7 +126,7 @@ class TestMongoQueries(_SingleCollectionTest):
         res = yield self.coll.find(fields=[])
         yield self.coll.count(fields=[])
         self.assertTrue(all(x in ["_id"] for x in res[0].keys()))
-        self.assertRaises(TypeError, self.coll._fields_list_to_dict, [1])
+        yield self.assertFailure(self.coll.find({}, fields=[1]), TypeError)
 
     @defer.inlineCallbacks
     def test_group(self):
@@ -841,3 +843,129 @@ class TestDeleteMany(_SingleCollectionTest):
 
         cnt = yield self.coll.count()
         self.assertEqual(cnt, 0)
+
+
+class TestFindOneAndDelete(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestFindOneAndDelete, self).setUp()
+        yield self.coll.insert_many([{'x': 1, 'y': 1},
+                                     {'x': 2, 'y': 2},
+                                     {'x': 3, 'y': 3}])
+
+    @defer.inlineCallbacks
+    def test_Sort(self):
+        doc = yield self.coll.find_one_and_delete({'x': {"$exists": True}},
+                                                  sort=qf.sort(qf.ASCENDING('y')))
+        self.assertEqual(doc['x'], 1)
+
+        doc = yield self.coll.find_one_and_delete({'x': {"$exists": True}},
+                                                  sort=qf.sort(qf.DESCENDING('y')))
+        self.assertEqual(doc['x'], 3)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 1)
+
+    @defer.inlineCallbacks
+    def test_Projection(self):
+        doc = yield self.coll.find_one_and_delete({'x': 2}, {'y': 1, "_id": 0})
+        self.assertEqual(doc, {'y': 2})
+
+
+class TestFindOneAndReplace(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestFindOneAndReplace, self).setUp()
+        yield self.coll.insert_many([{'x': 10, 'y': 10},
+                                     {'x': 20, 'y': 20},
+                                     {'x': 30, 'y': 30}])
+
+    @defer.inlineCallbacks
+    def test_Sort(self):
+        doc = yield self.coll.find_one_and_replace({}, {'x': 5, 'y': 5},
+                                                   projection={"_id": 0},
+                                                   sort=qf.sort(qf.ASCENDING('y')))
+        self.assertEqual(doc, {'x': 10, 'y': 10})
+
+        doc = yield self.coll.find_one_and_replace({}, {'x': 40, 'y': 40},
+                                                   projection={"_id": 0},
+                                                   sort=qf.sort(qf.DESCENDING('y')))
+        self.assertEqual(doc, {'x': 30, 'y': 30})
+
+        ys = yield self.coll.distinct('y')
+        self.assertEqual(set(ys), set([5, 20, 40]))
+
+    def test_InvalidReplace(self):
+        self.assertRaises(ValueError, self.coll.find_one_and_replace, {}, {"$set": {'z': 1}})
+
+    @defer.inlineCallbacks
+    def test_Upsert(self):
+        doc = yield self.coll.find_one_and_replace({'x': 40}, {'x': 50}, upsert=True)
+        self.assertEqual(doc, None)
+
+        xs = yield self.coll.distinct('x')
+        self.assertEqual(set(xs), set([10, 20, 30, 50]))
+
+    @defer.inlineCallbacks
+    def test_ReturnDocument(self):
+        doc = yield self.coll.find_one_and_replace({'x': 10}, {'x': 15},
+                                                   return_document=ReturnDocument.BEFORE)
+        self.assertEqual(doc['x'], 10)
+
+        doc = yield self.coll.find_one_and_replace({'x': 20}, {'x': 25},
+                                                   return_document=ReturnDocument.AFTER)
+        self.assertEqual(doc['x'], 25)
+
+    @defer.inlineCallbacks
+    def test_InvalidReturnDocument(self):
+        yield self.assertFailure(self.coll.find_one_and_replace({}, {}, return_document=1),
+                                 ValueError)
+
+
+class TestFindOneAndUpdate(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestFindOneAndUpdate, self).setUp()
+        yield self.coll.insert_many([{'x': 10, 'y': 10},
+                                     {'x': 20, 'y': 20},
+                                     {'x': 30, 'y': 30}])
+
+    @defer.inlineCallbacks
+    def test_Sort(self):
+        doc = yield self.coll.find_one_and_update({}, {"$set": {'y': 5}},
+                                                  projection={"_id": 0},
+                                                  sort=qf.sort(qf.ASCENDING('y')))
+        self.assertEqual(doc, {'x': 10, 'y': 10})
+
+        doc = yield self.coll.find_one_and_update({}, {"$set": {'y': 35}},
+                                                  projection={"_id": 0},
+                                                  sort=qf.sort(qf.DESCENDING('y')))
+        self.assertEqual(doc, {'x': 30, 'y': 30})
+
+        ys = yield self.coll.distinct('y')
+        self.assertEqual(set(ys), set([5, 20, 35]))
+
+    def test_InvalidUpdate(self):
+        self.assertRaises(ValueError, self.coll.find_one_and_update, {}, {'x': 123})
+
+    @defer.inlineCallbacks
+    def test_Upsert(self):
+        doc = yield self.coll.find_one_and_update({'x': 40}, {"$set": {'y': 40}},
+                                                  upsert=True)
+        self.assertEqual(doc, None)
+
+        inserted = yield self.coll.find_one({'x': 40})
+        self.assertEqual(inserted['y'], 40)
+
+    @defer.inlineCallbacks
+    def test_ReturnDocument(self):
+        doc = yield self.coll.find_one_and_update({'x': 10}, {"$set": {'y': 5}},
+                                                  return_document=ReturnDocument.BEFORE)
+        self.assertEqual(doc['y'], 10)
+
+        doc = yield self.coll.find_one_and_update({'x': 10}, {"$set": {'y': 15}},
+                                                  return_document=ReturnDocument.AFTER)
+        self.assertEqual(doc['y'], 15)

@@ -14,6 +14,7 @@ from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult
 from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
     validate_is_mapping, validate_boolean
+from pymongo.collection import ReturnDocument
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
     Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
@@ -79,15 +80,25 @@ class Collection(object):
                           write_concern=write_concern)
 
     @staticmethod
-    def _fields_list_to_dict(fields):
+    def _normalize_fields_projection(fields):
         """
         transform a list of fields from ["a", "b"] to {"a":1, "b":1}
         """
+        if fields is None:
+            return None
+
+        if isinstance(fields, dict):
+            return fields
+
+        # Consider fields as iterable
         as_dict = {}
         for field in fields:
             if not isinstance(field, types.StringTypes):
                 raise TypeError("fields must be a list of key names")
             as_dict[field] = 1
+        if not as_dict:
+            # Empty list should be treated as "_id only"
+            as_dict = {"_id": 1}
         return as_dict
 
     @staticmethod
@@ -154,11 +165,7 @@ class Collection(object):
         if not isinstance(limit, types.IntType):
             raise TypeError("limit must be an instance of int")
 
-        if fields is not None:
-            if not isinstance(fields, types.DictType):
-                if not fields:
-                    fields = ["_id"]
-                fields = self._fields_list_to_dict(fields)
+        fields = self._normalize_fields_projection(fields)
 
         spec = self.__apply_find_filter(spec, filter)
 
@@ -230,10 +237,7 @@ class Collection(object):
 
     @defer.inlineCallbacks
     def count(self, spec=None, fields=None):
-        if fields is not None:
-            if not fields:
-                fields = ["_id"]
-            fields = self._fields_list_to_dict(fields)
+        fields = self._normalize_fields_projection(fields)
 
         result = yield self._database.command("count", self._collection_name,
                                               query=spec or SON(),
@@ -250,7 +254,7 @@ class Collection(object):
         if isinstance(keys, basestring):
             body["$keyf"] = Code(keys)
         else:
-            body["key"] = self._fields_list_to_dict(keys)
+            body["key"] = self._normalize_fields_projection(keys)
 
         if condition:
             body["cond"] = condition
@@ -607,3 +611,50 @@ class Collection(object):
                 # Should never get here because of allowable_errors
                 raise ValueError("Unexpected Error: %s" % (result,))
         defer.returnValue(result.get("value"))
+
+
+    # Distinct findAndModify utility method is needed because traditional
+    # find_and_modify() accepts `sort` kwarg as dict and passes it to
+    # MongoDB command without conversion. But in find_one_and_*
+    # methods we want to take `filter.sort` instances
+    @defer.inlineCallbacks
+    def _new_find_and_modify(self, filter, projection, sort, upsert=None,
+                             return_document=ReturnDocument.BEFORE, **kwargs):
+        validate_is_mapping("filter", filter)
+        if not isinstance(return_document, bool):
+            raise ValueError("return_document must be ReturnDocument.BEFORE "
+                             "or ReturnDocument.AFTER")
+
+        cmd = SON([("findAndModify", self._collection_name),
+                   ("query", filter),
+                   ("new", return_document)])
+        cmd.update(kwargs)
+
+        if projection is not None:
+            cmd["fields"] = self._normalize_fields_projection(projection)
+
+        if sort is not None:
+            cmd["sort"] = dict(sort["orderby"])
+        if upsert is not None:
+            validate_boolean("upsert", upsert)
+            cmd["upsert"] = upsert
+
+        no_obj_error = "No matching object found"
+
+        result = yield self._database.command(cmd, allowable_errors=[no_obj_error])
+        defer.returnValue(result.get("value"))
+
+    def find_one_and_delete(self, filter, projection=None, sort=None, **kwargs):
+        return self._new_find_and_modify(filter, projection, sort, remove=True, **kwargs)
+
+    def find_one_and_replace(self, filter, replacement, projection=None, sort=None,
+                             upsert=False, return_document=ReturnDocument.BEFORE, **kwargs):
+        validate_ok_for_replace(replacement)
+        return self._new_find_and_modify(filter, projection, sort, upsert, return_document,
+                                         update=replacement, **kwargs)
+
+    def find_one_and_update(self, filter, update, projection=None, sort=None,
+                            upsert=False, return_document=ReturnDocument.BEFORE, **kwargs):
+        validate_ok_for_update(update)
+        return self._new_find_and_modify(filter, projection, sort, upsert, return_document,
+                                         update=update, **kwargs)
