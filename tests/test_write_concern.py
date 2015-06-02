@@ -186,12 +186,15 @@ class TestWriteConcernClass(unittest.TestCase):
         self.assertRaises(TypeError, WriteConcern, w=1.5)
 
     def test_repr(self):
-        kwargs = {'w': 2, "wtimeout": 500, 'j': True}
-        expected_repr = "WriteConcern({0})".format(", ".join("{0}={1}".format(k, v)
-                                                   for k, v in kwargs.iteritems()))
-        self.assertEqual(repr(WriteConcern(**kwargs)), expected_repr)
-
         self.assertEqual(repr(WriteConcern()), "WriteConcern()")
+        self.assertEqual(repr(WriteConcern(w=2)), "WriteConcern(w=2)")
+        self.assertEqual(repr(WriteConcern(fsync=True)), "WriteConcern(fsync=True)")
+
+        multiopt = repr(WriteConcern(w=2, wtimeout=500, fsync=True))
+        self.assertTrue(multiopt.startswith("WriteConcern("))
+        self.assertTrue(multiopt.endswith(')'))
+        inner = multiopt[13:-1]
+        self.assertEqual(set(inner.split(", ")), set(["w=2", "wtimeout=500", "fsync=True"]))
 
     def test_cmp(self):
         self.assertEqual(WriteConcern(w=2, wtimeout=500), WriteConcern(wtimeout=500, w=2))
