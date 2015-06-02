@@ -16,7 +16,8 @@
 from bson import BSON, ObjectId
 from bson.son import SON
 from pymongo.errors import OperationFailure, WriteError
-from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult
+from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
+    DeleteResult
 from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
@@ -784,3 +785,59 @@ class TestUpdateMany(_SingleCollectionTest):
     def test_InvalidUpdate(self):
         # update_one/update_many only allow $-operators, not whole document replace)
         yield self.assertFailure(self.coll.update_many({'x': 1}, {'y': 123}), ValueError)
+
+
+class TestDeleteOne(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestDeleteOne, self).setUp()
+        yield self.coll.insert_many([{'x': 1}, {'x': 1}])
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.delete_one({'x': 1})
+        self.assertTrue(isinstance(result, DeleteResult))
+        self.assertEqual(result.acknowledged, True)
+        self.assertEqual(result.deleted_count, 1)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 1)
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.delete_one({'x': 1})
+        self.assertTrue(isinstance(result, DeleteResult))
+        self.assertEqual(result.acknowledged, False)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 1)
+
+
+class TestDeleteMany(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestDeleteMany, self).setUp()
+        yield self.coll.insert_many([{'x': 1}, {'x': 1}])
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.delete_many({'x': 1})
+        self.assertTrue(isinstance(result, DeleteResult))
+        self.assertEqual(result.acknowledged, True)
+        self.assertEqual(result.deleted_count, 2)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 0)
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.delete_many({'x': 1})
+        self.assertTrue(isinstance(result, DeleteResult))
+        self.assertEqual(result.acknowledged, False)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 0)

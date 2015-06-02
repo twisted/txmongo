@@ -10,7 +10,8 @@ from bson.code import Code
 from bson.son import SON
 from pymongo.errors import InvalidName
 from pymongo.helpers import _check_write_command_response
-from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult
+from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
+    DeleteResult
 from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
     validate_is_mapping, validate_boolean
 from txmongo import filter as qf
@@ -456,6 +457,36 @@ class Collection(object):
         if write_concern.acknowledged:
             ret = yield proto.get_last_error(str(self._database), **write_concern.document)
             defer.returnValue(ret)
+
+    @defer.inlineCallbacks
+    def _delete(self, filter, multi):
+        validate_is_mapping("filter", filter)
+
+        if self.write_concern.acknowledged:
+            deletes = [SON([('q', filter), ("limit", 0 if multi else 1)])]
+            command = SON([("delete", self._collection_name),
+                           ("deletes", deletes),
+                           ("writeConcern", self.write_concern.document)])
+
+            raw_response = yield self._database.command(command)
+            _check_write_command_response([[0, raw_response]])
+
+        else:
+            yield self.remove(filter, single=not multi)
+            raw_response = None
+
+        defer.returnValue(raw_response)
+
+    @defer.inlineCallbacks
+    def delete_one(self, filter):
+        raw_response = yield self._delete(filter, multi=False)
+        defer.returnValue(DeleteResult(raw_response, self.write_concern.acknowledged))
+
+    @defer.inlineCallbacks
+    def delete_many(self, filter):
+        raw_response = yield self._delete(filter, multi=True)
+        defer.returnValue(DeleteResult(raw_response, self.write_concern.acknowledged))
+
 
     def drop(self, **kwargs):
         return self._database.drop_collection(self._collection_name)
