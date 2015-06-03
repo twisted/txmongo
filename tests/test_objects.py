@@ -12,16 +12,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import time
 from StringIO import StringIO
 
+import os
 from bson import objectid, timestamp
 import txmongo
 from txmongo import database
 from txmongo import collection
 from txmongo.gridfs import GridFS, GridIn, GridOut, GridOutIterator, errors
 from txmongo import filter as qf
+from txmongo._gridfs.errors import NoFile
 from twisted.trial import unittest
 from twisted.internet import base, defer
 from twisted import _version
@@ -146,11 +147,14 @@ class TestGridFsObjects(unittest.TestCase):
         db = conn.test
         db.fs.files.remove({})  # drop all objects there first
         db.fs.chunks.remove({})
+        self.assertRaises(TypeError, GridFS, None)
         _ = GridFS(db)  # Default collection
+        self.assertRaises(TypeError, GridIn, None)
         with GridIn(db.fs, filename="test_with", contentType="text/plain", chunk_size=1024):
             pass
         grid_in_file = GridIn(db.fs, filename="test_1", contentType="text/plain",
-                              content_type="text/plain", chunk_size=2**2**2**2)
+                              content_type="text/plain", chunk_size=65536, length=1048576,
+                              upload_date="20150101")
         self.assertFalse(grid_in_file.closed)
         if _version.version.major >= 15:
             with self.assertRaises(TypeError):
@@ -162,11 +166,14 @@ class TestGridFsObjects(unittest.TestCase):
         grid_in_file.test = 1
         yield grid_in_file.write("0xDEADBEEF")
         yield grid_in_file.write("0xDEADBEEF"*1048576)
-        fake_doc = {"_id": "test_id", "length": 1048576}
+        fake_doc = {"_id": "test_id", "length": 1048576, "filename": "test",
+                    "upload_date": "20150101"}
+        self.assertRaises(TypeError, GridOut, None, None)
         grid_out_file = GridOut(db.fs, fake_doc)
         if _version.version.major >= 15:
             with self.assertRaises(AttributeError):
                 _ = grid_out_file.testing
+        self.assertEqual("test", grid_out_file.filename)
         self.assertEqual(0, grid_out_file.tell())
         grid_out_file.seek(1024)
         self.assertEqual(1024, grid_out_file.tell())
@@ -177,11 +184,12 @@ class TestGridFsObjects(unittest.TestCase):
         self.assertRaises(IOError, grid_out_file.seek, 0, 4)
         self.assertRaises(IOError, grid_out_file.seek, -1)
         self.assertTrue("'_id': 'test_id'" in repr(grid_out_file))
+        self.assertTrue("20150101", grid_in_file.upload_date)
         yield grid_in_file.writelines(["0xDEADBEEF", "0xDEADBEAF"])
         yield grid_in_file.close()
         if _version.version.major >= 15:
             with self.assertRaises(AttributeError):
-                grid_in_file.test = 2
+                grid_in_file.length = 1
         self.assertEqual(1, grid_in_file.test)
         if _version.version.major >= 15:
             with self.assertRaises(AttributeError):
@@ -273,6 +281,10 @@ class TestGridFsObjects(unittest.TestCase):
         try:
             # Tests writing to a new gridfs file
             gfs = GridFS(db)  # Default collection
+            if _version.version.major >= 15:
+                with self.assertRaises(NoFile):
+                    yield gfs.get_last_version("optest")
+
             g_in = gfs.new_file(filename="optest", contentType="text/plain",
                                 chunk_size=65536)  # non-default chunk size used
             # yielding to ensure writes complete before we close and close before we try to read
