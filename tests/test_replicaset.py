@@ -90,11 +90,9 @@ class TestReplicaSet(unittest.TestCase):
 
         yield master.disconnect()
 
-
     @defer.inlineCallbacks
     def tearDown(self):
         yield defer.gatherResults([mongo.stop() for mongo in self.__mongod])
-
 
     @defer.inlineCallbacks
     def test_WriteToMaster(self):
@@ -118,7 +116,6 @@ class TestReplicaSet(unittest.TestCase):
             yield self.assertFailure(conn.db.coll.insert({'x': 42}), OperationFailure)
         finally:
             yield conn.disconnect()
-
 
     @defer.inlineCallbacks
     def test_SwitchToMasterOnConnect(self):

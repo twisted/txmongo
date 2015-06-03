@@ -153,7 +153,8 @@ class TestGridFsObjects(unittest.TestCase):
         with GridIn(db.fs, filename="test_with", contentType="text/plain", chunk_size=1024):
             pass
         grid_in_file = GridIn(db.fs, filename="test_1", contentType="text/plain",
-                              content_type="text/plain", chunk_size=2**2**2**2)
+                              content_type="text/plain", chunk_size=65536, length=1048576,
+                              upload_date="20150101")
         self.assertFalse(grid_in_file.closed)
         if _version.version.major >= 15:
             with self.assertRaises(TypeError):
@@ -165,12 +166,14 @@ class TestGridFsObjects(unittest.TestCase):
         grid_in_file.test = 1
         yield grid_in_file.write("0xDEADBEEF")
         yield grid_in_file.write("0xDEADBEEF"*1048576)
-        fake_doc = {"_id": "test_id", "length": 1048576}
+        fake_doc = {"_id": "test_id", "length": 1048576, "filename": "test",
+                    "upload_date": "20150101"}
         self.assertRaises(TypeError, GridOut, None, None)
         grid_out_file = GridOut(db.fs, fake_doc)
         if _version.version.major >= 15:
             with self.assertRaises(AttributeError):
                 _ = grid_out_file.testing
+        self.assertEqual("test", grid_out_file.filename)
         self.assertEqual(0, grid_out_file.tell())
         grid_out_file.seek(1024)
         self.assertEqual(1024, grid_out_file.tell())
@@ -181,11 +184,12 @@ class TestGridFsObjects(unittest.TestCase):
         self.assertRaises(IOError, grid_out_file.seek, 0, 4)
         self.assertRaises(IOError, grid_out_file.seek, -1)
         self.assertTrue("'_id': 'test_id'" in repr(grid_out_file))
+        self.assertTrue("20150101", grid_in_file.upload_date)
         yield grid_in_file.writelines(["0xDEADBEEF", "0xDEADBEAF"])
         yield grid_in_file.close()
         if _version.version.major >= 15:
             with self.assertRaises(AttributeError):
-                grid_in_file.test = 2
+                grid_in_file.length = 1
         self.assertEqual(1, grid_in_file.test)
         if _version.version.major >= 15:
             with self.assertRaises(AttributeError):
