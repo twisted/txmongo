@@ -27,7 +27,7 @@ class Mongod(object):
     # so leaving this for now
     success_message = "waiting for connections on port"
 
-    def __init__(self, port=27017, auth=False, replset=None):
+    def __init__(self, port=27017, auth=False, replset=None, dbpath=None):
         self.__proc = None
         self.__notify_waiting = []
         self.__notify_stop = []
@@ -40,9 +40,14 @@ class Mongod(object):
         self.auth = auth
         self.replset = replset
 
-    def start(self):
-        self.__datadir = tempfile.mkdtemp()
+        if dbpath is None:
+            self.__datadir = tempfile.mkdtemp()
+            self.__rmdatadir = True
+        else:
+            self.__datadir = dbpath
+            self.__rmdatadir = False
 
+    def start(self):
         d = defer.Deferred()
         self.__notify_waiting.append(d)
 
@@ -94,7 +99,7 @@ class Mongod(object):
             else:
                 d.errback(reason)
 
-        if self.__datadir:
+        if self.__rmdatadir:
             shutil.rmtree(self.__datadir)
 
 
