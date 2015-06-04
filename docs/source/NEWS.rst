@@ -16,9 +16,12 @@ We can officially say that we are Python 2.6, 2.7 and PyPy compatible.
 API Changes
 ^^^^^^^^^^^
 
+- **TxMongo now requires PyMongo 3.x**
 - Better handling of replica-sets, we now raise an ``autoreconnect`` when master is unreachable.
 - Changed the behaviour of ``find_one`` to return ``None`` instead of an empty
   dict ``{}`` when no result is found.
+- New-style query methods: ``insert_one/many``, ``update_one/many``, ``delete_one/many``,
+  ``replace_one`` and ``find_one_and_update/replace``
 
 Features
 ^^^^^^^^
