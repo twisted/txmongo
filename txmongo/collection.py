@@ -189,14 +189,8 @@ class Collection(object):
                 docs_count = min(docs_count, limit - fetched)
             fetched += docs_count
 
-            try:
-                # as_class is removed from PyMongo >= 3.0
-                # trying to use CodecOptions instead
-                options = bson.codec_options.CodecOptions(document_class=as_class)
-                out = [document.decode(codec_options=options) for document in documents[:docs_count]]
-            except AttributeError:
-                # Falling back to as_class for PyMongo < 3.0
-                out = [document.decode(as_class=as_class) for document in documents[:docs_count]]
+            options = bson.codec_options.CodecOptions(document_class=as_class)
+            out = [document.decode(codec_options=options) for document in documents[:docs_count]]
 
             if reply.cursor_id:
                 if limit == 0:

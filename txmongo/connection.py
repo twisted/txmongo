@@ -14,14 +14,9 @@ from twisted.python import log
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
 
-# PyMongo 2.x defines ReadPreference.XXX as ints while 3.0 defines them
-# as objects with `mode` integer attribute
-try:
-    _PRIMARY_READ_PREFERENCES = set([ReadPreference.PRIMARY.mode,
-                                     ReadPreference.PRIMARY_PREFERRED.mode])
-except AttributeError:
-    _PRIMARY_READ_PREFERENCES = set([ReadPreference.PRIMARY,
-                                     ReadPreference.PRIMARY_PREFERRED])
+
+_PRIMARY_READ_PREFERENCES = set([ReadPreference.PRIMARY.mode,
+                                 ReadPreference.PRIMARY_PREFERRED.mode])
 
 
 class _Connection(ReconnectingClientFactory):
