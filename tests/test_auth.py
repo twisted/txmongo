@@ -16,7 +16,6 @@
 import tempfile
 import shutil
 import txmongo
-from unittest import SkipTest
 from bson.son import SON
 from pymongo.errors import OperationFailure
 from twisted.trial import unittest
@@ -239,7 +238,7 @@ class TestMongoAuth(unittest.TestCase):
     @defer.inlineCallbacks
     def test_Explicit_SCRAM_SHA_1(self):
         if self.ismaster["maxWireVersion"] < 3:
-            raise SkipTest("This test is only applicable to MongoDB >= 3")
+            raise unittest.SkipTest("This test is only applicable to MongoDB >= 3")
 
         conn = self.__get_connection()
         try:
