@@ -15,13 +15,13 @@
 
 from mock import Mock, patch
 from pymongo.errors import ConfigurationError
+from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 from twisted.trial import unittest
 from txmongo.connection import MongoConnection, ConnectionPool
 from txmongo.protocol import MongoProtocol
 from txmongo.database import Database
 from txmongo.collection import Collection
-from txmongo.write_concern import WriteConcern
 
 mongo_host = "localhost"
 mongo_port = 27017

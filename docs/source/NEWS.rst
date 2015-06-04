@@ -32,8 +32,7 @@ Features
   or by URI options.
 - Write-concern options can also be set for ``Database`` and ``Collection`` with ``write_concern``
   named argument of their constructors. In this case write-concern is specified by instance of
-  ``txmongo.write_concern.WriteConcern`` class which is the same as
-  ``pymongo.write_concern.WriteConcern`` of PyMongo 3.0.
+  ``pymongo.write_concern.WriteConcern``
 - ``txmongo.protocol.INSERT_CONTINUE_ON_ERROR`` flag defined for using with ``insert()``
 - Replaced all traditional deferred callbacks (and errbacks) to use @defer.inlineCallbacks
 

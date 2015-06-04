@@ -15,11 +15,11 @@ from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
 from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
     validate_is_mapping, validate_boolean
 from pymongo.collection import ReturnDocument
+from pymongo.write_concern import WriteConcern
 from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
     Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
 from twisted.internet import defer
-from txmongo.write_concern import WriteConcern
 
 
 class Collection(object):
