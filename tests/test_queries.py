@@ -15,11 +15,16 @@
 
 from bson import BSON, ObjectId
 from bson.son import SON
-from pymongo.errors import OperationFailure
+from pymongo.errors import OperationFailure, WriteError
+from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
+    DeleteResult
+from pymongo.collection import ReturnDocument
 from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
 from txmongo.protocol import MongoClientProtocol
+from txmongo.write_concern import WriteConcern
+import txmongo.filter as qf
 
 mongo_host = "localhost"
 mongo_port = 27017
@@ -35,15 +40,22 @@ class _CallCounter(object):
         return self.original(this, *args, **kwargs)
 
 
-class TestMongoQueries(unittest.TestCase):
+class _SingleCollectionTest(unittest.TestCase):
 
-    timeout = 15
-
-    @defer.inlineCallbacks
     def setUp(self):
-        self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
         self.db = self.conn.mydb
         self.coll = self.db.mycol
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.coll.drop()
+        yield self.conn.disconnect()
+
+
+class TestMongoQueries(_SingleCollectionTest):
+
+    timeout = 15
 
     @defer.inlineCallbacks
     def test_SingleCursorIteration(self):
@@ -114,7 +126,7 @@ class TestMongoQueries(unittest.TestCase):
         res = yield self.coll.find(fields=[])
         yield self.coll.count(fields=[])
         self.assertTrue(all(x in ["_id"] for x in res[0].keys()))
-        self.assertRaises(TypeError, self.coll._fields_list_to_dict, [1])
+        yield self.assertFailure(self.coll.find({}, fields=[1]), TypeError)
 
     @defer.inlineCallbacks
     def test_group(self):
@@ -230,20 +242,10 @@ class TestMongoQueries(unittest.TestCase):
         doc = yield self.coll.find_one()
         self.assertEqual(doc, None)
 
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
 
-
-class TestMongoQueriesEdgeCases(unittest.TestCase):
+class TestMongoQueriesEdgeCases(_SingleCollectionTest):
 
     timeout = 15
-
-    @defer.inlineCallbacks
-    def setUp(self):
-        self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
-        self.coll = self.conn.mydb.mycol
 
     @defer.inlineCallbacks
     def test_BelowBatchThreshold(self):
@@ -263,20 +265,10 @@ class TestMongoQueriesEdgeCases(unittest.TestCase):
         res = yield self.coll.find()
         self.assertEqual(len(res), 102)
 
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
 
-
-class TestLimit(unittest.TestCase):
+class TestLimit(_SingleCollectionTest):
 
     timeout = 15
-
-    @defer.inlineCallbacks
-    def setUp(self):
-        self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
-        self.coll = self.conn.mydb.mycol
 
     @defer.inlineCallbacks
     def test_LimitBelowBatchThreshold(self):
@@ -326,20 +318,10 @@ class TestLimit(unittest.TestCase):
         res = yield self.coll.find(limit=-6)
         self.assertEqual(len(res), 4)
 
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop(safe=True)
-        yield self.conn.disconnect()
 
-
-class TestSkip(unittest.TestCase):
+class TestSkip(_SingleCollectionTest):
 
     timeout = 15
-
-    @defer.inlineCallbacks
-    def setUp(self):
-        self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
-        self.coll = self.conn.mydb.mycol
 
     @defer.inlineCallbacks
     def test_Skip(self):
@@ -383,24 +365,9 @@ class TestSkip(unittest.TestCase):
         res = yield self.coll.find(skip=5, limit=1)
         self.assertEqual(len(res), 0)
 
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop(safe=True)
-        yield self.conn.disconnect()
 
 
-
-class TestCommand(unittest.TestCase):
-
-    def setUp(self):
-        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
-        self.db = self.conn.mydb
-        self.coll = self.db.mycol
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
+class TestCommand(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_SimpleCommand(self):
@@ -434,17 +401,7 @@ class TestCommand(unittest.TestCase):
         self.assertFalse(result["ok"])
 
 
-class TestUpdate(unittest.TestCase):
-
-    def setUp(self):
-        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
-        self.db = self.conn.mydb
-        self.coll = self.db.mycol
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
+class TestUpdate(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_SimpleUpdate(self):
@@ -480,17 +437,7 @@ class TestUpdate(unittest.TestCase):
         self.assertEqual(docs[0], {'x': 123})
 
 
-class TestSave(unittest.TestCase):
-
-    def setUp(self):
-        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
-        self.db = self.conn.mydb
-        self.coll = self.db.mycol
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
+class TestSave(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Save(self):
@@ -506,17 +453,7 @@ class TestSave(unittest.TestCase):
         self.assertTrue({"_id": id, 'x': 3} in docs)
 
 
-class TestRemove(unittest.TestCase):
-
-    def setUp(self):
-        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
-        self.db = self.conn.mydb
-        self.coll = self.db.mycol
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
+class TestRemove(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_RemoveOne(self):
@@ -576,17 +513,7 @@ class TestDistinct(unittest.TestCase):
         self.assertEqual(set(d), set([42, 123]))
 
 
-class TestMapReduce(unittest.TestCase):
-
-    def setUp(self):
-        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
-        self.db = self.conn.mydb
-        self.coll = self.db.mycol
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
+class TestMapReduce(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_MapReduce(self):
@@ -622,3 +549,423 @@ class TestMapReduce(unittest.TestCase):
         self.assertTrue(result["ok"], 1)
         self.assertTrue("counts" in result)
         self.assertTrue("results" in result)
+
+
+class TestInsertOne(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.insert_one({'x': 42})
+        self.assertTrue(isinstance(result, InsertOneResult))
+        self.assertEqual(result.acknowledged, True)
+        self.assertTrue(isinstance(result.inserted_id, ObjectId))
+
+        count = yield self.coll.count()
+        self.assertEqual(count, 1)
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        id = ObjectId()
+        doc = {'x': 42, "_id": id}
+        result = yield self.coll.with_options(write_concern=WriteConcern(w=0)).insert_one(doc)
+        self.assertEqual(result.acknowledged, False)
+        self.assertEqual(result.inserted_id, id)
+
+        # It's ok to issue count() right after unacknowledged insert because
+        # we have exactly one connection
+        count = yield self.coll.count()
+        self.assertEqual(count, 1)
+
+
+class TestInsertMany(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def test_InvalidArg(self):
+        yield self.assertFailure(self.coll.insert_many({'x': 42}), TypeError)
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.insert_many([{'x': 42} for _ in xrange(100)])
+        self.assertTrue(isinstance(result, InsertManyResult))
+        self.assertEqual(result.acknowledged, True)
+
+        docs = yield self.coll.find()
+        ids = set(doc["_id"] for doc in docs)
+
+        self.assertEqual(ids, set(result.inserted_ids))
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        result = yield self.coll.with_options(write_concern=WriteConcern(w=0))\
+                                .insert_many([{'x': 42} for _ in xrange(100)])
+        self.assertTrue(isinstance(result, InsertManyResult))
+        self.assertEqual(result.acknowledged, False)
+
+        docs = yield self.coll.find()
+        ids = set(doc["_id"] for doc in docs)
+
+        self.assertEqual(ids, set(result.inserted_ids))
+
+    @defer.inlineCallbacks
+    def test_OrderedAck(self):
+        docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
+        yield self.assertFailure(self.coll.insert_many(docs), WriteError)
+
+        count = yield self.coll.count()
+        self.assertEqual(count, 1)
+
+    @defer.inlineCallbacks
+    def test_OrderedUnack(self):
+        docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        yield coll.insert_many(docs)
+
+        count = yield self.coll.count()
+        self.assertEqual(count, 1)
+
+    @defer.inlineCallbacks
+    def test_Unordered(self):
+        docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
+        yield self.assertFailure(self.coll.insert_many(docs, ordered=False), WriteError)
+
+        count = yield self.coll.count()
+        self.assertEqual(count, 2)
+
+    @defer.inlineCallbacks
+    def test_UnorderedUnack(self):
+        docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        yield coll.insert_many(docs, ordered=False)
+
+        count = yield self.coll.count()
+        self.assertEqual(count, 2)
+
+
+class TestUpdateOne(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestUpdateOne, self).setUp()
+        yield self.coll.insert_many([{'x': 1}, {'x': 2}])
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.update_one({'x': {"$exists": True}}, {"$set": {'y': 123}})
+        self.assertTrue(isinstance(result, UpdateResult))
+        self.assertEqual(result.acknowledged, True)
+        self.assertEqual(result.matched_count, 1)
+        self.assertEqual(result.modified_count, 1)
+        self.assertEqual(result.upserted_id, None)
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.update_one({'x': {"$exists": True}}, {"$set": {'y': 123}})
+        self.assertTrue(isinstance(result, UpdateResult))
+        self.assertEqual(result.acknowledged, False)
+
+    @defer.inlineCallbacks
+    def test_UpsertAcknowledged(self):
+        result = yield self.coll.update_one({'y': 123}, {"$set": {'z': 456}}, upsert=True)
+        self.assertTrue(isinstance(result.upserted_id, ObjectId))
+
+        doc = yield self.coll.find_one({"_id": result.upserted_id}, fields={"_id": 0})
+        self.assertEqual(doc, {'y': 123, 'z': 456})
+
+    @defer.inlineCallbacks
+    def test_UpsertUnacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.update_one({'y': 123}, {"$set": {'z': 456}}, upsert=True)
+        self.assertEqual(result.acknowledged, False)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 3)
+
+    @defer.inlineCallbacks
+    def test_InvalidUpdate(self):
+        # update_one/update_many only allow $-operators, not whole document replace)
+        yield self.assertFailure(self.coll.update_one({'x': 1}, {'y': 123}), ValueError)
+
+
+class TestReplaceOne(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestReplaceOne, self).setUp()
+        yield self.coll.insert_many([{'x': 1}, {'x': 2}])
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.replace_one({'x': {"$exists": True}}, {'y': 123})
+        self.assertTrue(isinstance(result, UpdateResult))
+        self.assertEqual(result.acknowledged, True)
+        self.assertEqual(result.matched_count, 1)
+        self.assertEqual(result.modified_count, 1)
+        self.assertEqual(result.upserted_id, None)
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.replace_one({'x': {"$exists": True}}, {'y': 123})
+        self.assertTrue(isinstance(result, UpdateResult))
+        self.assertEqual(result.acknowledged, False)
+
+    @defer.inlineCallbacks
+    def test_UpsertAcknowledged(self):
+        result = yield self.coll.replace_one({'x': 5}, {'y': 123}, upsert=True)
+        self.assertTrue(isinstance(result.upserted_id, ObjectId))
+
+        doc = yield self.coll.find_one({"_id": result.upserted_id}, fields={"_id": 0})
+        self.assertEqual(doc, {'y': 123})
+
+    @defer.inlineCallbacks
+    def test_UpsertUnacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.replace_one({'x': 5}, {'y': 123}, upsert=True)
+        self.assertEqual(result.acknowledged, False)
+
+        doc = yield self.coll.find_one({"y": {"$exists": True}}, fields={"_id": 0})
+        self.assertEqual(doc, {'y': 123})
+
+    @defer.inlineCallbacks
+    def test_InvalidReplace(self):
+        # replace_one does not allow $-operators, only whole document replace
+        yield self.assertFailure(self.coll.replace_one({'x': 1}, {"$set": {'y': 123}}),
+                                 ValueError)
+
+
+class TestUpdateMany(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestUpdateMany, self).setUp()
+        yield self.coll.insert_many([{'x': 1}, {'x': 2}])
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.update_many({'x': {"$exists": True}}, {"$set": {'y': 5}})
+        self.assertTrue(isinstance(result, UpdateResult))
+        self.assertEqual(result.acknowledged, True)
+        self.assertEqual(result.matched_count, 2)
+        self.assertEqual(result.modified_count, 2)
+        self.assertEqual(result.upserted_id, None)
+
+        cnt = yield self.coll.count({'y': 5})
+        self.assertEqual(cnt, 2)
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.update_many({'x': {"$exists": True}}, {"$set": {'y': 5}})
+        self.assertTrue(isinstance(result, UpdateResult))
+        self.assertEqual(result.acknowledged, False)
+
+        cnt = yield self.coll.count({'y': 5})
+        self.assertEqual(cnt, 2)
+
+    @defer.inlineCallbacks
+    def test_UpsertAcknowledged(self):
+        result = yield self.coll.update_many({'x': 5}, {"$set": {'y': 5}}, upsert=True)
+        self.assertEqual(result.acknowledged, True)
+        self.assertEqual(result.matched_count, 0)
+        self.assertEqual(result.modified_count, 0)
+        self.assertTrue(isinstance(result.upserted_id, ObjectId))
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 3)
+
+    @defer.inlineCallbacks
+    def test_UpsertUnacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.update_many({'x': 5}, {"$set": {'y': 5}}, upsert=True)
+        self.assertEqual(result.acknowledged, False)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 3)
+
+    @defer.inlineCallbacks
+    def test_InvalidUpdate(self):
+        # update_one/update_many only allow $-operators, not whole document replace)
+        yield self.assertFailure(self.coll.update_many({'x': 1}, {'y': 123}), ValueError)
+
+
+class TestDeleteOne(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestDeleteOne, self).setUp()
+        yield self.coll.insert_many([{'x': 1}, {'x': 1}])
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.delete_one({'x': 1})
+        self.assertTrue(isinstance(result, DeleteResult))
+        self.assertEqual(result.acknowledged, True)
+        self.assertEqual(result.deleted_count, 1)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 1)
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.delete_one({'x': 1})
+        self.assertTrue(isinstance(result, DeleteResult))
+        self.assertEqual(result.acknowledged, False)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 1)
+
+
+class TestDeleteMany(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestDeleteMany, self).setUp()
+        yield self.coll.insert_many([{'x': 1}, {'x': 1}])
+
+    @defer.inlineCallbacks
+    def test_Acknowledged(self):
+        result = yield self.coll.delete_many({'x': 1})
+        self.assertTrue(isinstance(result, DeleteResult))
+        self.assertEqual(result.acknowledged, True)
+        self.assertEqual(result.deleted_count, 2)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 0)
+
+    @defer.inlineCallbacks
+    def test_Unacknowledged(self):
+        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield coll.delete_many({'x': 1})
+        self.assertTrue(isinstance(result, DeleteResult))
+        self.assertEqual(result.acknowledged, False)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 0)
+
+
+class TestFindOneAndDelete(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestFindOneAndDelete, self).setUp()
+        yield self.coll.insert_many([{'x': 1, 'y': 1},
+                                     {'x': 2, 'y': 2},
+                                     {'x': 3, 'y': 3}])
+
+    @defer.inlineCallbacks
+    def test_Sort(self):
+        doc = yield self.coll.find_one_and_delete({'x': {"$exists": True}},
+                                                  sort=qf.sort(qf.ASCENDING('y')))
+        self.assertEqual(doc['x'], 1)
+
+        doc = yield self.coll.find_one_and_delete({'x': {"$exists": True}},
+                                                  sort=qf.sort(qf.DESCENDING('y')))
+        self.assertEqual(doc['x'], 3)
+
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 1)
+
+    @defer.inlineCallbacks
+    def test_Projection(self):
+        doc = yield self.coll.find_one_and_delete({'x': 2}, {'y': 1, "_id": 0})
+        self.assertEqual(doc, {'y': 2})
+
+
+class TestFindOneAndReplace(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestFindOneAndReplace, self).setUp()
+        yield self.coll.insert_many([{'x': 10, 'y': 10},
+                                     {'x': 20, 'y': 20},
+                                     {'x': 30, 'y': 30}])
+
+    @defer.inlineCallbacks
+    def test_Sort(self):
+        doc = yield self.coll.find_one_and_replace({}, {'x': 5, 'y': 5},
+                                                   projection={"_id": 0},
+                                                   sort=qf.sort(qf.ASCENDING('y')))
+        self.assertEqual(doc, {'x': 10, 'y': 10})
+
+        doc = yield self.coll.find_one_and_replace({}, {'x': 40, 'y': 40},
+                                                   projection={"_id": 0},
+                                                   sort=qf.sort(qf.DESCENDING('y')))
+        self.assertEqual(doc, {'x': 30, 'y': 30})
+
+        ys = yield self.coll.distinct('y')
+        self.assertEqual(set(ys), set([5, 20, 40]))
+
+    def test_InvalidReplace(self):
+        self.assertRaises(ValueError, self.coll.find_one_and_replace, {}, {"$set": {'z': 1}})
+
+    @defer.inlineCallbacks
+    def test_Upsert(self):
+        doc = yield self.coll.find_one_and_replace({'x': 40}, {'x': 50}, upsert=True)
+        self.assertEqual(doc, None)
+
+        xs = yield self.coll.distinct('x')
+        self.assertEqual(set(xs), set([10, 20, 30, 50]))
+
+    @defer.inlineCallbacks
+    def test_ReturnDocument(self):
+        doc = yield self.coll.find_one_and_replace({'x': 10}, {'x': 15},
+                                                   return_document=ReturnDocument.BEFORE)
+        self.assertEqual(doc['x'], 10)
+
+        doc = yield self.coll.find_one_and_replace({'x': 20}, {'x': 25},
+                                                   return_document=ReturnDocument.AFTER)
+        self.assertEqual(doc['x'], 25)
+
+    @defer.inlineCallbacks
+    def test_InvalidReturnDocument(self):
+        yield self.assertFailure(self.coll.find_one_and_replace({}, {}, return_document=1),
+                                 ValueError)
+
+
+class TestFindOneAndUpdate(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestFindOneAndUpdate, self).setUp()
+        yield self.coll.insert_many([{'x': 10, 'y': 10},
+                                     {'x': 20, 'y': 20},
+                                     {'x': 30, 'y': 30}])
+
+    @defer.inlineCallbacks
+    def test_Sort(self):
+        doc = yield self.coll.find_one_and_update({}, {"$set": {'y': 5}},
+                                                  projection={"_id": 0},
+                                                  sort=qf.sort(qf.ASCENDING('y')))
+        self.assertEqual(doc, {'x': 10, 'y': 10})
+
+        doc = yield self.coll.find_one_and_update({}, {"$set": {'y': 35}},
+                                                  projection={"_id": 0},
+                                                  sort=qf.sort(qf.DESCENDING('y')))
+        self.assertEqual(doc, {'x': 30, 'y': 30})
+
+        ys = yield self.coll.distinct('y')
+        self.assertEqual(set(ys), set([5, 20, 35]))
+
+    def test_InvalidUpdate(self):
+        self.assertRaises(ValueError, self.coll.find_one_and_update, {}, {'x': 123})
+
+    @defer.inlineCallbacks
+    def test_Upsert(self):
+        doc = yield self.coll.find_one_and_update({'x': 40}, {"$set": {'y': 40}},
+                                                  upsert=True)
+        self.assertEqual(doc, None)
+
+        inserted = yield self.coll.find_one({'x': 40})
+        self.assertEqual(inserted['y'], 40)
+
+    @defer.inlineCallbacks
+    def test_ReturnDocument(self):
+        doc = yield self.coll.find_one_and_update({'x': 10}, {"$set": {'y': 5}},
+                                                  return_document=ReturnDocument.BEFORE)
+        self.assertEqual(doc['y'], 10)
+
+        doc = yield self.coll.find_one_and_update({'x': 10}, {"$set": {'y': 15}},
+                                                  return_document=ReturnDocument.AFTER)
+        self.assertEqual(doc['y'], 15)
