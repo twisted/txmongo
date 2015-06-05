@@ -5,6 +5,7 @@
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.uri_parser import parse_uri
 from pymongo.read_preferences import ReadPreference
+from pymongo.write_concern import WriteConcern
 
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory
@@ -12,16 +13,10 @@ from twisted.python import log
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
-from txmongo.write_concern import WriteConcern
 
-# PyMongo 2.x defines ReadPreference.XXX as ints while 3.0 defines them
-# as objects with `mode` integer attribute
-try:
-    _PRIMARY_READ_PREFERENCES = set([ReadPreference.PRIMARY.mode,
-                                     ReadPreference.PRIMARY_PREFERRED.mode])
-except AttributeError:
-    _PRIMARY_READ_PREFERENCES = set([ReadPreference.PRIMARY,
-                                     ReadPreference.PRIMARY_PREFERRED])
+
+_PRIMARY_READ_PREFERENCES = set([ReadPreference.PRIMARY.mode,
+                                 ReadPreference.PRIMARY_PREFERRED.mode])
 
 
 class _Connection(ReconnectingClientFactory):

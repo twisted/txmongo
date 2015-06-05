@@ -19,11 +19,11 @@ from pymongo.errors import OperationFailure, WriteError
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult
 from pymongo.collection import ReturnDocument
+from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
 from txmongo.protocol import MongoClientProtocol
-from txmongo.write_concern import WriteConcern
 import txmongo.filter as qf
 
 mongo_host = "localhost"
