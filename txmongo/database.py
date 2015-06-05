@@ -100,7 +100,7 @@ class Database(object):
 
 
     @defer.inlineCallbacks
-    def authenticate(self, name, password):
+    def authenticate(self, name, password, mechanism="DEFAULT"):
         """
         Send an authentication command for this database.
         mostly stolen from pymongo
@@ -113,4 +113,4 @@ class Database(object):
         """
         Authenticating
         """
-        yield self.connection.authenticate(self, name, password)
+        yield self.connection.authenticate(self, name, password, mechanism)

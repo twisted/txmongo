@@ -150,7 +150,7 @@ class TestIndexInfo(unittest.TestCase):
         # dropDups was removed from MongoDB v3.0
         ismaster = yield self.db.command("ismaster")
         if ismaster["maxWireVersion"] >= 3:
-            raise unittest.SkipTest()
+            raise unittest.SkipTest("dropDups was removed from MongoDB 3")
 
         yield self.coll.drop()
         yield self.coll.insert([{'b': 1}, {'b': 1}])

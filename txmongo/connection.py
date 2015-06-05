@@ -259,7 +259,8 @@ class ConnectionPool(object):
 
         if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
             self.authenticate(self.__uri['database'], self.__uri['username'],
-                              self.__uri['password'])
+                              self.__uri['password'],
+                              self.__uri['options'].get('authmechanism', 'DEFAULT'))
 
         host, port = self.__uri['nodelist'][0]
 
