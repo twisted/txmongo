@@ -247,6 +247,15 @@ class TestMongoAuth(unittest.TestCase):
         finally:
             yield conn.disconnect()
 
+    @defer.inlineCallbacks
+    def test_InvalidArgs(self):
+        conn = self.__get_connection()
+        try:
+            yield self.assertFailure(conn[self.db1].authenticate(self.login1, 123), TypeError)
+            yield self.assertFailure(conn[self.db1].authenticate(123, self.password1), TypeError)
+        finally:
+            yield conn.disconnect()
+
 
 
 class TestMongoDBCR(unittest.TestCase):
