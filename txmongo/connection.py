@@ -102,7 +102,7 @@ class _Connection(ReconnectingClientFactory):
 
         # Check that the replicaSet matches.
         set_name = config.get("setName")
-        expected_set_name = self.uri["options"].get("setname")
+        expected_set_name = self.uri["options"].get("replicaset")
         if expected_set_name and (expected_set_name != set_name):
             # Log the invalid replica set failure.
             msg = "Mongo instance does not match requested replicaSet."
