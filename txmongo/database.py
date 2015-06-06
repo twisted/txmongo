@@ -7,15 +7,6 @@ from pymongo.helpers import _check_command_response
 from twisted.internet import defer
 from txmongo.collection import Collection
 
-# PyMongo 2.x and 3.x has a bit different signatures of _check_command_response
-# which differ only in `reset` argument that is not used by txmongo
-import inspect
-if 'reset' in inspect.getargspec(_check_command_response).args:
-    orig = _check_command_response
-    def wrapper(response, msg=None, allowable_errors=None):
-        return orig(response, None, msg=msg, allowable_errors=allowable_errors)
-    _check_command_response = wrapper
-
 
 class Database(object):
     __factory = None
