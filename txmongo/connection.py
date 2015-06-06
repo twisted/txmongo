@@ -157,8 +157,6 @@ class _Connection(ReconnectingClientFactory):
             """
         if self.instance:
             return defer.succeed(self.instance)
-        if self.__notify_ready is None:
-            self.__notify_ready = []
         df = defer.Deferred()
         self.__notify_ready.append(df)
         return df
