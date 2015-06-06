@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pymongo.errors import OperationFailure, AutoReconnect
+from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from txmongo.connection import MongoConnection, ConnectionPool, _Connection
-from txmongo.protocol import QUERY_SLAVE_OK
+from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
 
 from mongod import Mongod
 
@@ -153,3 +153,32 @@ class TestReplicaSet(unittest.TestCase):
         finally:
             yield conn.disconnect()
             self.flushLoggedErrors(AutoReconnect)
+
+
+    @defer.inlineCallbacks
+    def test_InvalidRSName(self):
+        uri = "mongodb://localhost:{0}/?replicaSet={1}_X".format(self.ports[0], self.rsname)
+
+        ok = defer.Deferred()
+
+        def proto_fail(self, exception):
+            conn.disconnect()
+
+            if type(exception) == ConfigurationError:
+                ok.callback(None)
+            else:
+                ok.errback(exception)
+
+        self.patch(MongoProtocol, "fail", proto_fail)
+
+        conn = ConnectionPool(uri)
+
+        @defer.inlineCallbacks
+        def do_query():
+            yield conn.db.coll.insert({'x': 42})
+            raise Exception("You shall not pass!")
+
+        yield defer.DeferredList([ok, do_query()],
+                                 fireOnOneCallback=True,
+                                 fireOnOneErrback=True)
+        self.flushLoggedErrors(AutoReconnect)
