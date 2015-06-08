@@ -1,11 +1,11 @@
 Changelog
 =========
 
-Release 15.1 (UNRELEASED)
+Release 15.1 (2015-06-08)
 -------------------------
 
-This is a major release in that while increasing code coverage to 91%
-( see https://coveralls.io/builds/2650466 ), we've also caught several
+This is a major release in that while increasing code coverage to 95%
+( see https://coveralls.io/builds/2749499 ), we've also caught several
 bugs, added features and changed functionality to be more inline with PyMongo.
 
 This is no small thanks to travis-ci and coveralls while using tox to cover all iterations
@@ -16,7 +16,8 @@ We can officially say that we are Python 2.6, 2.7 and PyPy compatible.
 API Changes
 ^^^^^^^^^^^
 
-- **TxMongo now requires PyMongo 3.x**
+- **TxMongo now requires PyMongo 3.x**, if you need PyMongo 2.x support, please use 15.0, otherwise
+  it is highgly recommend to use PyMongo 3.x which still support MongoDB 2.6.
 - Better handling of replica-sets, we now raise an ``autoreconnect`` when master is unreachable.
 - Changed the behaviour of ``find_one`` to return ``None`` instead of an empty
   dict ``{}`` when no result is found.

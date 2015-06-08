@@ -30,7 +30,7 @@ else:
 
 setup(
     name="txmongo",
-    version="15.0.0",
+    version="15.1.0",
     description="Asynchronous Python driver for MongoDB <http://www.mongodb.org>",
     author="Alexandre Fiori, Bret Curtis",
     author_email="fiorix@gmail.com, psi29a@gmail.com",
