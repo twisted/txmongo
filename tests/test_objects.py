@@ -64,6 +64,8 @@ class TestMongoObjects(unittest.TestCase):
             self.assertEqual(db.name, u'mydb')
             self.assertEqual(coll.name, u'mycol')
             self.assertEqual(coll.full_name, u'mydb.mycol')
+            self.assertEqual(coll.subcoll.name, u'mycol.subcoll')
+            self.assertEqual(coll.subcoll.full_name, u'mydb.mycol.subcoll')
 
             # database
             self.assertTrue(coll.database is db)
