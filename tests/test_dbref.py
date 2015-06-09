@@ -20,8 +20,7 @@ Based on pymongo driver's test_collection.py
 
 from twisted.trial import unittest
 
-from txmongo.dbref import DBRef
-from txmongo.collection import Collection
+from bson.dbref import DBRef
 from bson.son import SON
 from bson.objectid import ObjectId
 
@@ -36,24 +35,16 @@ class TestDBRef(unittest.TestCase):
         self.assertEqual(ref.collection, "testc")
         self.assertEqual(ref.id, oid)
         self.assertEqual(ref.database, "testdb")
-        collection = Collection("testdb", "testcoll")
-        ref = DBRef(collection, oid)
+        ref = DBRef(u"testcoll", oid)
         self.assertEqual(ref.collection, "testcoll")
         ref_son = SON([("$ref", "testcoll"), ("$id", oid)])
         self.assertEqual(ref.as_doc(), ref_son)
-        self.assertEqual(repr(ref), "DBRef(testcoll, %r)" % oid)
+        self.assertEqual(repr(ref), "DBRef(u'testcoll', %r)" % oid)
 
-        ref = DBRef(collection, oid, "testdb")
+        ref = DBRef(u"testcoll", oid, u"testdb")
         ref_son = SON([("$ref", "testcoll"), ("$id", oid), ("$db", "testdb")])
         self.assertEqual(ref.as_doc(), ref_son)
-        self.assertEqual(repr(ref), "DBRef(testcoll, %r, testdb)" % oid)
-
-        ref1 = DBRef('a', oid)
-        ref2 = DBRef('b', oid)
-
-        self.assertEqual(cmp(ref1, ref2), -1)
-        self.assertEqual(ref1.__cmp__(0), NotImplemented)
-        self.assertNotEqual(cmp(ref1, 0), 0)
+        self.assertEqual(repr(ref), "DBRef(u'testcoll', %r, u'testdb')" % oid)
 
         ref1 = DBRef('a', oid)
         ref2 = DBRef('a', oid)
