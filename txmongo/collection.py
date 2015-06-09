@@ -47,6 +47,18 @@ class Collection(object):
     def __repr__(self):
         return "Collection(%s, %s)" % (self._database, self._collection_name)
 
+    @property
+    def full_name(self):
+        return '{0}.{1}'.format(str(self._database), self._collection_name)
+
+    @property
+    def name(self):
+        return self._collection_name
+
+    @property
+    def database(self):
+        return self._database
+
     def __getitem__(self, collection_name):
         return Collection(self._database,
                           "%s.%s" % (self._collection_name, collection_name))
