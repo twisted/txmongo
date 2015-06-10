@@ -1,6 +1,24 @@
 Changelog
 =========
 
+Release 15.2 (UNRELEASED)
+-------------------------
+
+API Changes
+^^^^^^^^^^^
+
+- ``txmongo.dbref`` removed. Use ``bson.dbref`` instead.
+  **Incompatibility note:** ``bson.dbref.DBRef`` takes collection name as string while
+  ``txmongo.dbref.DBRef`` was able to accept ``Collection`` instance. Please use
+  ``collection.name`` instead.
+  
+Features
+^^^^^^^^
+
+Bugfixes
+^^^^^^^^
+
+
 Release 15.1 (2015-06-08)
 -------------------------
 
