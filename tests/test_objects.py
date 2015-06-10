@@ -17,6 +17,7 @@ from StringIO import StringIO
 
 import os
 from bson import objectid, timestamp
+from pymongo.write_concern import WriteConcern
 import txmongo
 from txmongo import database
 from txmongo import collection
@@ -51,6 +52,34 @@ class TestMongoObjects(unittest.TestCase):
         yield mydb.drop_collection(mycol3)
         self.assertRaises(TypeError, mydb.drop_collection, None)
         yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_Properties(self):
+        conn = txmongo.MongoConnection(mongo_host, mongo_port)
+        db = conn.mydb
+        coll = db.mycol
+
+        try:
+            # names
+            self.assertEqual(db.name, u"mydb")
+            self.assertEqual(coll.name, u"mycol")
+            self.assertEqual(coll.full_name, u"mydb.mycol")
+            self.assertEqual(coll.subcoll.name, u"mycol.subcoll")
+            self.assertEqual(coll.subcoll.full_name, u"mydb.mycol.subcoll")
+
+            # database
+            self.assertTrue(coll.database is db)
+
+            # Write concern
+            w2 = coll.with_options(write_concern=WriteConcern(w=2))
+            dbw2 = database.Database(conn, "mydb", write_concern=WriteConcern(w=2))
+            self.assertEqual(w2.write_concern, WriteConcern(w=2))
+            self.assertEqual(dbw2.write_concern, WriteConcern(w=2))
+
+            # Connection
+            self.assertTrue(db.connection is conn)
+        finally:
+            yield conn.disconnect()
 
     @defer.inlineCallbacks
     def test_MongoOperations(self):
