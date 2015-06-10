@@ -15,6 +15,8 @@ API Changes
 Features
 ^^^^^^^^
 
+- ``name``, ``full_name`` and ``database`` properties of ``Collection``
+
 Bugfixes
 ^^^^^^^^
 
