@@ -101,12 +101,13 @@ class TestMongoAuth(unittest.TestCase):
     def setUp(self):
         self.__mongod = Mongod(port=mongo_port, auth=True)
         yield self.__mongod.start()
+        self.addCleanup(self.clean)
 
         yield self.createUserAdmin()
         yield self.createDBUsers()
 
     @defer.inlineCallbacks
-    def tearDown(self):
+    def clean(self):
         try:
             conn = self.__get_connection()
             yield conn["admin"].authenticate(self.ua_login, self.ua_password)

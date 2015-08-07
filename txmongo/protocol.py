@@ -25,6 +25,7 @@ from pymongo import auth
 from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure
 from twisted.internet import defer, protocol, error
 from twisted.python import failure, log
+from twisted.python.compat import unicode
 
 
 INT_MAX = 2147483647
@@ -287,7 +288,8 @@ connectionDone = failure.Failure(error.ConnectionDone())
 connectionDone.cleanFailure()
 
 
-class MongoAuthenticationError(Exception): pass
+class MongoAuthenticationError(Exception):
+    pass
 
 
 class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
@@ -437,62 +439,60 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
     @defer.inlineCallbacks
     def authenticate_scram_sha1(self, database_name, username, password):
         # Totally stolen from pymongo.auth
-
-        user = username.encode("utf-8").replace('=', "=3D").replace(',', "=2C")
-        nonce = base64.standard_b64encode(str(SystemRandom().random())[2:].encode("utf-8"))
-        first_bare = "n={0},r={1}".format(user, nonce)
+        user = username.replace('=', "=3D").replace(',', "=2C")
+        nonce = base64.standard_b64encode(str(SystemRandom().random()).encode('ascii'))[2:]
+        first_bare = "n={0},r={1}".format(user, nonce.decode()).encode('ascii')
 
         cmd = SON([("saslStart", 1),
-                        ("mechanism", "SCRAM-SHA-1"),
-                        ("autoAuthorize", 1),
-                        ("payload", Binary("n,," + first_bare))])
+                   ("mechanism", "SCRAM-SHA-1"),
+                   ("autoAuthorize", 1),
+                   ("payload", Binary(b"n,," + first_bare))])
         result = yield self.__run_command(database_name, cmd)
 
         server_first = result["payload"]
         parsed = auth._parse_scram_response(server_first)
-        iterations = int(parsed['i'])
-        salt = parsed['s']
-        rnonce = parsed['r']
+        iterations = int(parsed[b'i'])
+        salt = parsed[b's']
+        rnonce = parsed[b'r']
         if not rnonce.startswith(nonce):
             raise MongoAuthenticationError("Server returned an invalid nonce.")
 
-        without_proof = "c=biws,r=" + rnonce
+        without_proof = b"c=biws,r=" + rnonce
         salted_pass = auth._hi(auth._password_digest(username, password).encode("utf-8"),
                                base64.standard_b64decode(salt),
                                iterations)
-        client_key = hmac.HMAC(salted_pass, "Client Key", sha1).digest()
+        client_key = hmac.HMAC(salted_pass, b"Client Key", sha1).digest()
         stored_key = sha1(client_key).digest()
-        auth_msg = ','.join((first_bare, server_first, without_proof))
+        auth_msg = b','.join((first_bare, server_first, without_proof))
         client_sig = hmac.HMAC(stored_key, auth_msg, sha1).digest()
-        client_proof = "p=" + base64.standard_b64encode(auth._xor(client_key, client_sig))
-        client_final = ','.join((without_proof, client_proof))
+        client_proof = b"p=" + base64.standard_b64encode(auth._xor(client_key, client_sig))
+        client_final = b','.join((without_proof, client_proof))
 
-        server_key = hmac.HMAC(salted_pass, "Server Key", sha1).digest()
+        server_key = hmac.HMAC(salted_pass, b"Server Key", sha1).digest()
         server_sig = base64.standard_b64encode(
             hmac.HMAC(server_key, auth_msg, sha1).digest())
 
         cmd = SON([("saslContinue", 1),
-                        ("conversationId", result["conversationId"]),
-                        ("payload", Binary(client_final))])
+                   ("conversationId", result["conversationId"]),
+                   ("payload", Binary(client_final))])
         result = yield self.__run_command(database_name, cmd)
 
         if not result["ok"]:
             raise MongoAuthenticationError("Authentication failed")
 
         parsed = auth._parse_scram_response(result["payload"])
-        if parsed['v'] != server_sig:
+        if parsed[b'v'] != server_sig:
             raise MongoAuthenticationError("Server returned an invalid signature.")
 
         # Depending on how it's configured, Cyrus SASL (which the server uses)
         # requires a third empty challenge.
         if not result["done"]:
             cmd = SON([("saslContinue", 1),
-                            ("conversationId", result["conversationId"]),
-                            ("payload", Binary(''))])
+                       ("conversationId", result["conversationId"]),
+                       ("payload", Binary(b''))])
             result = yield self.__run_command(database_name, cmd)
             if not result["done"]:
                 raise MongoAuthenticationError("SASL conversation failed to complete.")
-
 
     @defer.inlineCallbacks
     def authenticate(self, database_name, username, password, mechanism):

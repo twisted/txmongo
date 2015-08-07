@@ -315,7 +315,7 @@ class ConnectionPool(object):
                 consumeErrors=True
             )
         except defer.FirstError as e:
-            raise e.subFailure
+            raise e.subFailure.value
 
 
     @defer.inlineCallbacks
