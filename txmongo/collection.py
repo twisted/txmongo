@@ -2,7 +2,7 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-import types
+from __future__ import absolute_import, division
 
 import bson
 from bson import BSON, ObjectId
@@ -16,16 +16,18 @@ from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
     validate_is_mapping, validate_boolean
 from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
-from txmongo import filter as qf
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
     Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
+from txmongo import filter as qf
 from twisted.internet import defer
+from twisted.python.compat import unicode, comparable
 
 
+@comparable
 class Collection(object):
     def __init__(self, database, name, write_concern=None):
-        if not isinstance(name, basestring):
-            raise TypeError("name must be an instance of basestring")
+        if not isinstance(name, (bytes, unicode)):
+            raise TypeError("name must be an instance of (bytes, unicode)")
 
         if not name or ".." in name:
             raise InvalidName("collection names cannot be empty")
@@ -65,6 +67,10 @@ class Collection(object):
 
     def __cmp__(self, other):
         if isinstance(other, Collection):
+
+            def cmp(a, b):
+                return (a > b) - (a < b)
+
             return cmp((self._database, self._collection_name),
                        (other._database, other._collection_name))
         return NotImplemented
@@ -105,7 +111,7 @@ class Collection(object):
         # Consider fields as iterable
         as_dict = {}
         for field in fields:
-            if not isinstance(field, types.StringTypes):
+            if not isinstance(field, (bytes, unicode)):
                 raise TypeError("fields must be a list of key names")
             as_dict[field] = 1
         if not as_dict:
@@ -148,7 +154,7 @@ class Collection(object):
             if "query" not in spec:
                 spec = {"$query": spec}
 
-            for k, v in filter.iteritems():
+            for k, v in filter.items():
                 if isinstance(v, (list, tuple)):
                     spec['$' + k] = dict(v)
                 else:
@@ -168,13 +174,13 @@ class Collection(object):
         if spec is None:
             spec = SON()
 
-        if not isinstance(spec, types.DictType):
+        if not isinstance(spec, dict):
             raise TypeError("spec must be an instance of dict")
-        if not isinstance(fields, (types.DictType, types.ListType, types.NoneType)):
+        if not isinstance(fields, (dict, list)) and fields is not None:
             raise TypeError("fields must be an instance of dict or list")
-        if not isinstance(skip, types.IntType):
+        if not isinstance(skip, int):
             raise TypeError("skip must be an instance of int")
-        if not isinstance(limit, types.IntType):
+        if not isinstance(limit, int):
             raise TypeError("limit must be an instance of int")
 
         fields = self._normalize_fields_projection(fields)
@@ -257,7 +263,7 @@ class Collection(object):
             "$reduce": Code(reduce),
         }
 
-        if isinstance(keys, basestring):
+        if isinstance(keys, (bytes, unicode)):
             body["$keyf"] = Code(keys)
         else:
             body["key"] = self._normalize_fields_projection(keys)
@@ -300,14 +306,14 @@ class Collection(object):
 
     @defer.inlineCallbacks
     def insert(self, docs, safe=None, flags=0, **kwargs):
-        if isinstance(docs, types.DictType):
+        if isinstance(docs, dict):
             ids = docs.get("_id", ObjectId())
             docs["_id"] = ids
             docs = [docs]
-        elif isinstance(docs, types.ListType):
+        elif isinstance(docs, list):
             ids = []
             for doc in docs:
-                if isinstance(doc, types.DictType):
+                if isinstance(doc, dict):
                     oid = doc.get("_id", ObjectId())
                     ids.append(oid)
                     doc["_id"] = oid
@@ -364,11 +370,11 @@ class Collection(object):
 
     @defer.inlineCallbacks
     def update(self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs):
-        if not isinstance(spec, types.DictType):
+        if not isinstance(spec, dict):
             raise TypeError("spec must be an instance of dict")
-        if not isinstance(document, types.DictType):
+        if not isinstance(document, dict):
             raise TypeError("document must be an instance of dict")
-        if not isinstance(upsert, types.BooleanType):
+        if not isinstance(upsert, bool):
             raise TypeError("upsert must be an instance of bool")
 
         if multi:
@@ -438,7 +444,7 @@ class Collection(object):
         defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
 
     def save(self, doc, safe=None, **kwargs):
-        if not isinstance(doc, types.DictType):
+        if not isinstance(doc, dict):
             raise TypeError("cannot save objects of type %s" % type(doc))
 
         oid = doc.get("_id")
@@ -451,7 +457,7 @@ class Collection(object):
     def remove(self, spec, safe=None, single=False, flags=0, **kwargs):
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
-        if not isinstance(spec, types.DictType):
+        if not isinstance(spec, dict):
             raise TypeError("spec must be an instance of dict, not %s" % type(spec))
 
         if single:
@@ -537,7 +543,7 @@ class Collection(object):
         return self.create_index(sort_fields, **kwargs)
 
     def drop_index(self, index_identifier):
-        if isinstance(index_identifier, types.StringTypes):
+        if isinstance(index_identifier, (bytes, unicode)):
             name = index_identifier
         elif isinstance(index_identifier, qf.sort):
             name = self._gen_index_name(index_identifier["orderby"])

@@ -15,7 +15,6 @@ decoding as well as Exception types, when applicable.
 
 from collections import namedtuple
 import struct
-import __builtin__
 
 import base64
 import hmac
@@ -74,10 +73,14 @@ Msg = namedtuple("Msg", ["len", "request_id", "response_to", "opcode", "message"
 
 class KillCursors(namedtuple("KillCursors", ["len", "request_id", "response_to", "opcode",
                                              "zero", "n_cursors", "cursors"])):
-    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_KILL_CURSORS,
-                zero=0, n_cursors=0, cursors=None):
-        n_cursors = __builtin__.len(cursors)
-        return super(KillCursors, cls).__new__(cls, len, request_id, response_to,
+    def __new__(cls, length=0, request_id=0, response_to=0, opcode=OP_KILL_CURSORS,
+                zero=0, n_cursors=0, cursors=None, **kwargs):
+
+        if length == 0 and "len" in kwargs:
+            length = kwargs["len"]
+
+        n_cursors = len(cursors)
+        return super(KillCursors, cls).__new__(cls, length, request_id, response_to,
                                                opcode, zero, n_cursors, cursors)
 
 
@@ -167,7 +170,7 @@ class MongoClientProtocol(protocol.Protocol):
         data_length = sum([len(chunk) for chunk in io_vector]) + 8
         data_req = struct.pack("<ii", data_length, request_id)
         io_vector.insert(0, data_req)
-        self.transport.write(''.join(io_vector))
+        self.transport.write(b''.join(io_vector))
         return request_id
 
     def send(self, request):
@@ -184,12 +187,12 @@ class MongoClientProtocol(protocol.Protocol):
         self._send(iovec)
 
     def send_MSG(self, request):
-        iovec = [struct.pack("<ii", *request[2:4]), request.message, '\x00']
+        iovec = [struct.pack("<ii", *request[2:4]), request.message, b'\x00']
         return self._send(iovec)
 
     def send_UPDATE(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00',
+                 request.collection.encode("ascii"), b'\x00',
                  struct.pack("<i", request.flags),
                  request.selector,
                  request.update]
@@ -197,27 +200,27 @@ class MongoClientProtocol(protocol.Protocol):
 
     def send_INSERT(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00']
+                 request.collection.encode("ascii"), b'\x00']
         iovec.extend(request.documents)
         return self._send(iovec)
 
     def send_QUERY(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00',
+                 request.collection.encode("ascii"), b'\x00',
                  struct.pack("<ii", request.n_to_skip, request.n_to_return),
                  request.query,
-                 (request.fields or '')]
+                 (request.fields or b'')]
         return self._send(iovec)
 
     def send_GETMORE(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00',
+                 request.collection.encode("ascii"), b'\x00',
                  struct.pack("<iq", request.n_to_return, request.cursor_id)]
         return self._send(iovec)
 
     def send_DELETE(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00',
+                 request.collection.encode("ascii"), b'\x00',
                  struct.pack("<i", request.flags),
                  request.selector]
         return self._send(iovec)
@@ -241,11 +244,11 @@ class MongoServerProtocol(protocol.Protocol):
         self.__decoder.feed(data)
 
         try:
-            request = self.__decoder.next()
+            request = next(self.__decoder)
             while request:
                 self.handle(request)
-                request = self.__decoder.next()
-        except Exception, ex:
+                request = next(self.__decoder)
+        except Exception as ex:
             self.fail(reason=failure.Failure(ex))
 
     def handle(self, request):
@@ -523,12 +526,12 @@ class MongoDecoder:
     dataBuffer = None
 
     def __init__(self):
-        self.dataBuffer = ''
+        self.dataBuffer = b''
 
     def feed(self, data):
         self.dataBuffer += data
 
-    def next(self):
+    def __next__(self):
         if len(self.dataBuffer) < 16:
             return None
         message_length, = struct.unpack("<i", self.dataBuffer[:4])
@@ -539,6 +542,7 @@ class MongoDecoder:
         message_data = self.dataBuffer[:message_length]
         self.dataBuffer = self.dataBuffer[message_length:]
         return self.decode(message_data)
+    next = __next__
 
     @staticmethod
     def decode(message_data):
@@ -549,7 +553,7 @@ class MongoDecoder:
             zero, = struct.unpack("<i", message_data[16:20])
             if zero != 0:
                 raise ConnectionFailure()
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             flags, = struct.unpack("<i", message_data[offset:offset + 4])
             offset += 4
@@ -561,7 +565,7 @@ class MongoDecoder:
             return Update(*(header + (zero, name, flags, selector, update)))
         elif opcode == OP_INSERT:
             flags, = struct.unpack("<i", message_data[16:20])
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             docs = []
             while offset < len(message_data):
@@ -573,7 +577,7 @@ class MongoDecoder:
             return Insert(*(header + (flags, name, docs)))
         elif opcode == OP_QUERY:
             flags, = struct.unpack("<i", message_data[16:20])
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             number_to_skip, number_to_return = struct.unpack("<ii", message_data[offset:offset + 8])
             offset += 8
@@ -590,7 +594,7 @@ class MongoDecoder:
             zero, = struct.unpack("<i", message_data[16:20])
             if zero != 0:
                 raise ConnectionFailure()
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             number_to_return, cursorid = struct.unpack("<iq", message_data[offset:offset + 12])
             return Getmore(*(header + (zero, name, number_to_return, cursorid)))
@@ -598,7 +602,7 @@ class MongoDecoder:
             zero, = struct.unpack("<i", message_data[16:20])
             if zero != 0:
                 raise ConnectionFailure()
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             flags, = struct.unpack("<i", message_data[offset:offset + 4])
             offset += 4
@@ -616,7 +620,7 @@ class MongoDecoder:
                 offset += 8
             return KillCursors(*(header + cursors + (cursor_list,)))
         elif opcode == OP_MSG:
-            if message_data[-1] != "\x00":
+            if message_data[-1] != b"\x00":
                 raise ConnectionFailure()
             return Msg(*(header + (message_data[16:-1].decode("ascii"),)))
         elif opcode == OP_REPLY:

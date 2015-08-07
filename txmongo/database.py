@@ -5,6 +5,7 @@
 from bson.son import SON
 from pymongo.helpers import _check_command_response
 from twisted.internet import defer
+from twisted.python.compat import unicode
 from txmongo.collection import Collection
 
 
@@ -45,7 +46,7 @@ class Database(object):
 
     @defer.inlineCallbacks
     def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
-        if isinstance(command, basestring):
+        if isinstance(command, (bytes, unicode)):
             command = SON([(command, value)])
         command.update(kwargs)
 
@@ -72,7 +73,7 @@ class Database(object):
     def drop_collection(self, name_or_collection):
         if isinstance(name_or_collection, Collection):
             name = name_or_collection._collection_name
-        elif isinstance(name_or_collection, basestring):
+        elif isinstance(name_or_collection, (bytes, unicode)):
             name = name_or_collection
         else:
             raise TypeError("name must be an instance of basestring or txmongo.Collection")
@@ -96,9 +97,9 @@ class Database(object):
         Send an authentication command for this database.
         mostly stolen from pymongo
         """
-        if not isinstance(name, basestring):
+        if not isinstance(name, (bytes, unicode)):
             raise TypeError("name must be an instance of basestring")
-        if not isinstance(password, basestring):
+        if not isinstance(password, (bytes, unicode)):
             raise TypeError("password must be an instance of basestring")
 
         """

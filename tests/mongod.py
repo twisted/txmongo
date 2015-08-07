@@ -16,6 +16,9 @@
 import tempfile
 import shutil
 
+from twisted.python.compat import intToBytes
+from twisted.python.filepath import FilePath
+from twisted.python.compat import _PY3
 from twisted.internet import defer, reactor
 from twisted.internet.error import ProcessDone
 
@@ -25,13 +28,13 @@ class Mongod(object):
     # FIXME: this message might change in future versions of MongoDB
     # but waiting for this message is faster than pinging tcp port
     # so leaving this for now
-    success_message = "waiting for connections on port"
+    success_message = b"waiting for connections on port"
 
     def __init__(self, port=27017, auth=False, replset=None, dbpath=None):
         self.__proc = None
         self.__notify_waiting = []
         self.__notify_stop = []
-        self.__output = ''
+        self.__output = b''
         self.__end_reason = None
 
         self.__datadir = None
@@ -47,21 +50,26 @@ class Mongod(object):
             self.__datadir = dbpath
             self.__rmdatadir = False
 
+        if _PY3:
+            # Ensure it is always bytes
+            self.__datadir = FilePath(self.__datadir).asBytesMode().path
+
+
     def start(self):
         d = defer.Deferred()
         self.__notify_waiting.append(d)
 
-        args = ["mongod",
-                "--port", str(self.port),
-                "--dbpath", self.__datadir,
-                "--noprealloc", "--nojournal",
-                "--smallfiles", "--nssize", "1",
-                "--nohttpinterface",
-                ]
-
-        if self.auth: args.append("--auth")
-        if self.replset: args.extend(["--replSet", self.replset])
-        self.__proc = reactor.spawnProcess(self, "mongod", args)
+        args = [b"mongod",
+                b"--port", intToBytes(self.port),
+                b"--dbpath", self.__datadir,
+                b"--noprealloc", b"--nojournal",
+                b"--smallfiles", b"--nssize", b"1",
+                b"--nohttpinterface",
+        ]
+        if self.auth: args.append(b"--auth")
+        if self.replset: args.extend([b"--replSet", self.replset])
+        from os import environ
+        self.__proc = reactor.spawnProcess(self, b"mongod", args, env=environ)
         return d
 
     def stop(self):

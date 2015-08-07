@@ -23,10 +23,8 @@ from twisted.internet import base, defer
 
 from txmongo.protocol import MongoAuthenticationError
 
-from mongod import Mongod
+from .mongod import Mongod
 
-
-base.DelayedCall.debug = True
 
 mongo_host = "localhost"
 mongo_port = 27018

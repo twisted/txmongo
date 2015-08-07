@@ -15,6 +15,7 @@
 
 from bson import BSON
 from twisted.trial import unittest
+from twisted.python.compat import unicode
 
 from txmongo.protocol import MongoClientProtocol, MongoDecoder, Insert, Query, \
     KillCursors, Getmore, Update, Delete, UPDATE_MULTI, UPDATE_UPSERT, \
@@ -31,7 +32,7 @@ class _FakeTransport(object):
         self.data.append(data)
 
     def get_content(self):
-        return ''.join(self.data)
+        return b''.join(self.data)
 
 
 class TestMongoProtocol(unittest.TestCase):
@@ -44,11 +45,15 @@ class TestMongoProtocol(unittest.TestCase):
 
         decoder = MongoDecoder()
         decoder.feed(proto.transport.get_content())
-        decoded = decoder.next()
+        decoded = next(decoder)
 
         for field, dec_value, req_value in zip(request._fields, decoded, request):
             # len and request_id are not filled in request object
             if field not in ("len", "request_id"):
+                if isinstance(dec_value, bytes) and \
+                   isinstance(req_value, unicode):
+                    dec_value = dec_value.decode()
+
                 self.assertEqual(dec_value, req_value)
 
     def test_EncodeDecodeQuery(self):

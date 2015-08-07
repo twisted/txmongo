@@ -15,11 +15,15 @@
 
 from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError
 from twisted.trial import unittest
+from twisted.python.compat import _PY3
 from twisted.internet import defer, reactor
 from txmongo.connection import MongoConnection, ConnectionPool, _Connection
 from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
 
-from mongod import Mongod
+from .mongod import Mongod
+
+if _PY3:
+    from twisted.python.compat import xrange
 
 
 class TestReplicaSet(unittest.TestCase):

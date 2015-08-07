@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import, division
+
 from bson import BSON, ObjectId
 from bson.son import SON
 from pymongo.errors import OperationFailure, WriteError
@@ -21,10 +23,14 @@ from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
 from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
+from twisted.python.compat import _PY3
 from twisted.trial import unittest
 import txmongo
 from txmongo.protocol import MongoClientProtocol
 import txmongo.filter as qf
+
+if _PY3:
+    from twisted.python.compat import xrange
 
 mongo_host = "localhost"
 mongo_port = 27017
@@ -170,7 +176,7 @@ class TestMongoQueries(_SingleCollectionTest):
     @defer.inlineCallbacks
     def test_CursorClosing(self):
         # Calculate number of objects in 4mb batch
-        obj_count_4mb = 4 * 1024**2 / len(BSON.encode(self.__make_big_object())) + 1
+        obj_count_4mb = int(4 * 1024**2 / len(BSON.encode(self.__make_big_object())) + 1)
 
         first_batch = 5
         yield self.coll.insert([self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
@@ -183,7 +189,7 @@ class TestMongoQueries(_SingleCollectionTest):
     @defer.inlineCallbacks
     def test_CursorClosingWithCursor(self):
         # Calculate number of objects in 4mb batch
-        obj_count_4mb = 4 * 1024**2 / len(BSON.encode(self.__make_big_object())) + 1
+        obj_count_4mb = int(4 * 1024**2 / len(BSON.encode(self.__make_big_object())) + 1)
 
         first_batch = 5
         yield self.coll.insert([self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
