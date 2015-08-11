@@ -17,6 +17,9 @@
 The :mod:`gridfs` package is an implementation of GridFS on top of
 :mod:`pymongo`, exposing a file-like interface.
 """
+
+from __future__ import absolute_import, division
+
 from twisted.internet import defer
 from txmongo._gridfs.errors import NoFile
 from txmongo._gridfs.grid_file import GridIn, GridOut, GridOutIterator

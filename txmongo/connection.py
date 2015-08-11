@@ -2,6 +2,8 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
+from __future__ import absolute_import, division
+
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.uri_parser import parse_uri
 from pymongo.read_preferences import ReadPreference

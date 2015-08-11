@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import, division
+
 from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError
 from twisted.trial import unittest
 from twisted.python.compat import _PY3

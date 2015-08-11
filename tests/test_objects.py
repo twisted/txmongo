@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from __future__ import absolute_import, division
+
 import time
 
 from io import BytesIO as StringIO
@@ -88,7 +91,7 @@ class TestMongoObjects(unittest.TestCase):
         """ Tests mongo operations """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         test = conn.foo.test
-        
+
         # insert
         doc = {"foo": "bar", "items": [1, 2, 3]}
         yield test.insert(doc, safe=True)
@@ -96,7 +99,7 @@ class TestMongoObjects(unittest.TestCase):
         self.assertEqual("_id" in result, True)
         self.assertEqual(result["foo"], "bar")
         self.assertEqual(result["items"], [1, 2, 3])
-        
+
         # insert preserves object id
         doc.update({"_id": objectid.ObjectId()})
         yield test.insert(doc, safe=True)
@@ -170,7 +173,7 @@ class TestGridFsObjects(unittest.TestCase):
     def _disconnect(self, conn):
         """ Disconnect the connection """
         yield conn.disconnect()
-    
+
     @defer.inlineCallbacks
     def test_GridFileObjects(self):
         """ Tests gridfs objects """
@@ -321,7 +324,7 @@ class TestGridFsObjects(unittest.TestCase):
             # yielding to ensure writes complete before we close and close before we try to read
             yield g_in.write(in_file.read())
             yield g_in.close()
-            
+
             # Tests reading from an existing gridfs file
             g_out = yield gfs.get_last_version("optest")
             data = yield g_out.read()
@@ -342,5 +345,5 @@ class TestGridFsObjects(unittest.TestCase):
         listed_files = yield gfs.list()
         self.assertEqual(["optest"], listed_files,
                          "`optest` is the only expected file and we received %s" % listed_files)
-        
+
         yield gfs.delete(_id)

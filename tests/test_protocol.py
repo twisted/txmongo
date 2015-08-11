@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import, division
+
 from bson import BSON
 from twisted.trial import unittest
 from twisted.python.compat import unicode

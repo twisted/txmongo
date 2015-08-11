@@ -13,6 +13,8 @@ implementation can be shared. This includes BSON encoding and
 decoding as well as Exception types, when applicable.
 """
 
+from __future__ import absolute_import, division
+
 from collections import namedtuple
 import struct
 
@@ -76,9 +78,6 @@ class KillCursors(namedtuple("KillCursors", ["len", "request_id", "response_to",
                                              "zero", "n_cursors", "cursors"])):
     def __new__(cls, length=0, request_id=0, response_to=0, opcode=OP_KILL_CURSORS,
                 zero=0, n_cursors=0, cursors=None, **kwargs):
-
-        if length == 0 and "len" in kwargs:
-            length = kwargs["len"]
 
         n_cursors = len(cursors)
         return super(KillCursors, cls).__new__(cls, length, request_id, response_to,
