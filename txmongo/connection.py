@@ -2,6 +2,8 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
+from __future__ import absolute_import, division
+
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.uri_parser import parse_uri
 from pymongo.read_preferences import ReadPreference
@@ -216,7 +218,7 @@ class _Connection(ReconnectingClientFactory):
     def _auth_proto(self, proto):
         yield defer.DeferredList(
             [proto.authenticate(database, username, password, mechanism)
-             for database, (username, password, mechanism) in self.__auth_creds.iteritems()],
+             for database, (username, password, mechanism) in self.__auth_creds.items()],
             consumeErrors=True
         )
 
@@ -238,7 +240,7 @@ class ConnectionPool(object):
     __wc_possible_options = set(['w', "wtimeout", 'j', "fsync"])
 
     def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None, **kwargs):
-        assert isinstance(uri, basestring)
+        assert isinstance(uri, str)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
 
@@ -315,7 +317,7 @@ class ConnectionPool(object):
                 consumeErrors=True
             )
         except defer.FirstError as e:
-            raise e.subFailure
+            raise e.subFailure.value
 
 
     @defer.inlineCallbacks

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import, division
+
 from twisted.internet import defer
 from twisted.trial import unittest
 import txmongo
@@ -71,4 +73,3 @@ class TestFindAndModify(unittest.TestCase):
     def tearDown(self):
         yield self.coll.drop()
         yield self.conn.disconnect()
-

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import, division
+
 import tempfile
 import shutil
 import txmongo
@@ -23,10 +25,8 @@ from twisted.internet import base, defer
 
 from txmongo.protocol import MongoAuthenticationError
 
-from mongod import Mongod
+from .mongod import Mongod
 
-
-base.DelayedCall.debug = True
 
 mongo_host = "localhost"
 mongo_port = 27018
@@ -103,12 +103,13 @@ class TestMongoAuth(unittest.TestCase):
     def setUp(self):
         self.__mongod = Mongod(port=mongo_port, auth=True)
         yield self.__mongod.start()
+        self.addCleanup(self.clean)
 
         yield self.createUserAdmin()
         yield self.createDBUsers()
 
     @defer.inlineCallbacks
-    def tearDown(self):
+    def clean(self):
         try:
             conn = self.__get_connection()
             yield conn["admin"].authenticate(self.ua_login, self.ua_password)

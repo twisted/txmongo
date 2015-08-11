@@ -14,14 +14,15 @@
 
 """Tools for representing files stored in GridFS."""
 
+from __future__ import absolute_import, division
+
 import datetime
 import math
 import os
 
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO
+from io import BytesIO as StringIO
+
+from twisted.python.compat import unicode
 
 from twisted.internet import defer
 from txmongo._gridfs.errors import CorruptGridFile
@@ -223,7 +224,7 @@ class GridIn(object):
             read = data.read
         except AttributeError:
             # string
-            if not isinstance(data, basestring):
+            if not isinstance(data, (bytes, unicode)):
                 raise TypeError("can only write strings or file-like objects")
             if isinstance(data, unicode):
                 try:
@@ -295,7 +296,7 @@ class GridOut(object):
         self.__chunks = root_collection.chunks
         self._file = doc
         self.__current_chunk = -1
-        self.__buffer = ''
+        self.__buffer = b''
         self.__position = 0
 
     _id = _create_property("_id", "The ``'_id'`` value for this file.", True)
@@ -409,7 +410,7 @@ class GridOutIterator(object):
         return self
 
     @defer.inlineCallbacks
-    def next(self):
+    def __next__(self):
         if self.__current_chunk >= self.__max_chunk:
             raise StopIteration
         chunk = yield self.__chunks.find_one({"files_id": self.__id,
@@ -417,4 +418,5 @@ class GridOutIterator(object):
         if not chunk:
             raise CorruptGridFile("no chunk #%d" % self.__current_chunk)
         self.__current_chunk += 1
-        defer.returnValue(str(chunk["data"]))
+        defer.returnValue(bytes(chunk["data"]))
+    next = __next__

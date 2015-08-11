@@ -2,16 +2,19 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-import types
+from __future__ import absolute_import, division
+
 from collections import defaultdict
+
+from twisted.python.compat import unicode
 
 """Query filters"""
 
 
 def _direction(keys, direction):
-    if isinstance(keys, types.StringTypes):
+    if isinstance(keys, (bytes, unicode)):
         return (keys, direction),
-    elif isinstance(keys, (types.ListType, types.TupleType)):
+    elif isinstance(keys, (list, tuple)):
         return tuple([(k, direction) for k in keys])
 
 
@@ -55,7 +58,7 @@ class _QueryFilter(defaultdict):
 
     def __add__(self, obj):
         for k, v in obj.items():
-            if isinstance(v, types.TupleType):
+            if isinstance(v, tuple):
                 self[k] += v
             else:
                 self[k] = v
@@ -64,9 +67,9 @@ class _QueryFilter(defaultdict):
     def _index_document(self, operation, index_list):
         name = self.__class__.__name__
         try:
-            assert isinstance(index_list, (types.ListType, types.TupleType))
+            assert isinstance(index_list, (list, tuple))
             for key, direction in index_list:
-                if not isinstance(key, types.StringTypes):
+                if not isinstance(key, (bytes, unicode)):
                     raise TypeError("Invalid %sing key: %s" % (name, repr(key)))
                 if direction not in (1, -1, "2d", "2dsphere", "geoHaystack"):
                     raise TypeError("Invalid %sing direction: %s" % (name, direction))
@@ -84,7 +87,7 @@ class sort(_QueryFilter):
     def __init__(self, key_list):
         _QueryFilter.__init__(self)
         try:
-            assert isinstance(key_list[0], (types.ListType, types.TupleType))
+            assert isinstance(key_list[0], (list, tuple))
         except:
             key_list = (key_list,)
         self._index_document("orderby", key_list)

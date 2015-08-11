@@ -13,9 +13,10 @@ implementation can be shared. This includes BSON encoding and
 decoding as well as Exception types, when applicable.
 """
 
+from __future__ import absolute_import, division
+
 from collections import namedtuple
 import struct
-import __builtin__
 
 import base64
 import hmac
@@ -26,6 +27,7 @@ from pymongo import auth
 from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure
 from twisted.internet import defer, protocol, error
 from twisted.python import failure, log
+from twisted.python.compat import unicode
 
 
 INT_MAX = 2147483647
@@ -74,10 +76,11 @@ Msg = namedtuple("Msg", ["len", "request_id", "response_to", "opcode", "message"
 
 class KillCursors(namedtuple("KillCursors", ["len", "request_id", "response_to", "opcode",
                                              "zero", "n_cursors", "cursors"])):
-    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_KILL_CURSORS,
-                zero=0, n_cursors=0, cursors=None):
-        n_cursors = __builtin__.len(cursors)
-        return super(KillCursors, cls).__new__(cls, len, request_id, response_to,
+    def __new__(cls, length=0, request_id=0, response_to=0, opcode=OP_KILL_CURSORS,
+                zero=0, n_cursors=0, cursors=None, **kwargs):
+
+        n_cursors = len(cursors)
+        return super(KillCursors, cls).__new__(cls, length, request_id, response_to,
                                                opcode, zero, n_cursors, cursors)
 
 
@@ -167,7 +170,7 @@ class MongoClientProtocol(protocol.Protocol):
         data_length = sum([len(chunk) for chunk in io_vector]) + 8
         data_req = struct.pack("<ii", data_length, request_id)
         io_vector.insert(0, data_req)
-        self.transport.write(''.join(io_vector))
+        self.transport.write(b''.join(io_vector))
         return request_id
 
     def send(self, request):
@@ -184,12 +187,12 @@ class MongoClientProtocol(protocol.Protocol):
         self._send(iovec)
 
     def send_MSG(self, request):
-        iovec = [struct.pack("<ii", *request[2:4]), request.message, '\x00']
+        iovec = [struct.pack("<ii", *request[2:4]), request.message, b'\x00']
         return self._send(iovec)
 
     def send_UPDATE(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00',
+                 request.collection.encode("ascii"), b'\x00',
                  struct.pack("<i", request.flags),
                  request.selector,
                  request.update]
@@ -197,27 +200,27 @@ class MongoClientProtocol(protocol.Protocol):
 
     def send_INSERT(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00']
+                 request.collection.encode("ascii"), b'\x00']
         iovec.extend(request.documents)
         return self._send(iovec)
 
     def send_QUERY(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00',
+                 request.collection.encode("ascii"), b'\x00',
                  struct.pack("<ii", request.n_to_skip, request.n_to_return),
                  request.query,
-                 (request.fields or '')]
+                 (request.fields or b'')]
         return self._send(iovec)
 
     def send_GETMORE(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00',
+                 request.collection.encode("ascii"), b'\x00',
                  struct.pack("<iq", request.n_to_return, request.cursor_id)]
         return self._send(iovec)
 
     def send_DELETE(self, request):
         iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), '\x00',
+                 request.collection.encode("ascii"), b'\x00',
                  struct.pack("<i", request.flags),
                  request.selector]
         return self._send(iovec)
@@ -241,11 +244,11 @@ class MongoServerProtocol(protocol.Protocol):
         self.__decoder.feed(data)
 
         try:
-            request = self.__decoder.next()
+            request = next(self.__decoder)
             while request:
                 self.handle(request)
-                request = self.__decoder.next()
-        except Exception, ex:
+                request = next(self.__decoder)
+        except Exception as ex:
             self.fail(reason=failure.Failure(ex))
 
     def handle(self, request):
@@ -284,7 +287,8 @@ connectionDone = failure.Failure(error.ConnectionDone())
 connectionDone.cleanFailure()
 
 
-class MongoAuthenticationError(Exception): pass
+class MongoAuthenticationError(Exception):
+    pass
 
 
 class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
@@ -434,62 +438,60 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
     @defer.inlineCallbacks
     def authenticate_scram_sha1(self, database_name, username, password):
         # Totally stolen from pymongo.auth
-
-        user = username.encode("utf-8").replace('=', "=3D").replace(',', "=2C")
-        nonce = base64.standard_b64encode(str(SystemRandom().random())[2:].encode("utf-8"))
-        first_bare = "n={0},r={1}".format(user, nonce)
+        user = username.replace('=', "=3D").replace(',', "=2C")
+        nonce = base64.standard_b64encode(str(SystemRandom().random()).encode('ascii'))[2:]
+        first_bare = "n={0},r={1}".format(user, nonce.decode()).encode('ascii')
 
         cmd = SON([("saslStart", 1),
-                        ("mechanism", "SCRAM-SHA-1"),
-                        ("autoAuthorize", 1),
-                        ("payload", Binary("n,," + first_bare))])
+                   ("mechanism", "SCRAM-SHA-1"),
+                   ("autoAuthorize", 1),
+                   ("payload", Binary(b"n,," + first_bare))])
         result = yield self.__run_command(database_name, cmd)
 
         server_first = result["payload"]
         parsed = auth._parse_scram_response(server_first)
-        iterations = int(parsed['i'])
-        salt = parsed['s']
-        rnonce = parsed['r']
+        iterations = int(parsed[b'i'])
+        salt = parsed[b's']
+        rnonce = parsed[b'r']
         if not rnonce.startswith(nonce):
             raise MongoAuthenticationError("Server returned an invalid nonce.")
 
-        without_proof = "c=biws,r=" + rnonce
+        without_proof = b"c=biws,r=" + rnonce
         salted_pass = auth._hi(auth._password_digest(username, password).encode("utf-8"),
                                base64.standard_b64decode(salt),
                                iterations)
-        client_key = hmac.HMAC(salted_pass, "Client Key", sha1).digest()
+        client_key = hmac.HMAC(salted_pass, b"Client Key", sha1).digest()
         stored_key = sha1(client_key).digest()
-        auth_msg = ','.join((first_bare, server_first, without_proof))
+        auth_msg = b','.join((first_bare, server_first, without_proof))
         client_sig = hmac.HMAC(stored_key, auth_msg, sha1).digest()
-        client_proof = "p=" + base64.standard_b64encode(auth._xor(client_key, client_sig))
-        client_final = ','.join((without_proof, client_proof))
+        client_proof = b"p=" + base64.standard_b64encode(auth._xor(client_key, client_sig))
+        client_final = b','.join((without_proof, client_proof))
 
-        server_key = hmac.HMAC(salted_pass, "Server Key", sha1).digest()
+        server_key = hmac.HMAC(salted_pass, b"Server Key", sha1).digest()
         server_sig = base64.standard_b64encode(
             hmac.HMAC(server_key, auth_msg, sha1).digest())
 
         cmd = SON([("saslContinue", 1),
-                        ("conversationId", result["conversationId"]),
-                        ("payload", Binary(client_final))])
+                   ("conversationId", result["conversationId"]),
+                   ("payload", Binary(client_final))])
         result = yield self.__run_command(database_name, cmd)
 
         if not result["ok"]:
             raise MongoAuthenticationError("Authentication failed")
 
         parsed = auth._parse_scram_response(result["payload"])
-        if parsed['v'] != server_sig:
+        if parsed[b'v'] != server_sig:
             raise MongoAuthenticationError("Server returned an invalid signature.")
 
         # Depending on how it's configured, Cyrus SASL (which the server uses)
         # requires a third empty challenge.
         if not result["done"]:
             cmd = SON([("saslContinue", 1),
-                            ("conversationId", result["conversationId"]),
-                            ("payload", Binary(''))])
+                       ("conversationId", result["conversationId"]),
+                       ("payload", Binary(b''))])
             result = yield self.__run_command(database_name, cmd)
             if not result["done"]:
                 raise MongoAuthenticationError("SASL conversation failed to complete.")
-
 
     @defer.inlineCallbacks
     def authenticate(self, database_name, username, password, mechanism):
@@ -523,12 +525,12 @@ class MongoDecoder:
     dataBuffer = None
 
     def __init__(self):
-        self.dataBuffer = ''
+        self.dataBuffer = b''
 
     def feed(self, data):
         self.dataBuffer += data
 
-    def next(self):
+    def __next__(self):
         if len(self.dataBuffer) < 16:
             return None
         message_length, = struct.unpack("<i", self.dataBuffer[:4])
@@ -539,6 +541,7 @@ class MongoDecoder:
         message_data = self.dataBuffer[:message_length]
         self.dataBuffer = self.dataBuffer[message_length:]
         return self.decode(message_data)
+    next = __next__
 
     @staticmethod
     def decode(message_data):
@@ -549,7 +552,7 @@ class MongoDecoder:
             zero, = struct.unpack("<i", message_data[16:20])
             if zero != 0:
                 raise ConnectionFailure()
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             flags, = struct.unpack("<i", message_data[offset:offset + 4])
             offset += 4
@@ -561,7 +564,7 @@ class MongoDecoder:
             return Update(*(header + (zero, name, flags, selector, update)))
         elif opcode == OP_INSERT:
             flags, = struct.unpack("<i", message_data[16:20])
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             docs = []
             while offset < len(message_data):
@@ -573,7 +576,7 @@ class MongoDecoder:
             return Insert(*(header + (flags, name, docs)))
         elif opcode == OP_QUERY:
             flags, = struct.unpack("<i", message_data[16:20])
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             number_to_skip, number_to_return = struct.unpack("<ii", message_data[offset:offset + 8])
             offset += 8
@@ -590,7 +593,7 @@ class MongoDecoder:
             zero, = struct.unpack("<i", message_data[16:20])
             if zero != 0:
                 raise ConnectionFailure()
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             number_to_return, cursorid = struct.unpack("<iq", message_data[offset:offset + 12])
             return Getmore(*(header + (zero, name, number_to_return, cursorid)))
@@ -598,7 +601,7 @@ class MongoDecoder:
             zero, = struct.unpack("<i", message_data[16:20])
             if zero != 0:
                 raise ConnectionFailure()
-            name = message_data[20:].split("\x00", 1)[0]
+            name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             flags, = struct.unpack("<i", message_data[offset:offset + 4])
             offset += 4
@@ -616,7 +619,7 @@ class MongoDecoder:
                 offset += 8
             return KillCursors(*(header + cursors + (cursor_list,)))
         elif opcode == OP_MSG:
-            if message_data[-1] != "\x00":
+            if message_data[-1] != b"\x00":
                 raise ConnectionFailure()
             return Msg(*(header + (message_data[16:-1].decode("ascii"),)))
         elif opcode == OP_REPLY:

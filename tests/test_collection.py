@@ -16,6 +16,8 @@
 Based on pymongo driver's test_collection.py
 """
 
+from __future__ import absolute_import, division
+
 from bson.son import SON
 from pymongo import errors
 
@@ -24,15 +26,20 @@ from twisted.trial import unittest
 
 import txmongo
 
-from txmongo import filter
+from txmongo import filter as qf
 from txmongo.collection import Collection
 
 mongo_host = "localhost"
 mongo_port = 27017
 
+def cmp(a, b):
+    if not isinstance(a, b.__class__) or not isinstance(b, a.__class__):
+        return -1
+    return (a > b) - (a < b)
+
 
 class TestIndexInfo(unittest.TestCase):
-    
+
     timeout = 5
 
     @defer.inlineCallbacks
@@ -106,34 +113,34 @@ class TestIndexInfo(unittest.TestCase):
         count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
         self.assertEqual(count, 1)
 
-        yield coll.create_index(filter.sort(filter.ASCENDING("hello")))
-        yield coll.create_index(filter.sort(filter.ASCENDING("hello") +
-                                filter.DESCENDING("world")))
+        yield coll.create_index(qf.sort(qf.ASCENDING("hello")))
+        yield coll.create_index(qf.sort(qf.ASCENDING("hello") +
+                                qf.DESCENDING("world")))
 
-        count = yield db.system.indexes.count({"ns": u"mydb.mycol"}) 
+        count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
         self.assertEqual(count, 3)
 
         yield coll.drop_indexes()
-        ix = yield coll.create_index(filter.sort(filter.ASCENDING("hello") +
-                                     filter.DESCENDING("world")), name="hello_world")
+        ix = yield coll.create_index(qf.sort(qf.ASCENDING("hello") +
+                                     qf.DESCENDING("world")), name="hello_world")
         self.assertEquals(ix, "hello_world")
 
         yield coll.drop_indexes()
-        count = yield db.system.indexes.count({"ns": u"mydb.mycol"}) 
+        count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
         self.assertEqual(count, 1)
-        
-        yield coll.create_index(filter.sort(filter.ASCENDING("hello")))
-        indices = yield db.system.indexes.find({"ns": u"mydb.mycol"}) 
+
+        yield coll.create_index(qf.sort(qf.ASCENDING("hello")))
+        indices = yield db.system.indexes.find({"ns": u"mydb.mycol"})
         self.assert_(u"hello_1" in [a["name"] for a in indices])
 
         yield coll.drop_indexes()
-        count = yield db.system.indexes.count({"ns": u"mydb.mycol"}) 
+        count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
         self.assertEqual(count, 1)
 
-        ix = yield coll.create_index(filter.sort(filter.ASCENDING("hello") +
-                                     filter.DESCENDING("world")))
+        ix = yield coll.create_index(qf.sort(qf.ASCENDING("hello") +
+                                     qf.DESCENDING("world")))
         self.assertEquals(ix, "hello_1_world_-1")
-    
+
     @defer.inlineCallbacks
     def test_create_index_nodup(self):
         coll = self.coll
@@ -142,7 +149,7 @@ class TestIndexInfo(unittest.TestCase):
         yield coll.insert({'b': 1})
         yield coll.insert({'b': 1})
 
-        ix = coll.create_index(filter.sort(filter.ASCENDING("b")), unique=True)
+        ix = coll.create_index(qf.sort(qf.ASCENDING("b")), unique=True)
         yield self.assertFailure(ix, errors.DuplicateKeyError)
 
     @defer.inlineCallbacks
@@ -155,7 +162,7 @@ class TestIndexInfo(unittest.TestCase):
         yield self.coll.drop()
         yield self.coll.insert([{'b': 1}, {'b': 1}])
 
-        ix = yield self.coll.create_index(filter.sort(filter.ASCENDING('b')),
+        ix = yield self.coll.create_index(qf.sort(qf.ASCENDING('b')),
                                           unique=True, drop_dups=True)
         docs = yield self.coll.find(fields={"_id": 0})
         self.assertEqual(docs, [{'b': 1}])
@@ -164,9 +171,9 @@ class TestIndexInfo(unittest.TestCase):
     def test_ensure_index(self):
         db = self.db
         coll = self.coll
-        
-        yield coll.ensure_index(filter.sort(filter.ASCENDING("hello")))
-        indices = yield db.system.indexes.find({"ns": u"mydb.mycol"}) 
+
+        yield coll.ensure_index(qf.sort(qf.ASCENDING("hello")))
+        indices = yield db.system.indexes.find({"ns": u"mydb.mycol"})
         self.assert_(u"hello_1" in [a["name"] for a in indices])
 
         yield coll.drop_indexes()
@@ -183,13 +190,13 @@ class TestIndexInfo(unittest.TestCase):
         self.assertEqual(len(ix_info), 1)
         self.assertEqual(ix_info["_id_"]["name"], "_id_")
 
-        yield db.test.create_index(filter.sort(filter.ASCENDING("hello")))
+        yield db.test.create_index(qf.sort(qf.ASCENDING("hello")))
         ix_info = yield db.test.index_information()
         self.assertEqual(len(ix_info), 2)
         self.assertEqual(ix_info["hello_1"]["name"], "hello_1")
 
-        yield db.test.create_index(filter.sort(filter.DESCENDING("hello") +
-                                               filter.ASCENDING("world")),
+        yield db.test.create_index(qf.sort(qf.DESCENDING("hello") +
+                                               qf.ASCENDING("world")),
                                    unique=True, sparse=True)
         ix_info = yield db.test.index_information()
         self.assertEqual(ix_info["hello_1"]["name"], "hello_1")
@@ -203,9 +210,9 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_index_geo2d(self):
-        coll = self.coll 
+        coll = self.coll
         yield coll.drop_indexes()
-        geo_ix = yield coll.create_index(filter.sort(filter.GEO2D("loc")))
+        geo_ix = yield coll.create_index(qf.sort(qf.GEO2D("loc")))
 
         self.assertEqual("loc_2d", geo_ix)
 
@@ -214,9 +221,9 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_index_geo2dsphere(self):
-        coll = self.coll 
+        coll = self.coll
         yield coll.drop_indexes()
-        geo_ix = yield coll.create_index(filter.sort(filter.GEO2DSPHERE("loc")))
+        geo_ix = yield coll.create_index(qf.sort(qf.GEO2DSPHERE("loc")))
 
         self.assertEqual("loc_2dsphere", geo_ix)
         index_info = yield coll.index_information()
@@ -240,8 +247,8 @@ class TestIndexInfo(unittest.TestCase):
             "pos": {"long": 59.1, "lat": 87.2}, "type": "office"
         })
 
-        yield coll.create_index(filter.sort(filter.GEOHAYSTACK("pos") +
-                                            filter.ASCENDING("type")), **{"bucket_size": 1})
+        yield coll.create_index(qf.sort(qf.GEOHAYSTACK("pos") +
+                                            qf.ASCENDING("type")), **{"bucket_size": 1})
 
         results = yield db.command("geoSearch", "mycol",
                                    near=[33, 33],
@@ -260,7 +267,7 @@ class TestIndexInfo(unittest.TestCase):
     def test_drop_index(self):
         yield self.coll.drop_indexes()
 
-        index = filter.sort(filter.ASCENDING("hello") + filter.DESCENDING("world"))
+        index = qf.sort(qf.ASCENDING("hello") + qf.DESCENDING("world"))
 
         yield self.coll.create_index(index, name="myindex")
         res = yield self.coll.drop_index("myindex")

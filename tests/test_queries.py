@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import, division
+
 from bson import BSON, ObjectId
 from bson.son import SON
 from pymongo.errors import OperationFailure, WriteError
@@ -170,7 +172,7 @@ class TestMongoQueries(_SingleCollectionTest):
     @defer.inlineCallbacks
     def test_CursorClosing(self):
         # Calculate number of objects in 4mb batch
-        obj_count_4mb = 4 * 1024**2 / len(BSON.encode(self.__make_big_object())) + 1
+        obj_count_4mb = 4 * 1024**2 // len(BSON.encode(self.__make_big_object())) + 1
 
         first_batch = 5
         yield self.coll.insert([self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
@@ -183,7 +185,7 @@ class TestMongoQueries(_SingleCollectionTest):
     @defer.inlineCallbacks
     def test_CursorClosingWithCursor(self):
         # Calculate number of objects in 4mb batch
-        obj_count_4mb = 4 * 1024**2 / len(BSON.encode(self.__make_big_object())) + 1
+        obj_count_4mb = 4 * 1024**2 // len(BSON.encode(self.__make_big_object())) + 1
 
         first_batch = 5
         yield self.coll.insert([self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
@@ -585,7 +587,7 @@ class TestInsertMany(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Acknowledged(self):
-        result = yield self.coll.insert_many([{'x': 42} for _ in xrange(100)])
+        result = yield self.coll.insert_many([{'x': 42} for _ in range(100)])
         self.assertTrue(isinstance(result, InsertManyResult))
         self.assertEqual(result.acknowledged, True)
 
@@ -597,7 +599,7 @@ class TestInsertMany(_SingleCollectionTest):
     @defer.inlineCallbacks
     def test_Unacknowledged(self):
         result = yield self.coll.with_options(write_concern=WriteConcern(w=0))\
-                                .insert_many([{'x': 42} for _ in xrange(100)])
+                                .insert_many([{'x': 42} for _ in range(100)])
         self.assertTrue(isinstance(result, InsertManyResult))
         self.assertEqual(result.acknowledged, False)
 

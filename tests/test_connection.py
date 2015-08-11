@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import, division
+
 from twisted.trial import unittest
 from twisted.internet import base, defer
 import txmongo
 
 mongo_host = "127.0.0.1"
 mongo_port = 27017
-base.DelayedCall.debug = True
 
 
 class TestMongoConnection(unittest.TestCase):
