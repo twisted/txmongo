@@ -16,7 +16,7 @@ protocol on non-blocking sockets. The API derives from the original PyMongo.
 
 Compatibility
 -------------
-Python 2.6, 2.7 and PyPy.
+Python 2.6, 2.7, 3.0, 3.3, 3.4 and PyPy.
 
 Installing
 ----------
