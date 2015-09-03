@@ -18,7 +18,6 @@ Based on pymongo driver's test_collection.py
 
 from __future__ import absolute_import, division
 
-from bson.son import SON
 from pymongo import errors
 
 from twisted.internet import defer

@@ -77,7 +77,7 @@ class TestMongoProtocol(unittest.TestCase):
         self.__test_encode_decode(request)
 
     def test_EncodeDecodeUpdate(self):
-        request = Update(flags=UPDATE_MULTI|UPDATE_UPSERT, collection="coll",
+        request = Update(flags=UPDATE_MULTI | UPDATE_UPSERT, collection="coll",
                          selector=BSON.encode({'x': 42}),
                          update=BSON.encode({"$set": {'y': 123}}))
         self.__test_encode_decode(request)
