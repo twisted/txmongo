@@ -18,10 +18,9 @@ from __future__ import absolute_import, division
 import tempfile
 import shutil
 import txmongo
-from bson.son import SON
 from pymongo.errors import OperationFailure
 from twisted.trial import unittest
-from twisted.internet import base, defer
+from twisted.internet import defer
 
 from txmongo.protocol import MongoAuthenticationError
 
@@ -93,9 +92,9 @@ class TestMongoAuth(unittest.TestCase):
                                              "db": self.db1}])
 
         yield conn[self.db2].command("createUser", self.login2,
-                                    pwd=self.password2,
-                                    roles=[{"role": "readWrite",
-                                            "db": self.db2}])
+                                     pwd=self.password2,
+                                     roles=[{"role": "readWrite",
+                                             "db": self.db2}])
 
         yield conn.disconnect()
 
@@ -258,7 +257,6 @@ class TestMongoAuth(unittest.TestCase):
             yield conn.disconnect()
 
 
-
 class TestMongoDBCR(unittest.TestCase):
 
     ua_login = "useradmin"
@@ -293,7 +291,6 @@ class TestMongoDBCR(unittest.TestCase):
         finally:
             yield mongod_noauth.stop()
 
-
         self.mongod = Mongod(port=mongo_port, auth=True, dbpath=self.dbpath)
         yield self.mongod.start()
 
@@ -312,12 +309,10 @@ class TestMongoDBCR(unittest.TestCase):
             yield self.mongod.stop()
             raise
 
-
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.mongod.stop()
         shutil.rmtree(self.dbpath)
-
 
     @defer.inlineCallbacks
     def test_ConnectionPool(self):

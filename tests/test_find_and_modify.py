@@ -68,7 +68,6 @@ class TestFindAndModify(unittest.TestCase):
         docs = yield self.coll.find(fields={"_id": 0})
         self.assertEqual(docs, [{'x': 42, 'y': 123}])
 
-
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.coll.drop()

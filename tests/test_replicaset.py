@@ -160,7 +160,6 @@ class TestReplicaSet(unittest.TestCase):
             yield conn.disconnect()
             self.flushLoggedErrors(AutoReconnect)
 
-
     @defer.inlineCallbacks
     def test_InvalidRSName(self):
         uri = "mongodb://localhost:{0}/?replicaSet={1}_X".format(self.ports[0], self.rsname)

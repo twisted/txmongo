@@ -15,18 +15,17 @@
 
 from __future__ import absolute_import, division
 
-from mock import Mock, patch
-from pymongo.errors import ConfigurationError
+from mock import patch
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 from twisted.trial import unittest
 from txmongo.connection import MongoConnection, ConnectionPool
-from txmongo.protocol import MongoProtocol
 from txmongo.database import Database
 from txmongo.collection import Collection
 
 mongo_host = "localhost"
 mongo_port = 27017
+
 
 class TestWriteConcern(unittest.TestCase):
 
@@ -63,7 +62,6 @@ class TestWriteConcern(unittest.TestCase):
         finally:
             yield conn.mydb.mycol.drop()
             yield conn.disconnect()
-
 
     @defer.inlineCallbacks
     def test_Safe(self):
@@ -107,7 +105,6 @@ class TestWriteConcern(unittest.TestCase):
             yield coll.drop()
             yield conn.disconnect()
 
-
     @defer.inlineCallbacks
     def __test_operation(self, coll, method, *args):
         with self.mock_gle() as mock:
@@ -139,7 +136,6 @@ class TestWriteConcern(unittest.TestCase):
         finally:
             yield coll.drop()
             yield conn.disconnect()
-
 
     @defer.inlineCallbacks
     def test_ConnectionUrlParams(self):

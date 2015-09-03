@@ -263,12 +263,14 @@ class ConnectionPool(object):
                               self.__uri['options'].get('authmechanism', 'DEFAULT'))
 
         host, port = self.__uri['nodelist'][0]
+        timeout = kwargs.get('timeout', 30)
 
         for factory in self.__pool:
             if ssl_context_factory:
-                factory.connector = reactor.connectSSL(host, port, factory, ssl_context_factory)
+                factory.connector = reactor.connectSSL(
+                    host, port, factory, ssl_context_factory, timeout)
             else:
-                factory.connector = reactor.connectTCP(host, port, factory)
+                factory.connector = reactor.connectTCP(host, port, factory, timeout)
 
     @property
     def write_concern(self):
