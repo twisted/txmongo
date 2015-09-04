@@ -1,8 +1,11 @@
 Changelog
 =========
 
-Release 15.2 (UNRELEASED)
+Release 15.2 (2015-09-05)
 -------------------------
+
+This release makes TxMongo fully Python3 compatible and has an API change that
+breaks older TxMongo compatibility by bringing it inline with PyMongo.
 
 API Changes
 ^^^^^^^^^^^
@@ -11,14 +14,14 @@ API Changes
   **Incompatibility note:** ``bson.dbref.DBRef`` takes collection name as string while
   ``txmongo.dbref.DBRef`` was able to accept ``Collection`` instance. Please use
   ``collection.name`` instead.
-  
+- Added ``timeout`` parameter for ``connection.ConnectionPool`` that can passed on to
+  Twisted's ``connectTCP`` and ``connectSSL`` methods.
+
 Features
 ^^^^^^^^
 
 - ``name``, ``full_name`` and ``database`` properties of ``Collection``
-
-Bugfixes
-^^^^^^^^
+- Python3 compatible.
 
 
 Release 15.1 (2015-06-08)

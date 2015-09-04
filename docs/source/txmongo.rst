@@ -28,14 +28,6 @@ txmongo.database module
     :undoc-members:
     :show-inheritance:
 
-txmongo.dbref module
---------------------
-
-.. automodule:: txmongo.dbref
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 txmongo.filter module
 ---------------------
 
