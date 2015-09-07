@@ -322,16 +322,16 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         # too late.
         self.factory.setInstance(None, reason)
 
-        autoreconnect = AutoReconnect()
+        auto_reconnect = AutoReconnect("Connection lost.")
 
         if self.__deferreds:
             deferreds, self.__deferreds = self.__deferreds, {}
             for df in deferreds.itervalues():
-                df.errback(autoreconnect)
+                df.errback(auto_reconnect)
         deferreds, self.__connection_ready = self.__connection_ready, []
         if deferreds:
             for df in deferreds:
-                df.errback(autoreconnect)
+                df.errback(auto_reconnect)
 
         protocol.Protocol.connectionLost(self, reason)
 
