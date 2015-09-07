@@ -255,9 +255,9 @@ class ConnectionPool(object):
         wc_options = dict((k, v) for k, v in wc_options.items() if k in self.__wc_possible_options)
         self.__write_concern = WriteConcern(**wc_options)
 
-        timeout = kwargs.get('timeout', 30)
+        initial_timeout = kwargs.get('timeout', 1.0)
         self.__pool_size = pool_size
-        self.__pool = [_Connection(self, self.__uri, i, timeout) for i in range(pool_size)]
+        self.__pool = [_Connection(self, self.__uri, i, initial_timeout) for i in range(pool_size)]
 
         if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
             self.authenticate(self.__uri['database'], self.__uri['username'],
@@ -266,12 +266,13 @@ class ConnectionPool(object):
 
         host, port = self.__uri['nodelist'][0]
 
+        connection_timeout = kwargs.get('timeout', 30)
         for factory in self.__pool:
             if ssl_context_factory:
                 factory.connector = reactor.connectSSL(
-                    host, port, factory, ssl_context_factory, timeout)
+                    host, port, factory, ssl_context_factory, connection_timeout)
             else:
-                factory.connector = reactor.connectTCP(host, port, factory, timeout)
+                factory.connector = reactor.connectTCP(host, port, factory, connection_timeout)
 
     @property
     def write_concern(self):
