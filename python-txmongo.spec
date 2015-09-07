@@ -1,12 +1,12 @@
 Name:		python-txmongo
-Version:	0.5.0
+Version:	15.2.1
 Release:	1%{?dist}
 Summary:	Twisted driver for MongoDB
 
 Group:		Development/Languages
 License:	Apache License, Version 2.0
-URL:		https://github.com/fiorix/mongo-async-python-driver
-Source0:	https://github.com/fiorix/mongo-async-python-driver/archive/master.zip
+URL:		https://github.com/twisted/txmongo
+Source0:	https://github.com/twisted/txmongo/archive/master.zip
 
 BuildArch:	noarch
 
@@ -38,6 +38,10 @@ protocol on non-blocking sockets. The API derives from the original pymongo.
 %{python_sitelib}/*
 
 %changelog
+* Thu Sep 07 2015 Bret Curtis <psi29a@gmail.com>
+- Code review and cleanup
+- Bug fixes
+
 * Thu Oct 02 2014 Alexandre Fiori <fiorix@gmail.com>
 - Code review and cleanup
 - Bug fixes

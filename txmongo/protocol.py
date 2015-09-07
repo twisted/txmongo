@@ -248,8 +248,8 @@ class MongoServerProtocol(protocol.Protocol):
             while request:
                 self.handle(request)
                 request = next(self.__decoder)
-        except Exception as ex:
-            self.fail(reason=failure.Failure(ex))
+        except Exception as e:
+            self.fail(e)
 
     def handle(self, request):
         opname = OP_NAMES[request.opcode]
@@ -322,16 +322,16 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         # too late.
         self.factory.setInstance(None, reason)
 
-        autoreconnect = AutoReconnect()
+        auto_reconnect = AutoReconnect("Connection lost.")
 
         if self.__deferreds:
             deferreds, self.__deferreds = self.__deferreds, {}
             for df in deferreds.itervalues():
-                df.errback(autoreconnect)
+                df.errback(auto_reconnect)
         deferreds, self.__connection_ready = self.__connection_ready, []
         if deferreds:
             for df in deferreds:
-                df.errback(autoreconnect)
+                df.errback(auto_reconnect)
 
         protocol.Protocol.connectionLost(self, reason)
 
@@ -376,9 +376,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 df.callback(request)
 
     def fail(self, reason):
-        if not isinstance(reason, failure.Failure):
-            reason = failure.Failure(reason)
-        log.err(reason)
+        log.err(str(reason))
         self.transport.loseConnection()
 
     @defer.inlineCallbacks

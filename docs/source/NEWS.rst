@@ -1,6 +1,13 @@
 Changelog
 =========
 
+Release 15.2.1 (2015-09-07)
+---------------------------
+
+Bugfix release to handle uncaught exceptions in logging and to remove support
+for python 2.6 and since it was removed in latest Twisted.
+
+
 Release 15.2 (2015-09-05)
 -------------------------
 

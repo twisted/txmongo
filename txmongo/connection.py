@@ -33,7 +33,7 @@ class _Connection(ReconnectingClientFactory):
     protocol = MongoProtocol
     maxDelay = 60
 
-    def __init__(self, pool, uri, id):
+    def __init__(self, pool, uri, id, initial_delay):
         self.__allnodes = list(uri["nodelist"])
         self.__notify_ready = []
         self.__pool = pool
@@ -41,6 +41,7 @@ class _Connection(ReconnectingClientFactory):
         self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
         self.__conf_loop.start(self.__conf_loop_seconds, now=False)
         self.connectionid = id
+        self.initialDelay = initial_delay
 
         self.__auth_creds = {}
 
@@ -134,7 +135,7 @@ class _Connection(ReconnectingClientFactory):
         # Check if this node is the master.
         ismaster = config.get("ismaster")
         if not ismaster:
-            raise AutoReconnect("not master")
+            raise AutoReconnect("MongoDB host `%s` is not master." % config.get('me'))
 
     def clientConnectionFailed(self, connector, reason):
         self.instance = None
@@ -254,8 +255,9 @@ class ConnectionPool(object):
         wc_options = dict((k, v) for k, v in wc_options.items() if k in self.__wc_possible_options)
         self.__write_concern = WriteConcern(**wc_options)
 
+        initial_timeout = kwargs.get('timeout', 1.0)
         self.__pool_size = pool_size
-        self.__pool = [_Connection(self, self.__uri, i) for i in range(pool_size)]
+        self.__pool = [_Connection(self, self.__uri, i, initial_timeout) for i in range(pool_size)]
 
         if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
             self.authenticate(self.__uri['database'], self.__uri['username'],
@@ -263,14 +265,14 @@ class ConnectionPool(object):
                               self.__uri['options'].get('authmechanism', 'DEFAULT'))
 
         host, port = self.__uri['nodelist'][0]
-        timeout = kwargs.get('timeout', 30)
 
+        connection_timeout = kwargs.get('timeout', 30)
         for factory in self.__pool:
             if ssl_context_factory:
                 factory.connector = reactor.connectSSL(
-                    host, port, factory, ssl_context_factory, timeout)
+                    host, port, factory, ssl_context_factory, connection_timeout)
             else:
-                factory.connector = reactor.connectTCP(host, port, factory, timeout)
+                factory.connector = reactor.connectTCP(host, port, factory, connection_timeout)
 
     @property
     def write_concern(self):

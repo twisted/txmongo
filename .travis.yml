@@ -1,24 +1,30 @@
 language: python
 python: 2.7
 
+# container infra, when fixed
+#sudo: false
+#
+# addons:
+#  apt:
+#    sources:
+#    - mongodb-3.0-precise
+#    - pypy
+#addons:
+#  apt:
+#    packages:
+#    - mongodb-org-server
+#    - pypy
+
 env:
-    - TOX_ENV=py26-twlatest
-    - TOX_ENV=py26-twtrunk
-    - TOX_ENV=py26-tw153
-    - TOX_ENV=py26-tw150
-    - TOX_ENV=py26-tw140
     - TOX_ENV=py27-twlatest
     - TOX_ENV=py27-twtrunk
+    - TOX_ENV=py27-tw154
     - TOX_ENV=py27-tw153
     - TOX_ENV=py27-tw150
     - TOX_ENV=py27-tw140
-    - TOX_ENV=pypy-twlatest
-    - TOX_ENV=pypy-twtrunk
-    - TOX_ENV=pypy-tw153
-    - TOX_ENV=pypy-tw150
-    - TOX_ENV=pypy-tw140
     - TOX_ENV=py33-twtrunk
     - TOX_ENV=py34-twtrunk
+    - TOX_ENV=pypy-twtrunk
     - TOX_ENV=pyflakes
     - TOX_ENV=manifest
 
@@ -26,13 +32,18 @@ matrix:
   fast_finish: true
   allow_failures:
     - env: TOX_ENV=pyflakes
+    - env: TOX_ENV=pypy-twtrunk
+
 
 before_install:
   - "sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 7F0CEB10"
   - "echo 'deb http://repo.mongodb.org/apt/ubuntu '$(lsb_release -sc)'/mongodb-org/3.0 multiverse' | sudo tee /etc/apt/sources.list.d/mongodb-org-3.0.list"
+  - "sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 68854915"
+  - "echo 'deb http://ppa.launchpad.net/pypy/ppa/ubuntu '$(lsb_release -sc)' main' | sudo tee /etc/apt/sources.list.d/pypy.list"
   - "sudo apt-get update"
-  - "sudo apt-get install mongodb-org-server"
+  - "sudo apt-get install mongodb-org-server pypy"
   - "mongod --version"
+  - "pypy --version"
 
 install:
   - pip install tox coveralls
