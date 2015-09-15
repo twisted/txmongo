@@ -3,9 +3,7 @@
 # found in the LICENSE file.
 
 from __future__ import absolute_import, division
-
 from collections import defaultdict
-
 from twisted.python.compat import unicode
 
 """Query filters"""

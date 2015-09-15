@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 from __future__ import absolute_import, division
-
 from txmongo._gridfs import GridFS, GridIn, GridOut, errors, grid_file, GridOutIterator
 
 assert GridFS

@@ -15,18 +15,14 @@
 """Tools for representing files stored in GridFS."""
 
 from __future__ import absolute_import, division
-
+from bson import Binary, ObjectId
 import datetime
+from io import BytesIO as StringIO
 import math
 import os
-
-from io import BytesIO as StringIO
-
 from twisted.python.compat import unicode
-
 from twisted.internet import defer
 from txmongo._gridfs.errors import CorruptGridFile
-from bson import Binary, ObjectId
 from txmongo.collection import Collection
 
 """Default chunk size, in bytes."""
