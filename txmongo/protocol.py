@@ -325,7 +325,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
         if self.__deferreds:
             deferreds, self.__deferreds = self.__deferreds, {}
-            for df in deferreds.itervalues():
+            for df in deferreds.values():
                 df.errback(auto_reconnect)
         deferreds, self.__connection_ready = self.__connection_ready, []
         if deferreds:
