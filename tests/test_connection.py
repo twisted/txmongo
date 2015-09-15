@@ -14,7 +14,6 @@
 # limitations under the License.
 
 from __future__ import absolute_import, division
-from exceptions import AssertionError
 from twisted.trial import unittest
 from twisted.internet import defer
 import txmongo
