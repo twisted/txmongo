@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Release 15.2.1 (2015-09-15)
+---------------------------
+
+Bugfix release to handle str assert that wasn't passing unicode properly in
+python 2.6, used Twisted compat library StringType.
+
 Release 15.2.1 (2015-09-07)
 ---------------------------
 

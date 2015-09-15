@@ -1,5 +1,5 @@
 Name:		python-txmongo
-Version:	15.2.1
+Version:	15.2.2
 Release:	1%{?dist}
 Summary:	Twisted driver for MongoDB
 
