@@ -12,13 +12,13 @@ from pymongo.write_concern import WriteConcern
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory
 from twisted.python import log
+from twisted.python.compat import StringType
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
 
 
-_PRIMARY_READ_PREFERENCES = set([ReadPreference.PRIMARY.mode,
-                                 ReadPreference.PRIMARY_PREFERRED.mode])
+_PRIMARY_READ_PREFERENCES = {ReadPreference.PRIMARY.mode, ReadPreference.PRIMARY_PREFERRED.mode}
 
 
 class _Connection(ReconnectingClientFactory):
@@ -241,7 +241,7 @@ class ConnectionPool(object):
     __wc_possible_options = set(['w', "wtimeout", 'j', "fsync"])
 
     def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None, **kwargs):
-        assert isinstance(uri, str)
+        assert isinstance(uri, StringType)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
 

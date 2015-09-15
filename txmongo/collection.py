@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 from __future__ import absolute_import, division
-
 import bson
 from bson import BSON, ObjectId
 from bson.code import Code

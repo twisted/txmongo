@@ -14,9 +14,9 @@
 # limitations under the License.
 
 from __future__ import absolute_import, division
-
+from exceptions import AssertionError
 from twisted.trial import unittest
-from twisted.internet import base, defer
+from twisted.internet import defer
 import txmongo
 
 mongo_host = "127.0.0.1"
@@ -44,3 +44,14 @@ class TestMongoConnection(unittest.TestCase):
         result[0].uri['nodelist'].pop()
         self.assertTrue(len(result[0].uri['nodelist']) == 0)
         self.assertEqual("Connection()", repr(self.named_conn))
+
+    @defer.inlineCallbacks
+    def test_uri_input(self):
+        test = txmongo.connection.ConnectionPool()
+        yield test.disconnect()
+        test = txmongo.connection.ConnectionPool("mongodb://127.0.0.1/dbname")
+        yield test.disconnect()
+        test = txmongo.connection.ConnectionPool(u"mongodb://127.0.0.1/dbname")
+        yield test.disconnect()
+        self.assertRaises(AssertionError, txmongo.connection.ConnectionPool, object)
+        self.assertRaises(AssertionError, txmongo.connection.ConnectionPool, 1)

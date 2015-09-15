@@ -14,17 +14,15 @@ decoding as well as Exception types, when applicable.
 """
 
 from __future__ import absolute_import, division
-
-from collections import namedtuple
-import struct
-
 import base64
-import hmac
-from hashlib import sha1
-from random import SystemRandom
 from bson import BSON, SON, Binary
+from collections import namedtuple
+from hashlib import sha1
+import hmac
 from pymongo import auth
 from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure
+from random import SystemRandom
+import struct
 from twisted.internet import defer, protocol, error
 from twisted.python import failure, log
 from twisted.python.compat import unicode
@@ -73,6 +71,7 @@ UPDATE_MULTI = 1 << 1
 INSERT_CONTINUE_ON_ERROR = 1 << 0
 
 Msg = namedtuple("Msg", ["len", "request_id", "response_to", "opcode", "message"])
+
 
 class KillCursors(namedtuple("KillCursors", ["len", "request_id", "response_to", "opcode",
                                              "zero", "n_cursors", "cursors"])):
