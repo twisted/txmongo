@@ -323,7 +323,6 @@ class ConnectionPool(object):
         except defer.FirstError as e:
             raise e.subFailure.value
 
-
     @defer.inlineCallbacks
     def getprotocol(self):
         # Get the next protocol available for communication in the pool.
