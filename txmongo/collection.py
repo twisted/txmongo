@@ -7,7 +7,7 @@ import bson
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
-from pymongo.errors import InvalidName
+from pymongo.errors import InvalidName, NetworkTimeout
 from pymongo.helpers import _check_write_command_response
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult
@@ -19,6 +19,7 @@ from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, 
     Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
 from txmongo import filter as qf
 from twisted.internet import defer
+from twisted.python import log
 from twisted.python.compat import unicode, comparable
 
 
@@ -320,7 +321,11 @@ class Collection(object):
         docs = [BSON.encode(d) for d in docs]
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
-        proto = yield self._database.connection.getprotocol()
+        try:
+            proto = yield self._database.connection.getprotocol()
+        except NetworkTimeout as e:  # prevent insertion behind the back after a timeout
+            log.err(str(e))
+            defer.returnValue(None)
 
         proto.send_INSERT(insert)
 
@@ -380,7 +385,12 @@ class Collection(object):
         document = BSON.encode(document)
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
-        proto = yield self._database.connection.getprotocol()
+
+        try:
+            proto = yield self._database.connection.getprotocol()
+        except NetworkTimeout as e:  # prevent update behind the back after a timeout
+            log.err(str(e))
+            defer.returnValue(None)
 
         proto.send_UPDATE(update)
 

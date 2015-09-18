@@ -16,7 +16,7 @@
 from __future__ import absolute_import, division
 
 from bson import SON
-from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError
+from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError, NetworkTimeout
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from txmongo.connection import MongoConnection, ConnectionPool, _Connection
@@ -170,6 +170,30 @@ class TestReplicaSet(unittest.TestCase):
         self.assertFailure(command, AutoReconnect)
 
         yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_NetworkTimeout_with_deadline(self):
+        self.patch(_Connection, 'maxDelay', 5)
+
+        try:
+            uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
+            conn = ConnectionPool(uri, deadline=2, initial_delay=3)
+
+            yield conn.db.coll.insert({'x': 42}, safe=True)
+
+            yield self.__mongod[0].stop()
+
+            while True:
+                try:
+                    deferred_call = conn.db.coll.find_one()
+                    self.assertFailure(deferred_call, NetworkTimeout)
+                    break
+                except AutoReconnect:
+                    pass
+
+        finally:
+            yield conn.disconnect()
+            self.flushLoggedErrors(AutoReconnect)
 
     @defer.inlineCallbacks
     def test_InvalidRSName(self):
