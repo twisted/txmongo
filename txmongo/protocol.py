@@ -20,7 +20,8 @@ from collections import namedtuple
 from hashlib import sha1
 import hmac
 from pymongo import auth
-from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure
+from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure, \
+    NotMasterError
 from random import SystemRandom
 import struct
 from twisted.internet import defer, protocol, error
@@ -364,7 +365,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 msg = doc.get("$err", "Unknown error")
                 fail_conn = False
                 if code == 13435:
-                    err = AutoReconnect(msg)
+                    err = NotMasterError(msg)
                     fail_conn = True
                 else:
                     err = OperationFailure(msg, code)

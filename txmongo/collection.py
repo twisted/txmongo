@@ -7,7 +7,7 @@ import bson
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
-from pymongo.errors import InvalidName
+from pymongo.errors import InvalidName, NetworkTimeout
 from pymongo.helpers import _check_write_command_response
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult
@@ -19,6 +19,7 @@ from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, 
     Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
 from txmongo import filter as qf
 from twisted.internet import defer
+from twisted.python import log
 from twisted.python.compat import unicode, comparable
 
 
@@ -132,7 +133,6 @@ class Collection(object):
             del options["create"]
         defer.returnValue(options)
 
-
     @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
         docs, dfr = yield self.find_with_cursor(spec=spec, skip=skip, limit=limit,
@@ -148,12 +148,13 @@ class Collection(object):
 
         defer.returnValue(result)
 
-    def __apply_find_filter(self, spec, filter):
-        if filter:
+    @staticmethod
+    def __apply_find_filter(spec, c_filter):
+        if c_filter:
             if "query" not in spec:
                 spec = {"$query": spec}
 
-            for k, v in filter.items():
+            for k, v in c_filter.items():
                 if isinstance(v, (list, tuple)):
                     spec['$' + k] = dict(v)
                 else:
@@ -187,19 +188,19 @@ class Collection(object):
         spec = self.__apply_find_filter(spec, filter)
 
         as_class = kwargs.get("as_class", dict)
-        deferred_protocol = self._database.connection.getprotocol()
+        proto = self._database.connection.getprotocol()
 
-        def after_connection(proto):
+        def after_connection(protocol):
             flags = kwargs.get("flags", 0)
             query = Query(flags=flags, collection=str(self),
                           n_to_skip=skip, n_to_return=limit,
                           query=spec, fields=fields)
 
-            deferred_query = proto.send_QUERY(query)
-            deferred_query.addCallback(after_reply, proto)
+            deferred_query = protocol.send_QUERY(query)
+            deferred_query.addCallback(after_reply, protocol)
             return deferred_query
 
-        def after_reply(reply, proto, fetched=0):
+        def after_reply(reply, protocol, fetched=0):
             documents = reply.documents
             docs_count = len(documents)
             if limit > 0:
@@ -222,21 +223,20 @@ class Collection(object):
                         to_fetch = None  # close cursor
 
                 if to_fetch is None:
-                    proto.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
+                    protocol.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
                     return out, defer.succeed(([], None))
 
-                next_reply = proto.send_GETMORE(Getmore(
+                next_reply = protocol.send_GETMORE(Getmore(
                     collection=str(self), cursor_id=reply.cursor_id,
                     n_to_return=to_fetch
                 ))
-                next_reply.addCallback(after_reply, proto, fetched)
+                next_reply.addCallback(after_reply, protocol, fetched)
                 return out, next_reply
 
             return out, defer.succeed(([], None))
 
-
-        deferred_protocol.addCallback(after_connection)
-        return deferred_protocol
+        proto.addCallback(after_connection)
+        return proto
 
     @defer.inlineCallbacks
     def find_one(self, spec=None, fields=None, **kwargs):
@@ -244,7 +244,6 @@ class Collection(object):
             spec = {"_id": spec}
         result = yield self.find(spec=spec, limit=1, fields=fields, **kwargs)
         defer.returnValue(result[0] if result else None)
-
 
     @defer.inlineCallbacks
     def count(self, spec=None, fields=None):
@@ -283,13 +282,14 @@ class Collection(object):
         result = yield self._database.command("filemd5", spec, root=self._collection_name)
         defer.returnValue(result.get("md5"))
 
-
     def _get_write_concern(self, safe=None, **wc_options):
         from_opts = WriteConcern(**wc_options)
         if from_opts.document:
             return from_opts
 
-        if safe == True:
+        if safe is None:
+            return self.write_concern
+        elif safe:
             if self.write_concern.acknowledged:
                 return self.write_concern
             else:
@@ -297,11 +297,8 @@ class Collection(object):
                 # In this case safe=True must issue getLastError without args
                 # even if connection-level write concern was unacknowledged
                 return WriteConcern()
-        elif safe == False:
-            return WriteConcern(w=0)
 
-        return self.write_concern
-
+        return WriteConcern(w=0)
 
     @defer.inlineCallbacks
     def insert(self, docs, safe=None, flags=0, **kwargs):
@@ -324,7 +321,11 @@ class Collection(object):
         docs = [BSON.encode(d) for d in docs]
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
-        proto = yield self._database.connection.getprotocol()
+        try:
+            proto = yield self._database.connection.getprotocol()
+        except NetworkTimeout as e:  # prevent insertion behind the back after a timeout
+            log.err(str(e))
+            defer.returnValue(None)
 
         proto.send_INSERT(insert)
 
@@ -366,7 +367,6 @@ class Collection(object):
         inserted_ids = yield self._insert_one_or_many(documents, ordered)
         defer.returnValue(InsertManyResult(inserted_ids, self.write_concern.acknowledged))
 
-
     @defer.inlineCallbacks
     def update(self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs):
         if not isinstance(spec, dict):
@@ -385,7 +385,12 @@ class Collection(object):
         document = BSON.encode(document)
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
-        proto = yield self._database.connection.getprotocol()
+
+        try:
+            proto = yield self._database.connection.getprotocol()
+        except NetworkTimeout as e:  # prevent update behind the back after a timeout
+            log.err(str(e))
+            defer.returnValue(None)
 
         proto.send_UPDATE(update)
 
@@ -393,7 +398,6 @@ class Collection(object):
         if write_concern.acknowledged:
             ret = yield proto.get_last_error(str(self._database), **write_concern.document)
             defer.returnValue(ret)
-
 
     @defer.inlineCallbacks
     def _update(self, filter, update, upsert, multi):
@@ -419,7 +423,6 @@ class Collection(object):
             raw_response = None
 
         defer.returnValue(raw_response)
-
 
     @defer.inlineCallbacks
     def update_one(self, filter, update, upsert=False):
@@ -501,7 +504,6 @@ class Collection(object):
     def delete_many(self, filter):
         raw_response = yield self._delete(filter, multi=True)
         defer.returnValue(DeleteResult(raw_response, self.write_concern.acknowledged))
-
 
     def drop(self, **kwargs):
         return self._database.drop_collection(self._collection_name)
@@ -622,7 +624,6 @@ class Collection(object):
                 # Should never get here because of allowable_errors
                 raise ValueError("Unexpected Error: %s" % (result,))
         defer.returnValue(result.get("value"))
-
 
     # Distinct findAndModify utility method is needed because traditional
     # find_and_modify() accepts `sort` kwarg as dict and passes it to
