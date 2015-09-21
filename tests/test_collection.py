@@ -31,6 +31,7 @@ from txmongo.collection import Collection
 mongo_host = "localhost"
 mongo_port = 27017
 
+
 def cmp(a, b):
     if not isinstance(a, b.__class__) or not isinstance(b, a.__class__):
         return -1
@@ -70,7 +71,7 @@ class TestIndexInfo(unittest.TestCase):
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "test.")
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes..t")
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes\x00t")
-        self.assertRaises(TypeError, self.coll.save, "test")
+        self.assertFailure(self.coll.save("test"), TypeError)
         self.assertFailure(self.coll.filemd5("test"), ValueError)
         self.assertFailure(self.db.test.find(spec="test"), TypeError)
         self.assertFailure(self.db.test.find(fields="test"), TypeError)
@@ -194,9 +195,9 @@ class TestIndexInfo(unittest.TestCase):
         self.assertEqual(len(ix_info), 2)
         self.assertEqual(ix_info["hello_1"]["name"], "hello_1")
 
-        yield db.test.create_index(qf.sort(qf.DESCENDING("hello") +
-                                               qf.ASCENDING("world")),
-                                   unique=True, sparse=True)
+        yield db.test.create_index(
+            qf.sort(qf.DESCENDING("hello") + qf.ASCENDING("world")),
+            unique=True, sparse=True)
         ix_info = yield db.test.index_information()
         self.assertEqual(ix_info["hello_1"]["name"], "hello_1")
         self.assertEqual(len(ix_info), 3)
@@ -247,7 +248,7 @@ class TestIndexInfo(unittest.TestCase):
         })
 
         yield coll.create_index(qf.sort(qf.GEOHAYSTACK("pos") +
-                                            qf.ASCENDING("type")), **{"bucket_size": 1})
+                                        qf.ASCENDING("type")), **{"bucket_size": 1})
 
         results = yield db.command("geoSearch", "mycol",
                                    near=[33, 33],
@@ -260,7 +261,6 @@ class TestIndexInfo(unittest.TestCase):
             "pos": {"long": 34.2, "lat": 33.3},
             "type": "restaurant"
         }, results["results"][0])
-
 
     @defer.inlineCallbacks
     def test_drop_index(self):
@@ -276,7 +276,7 @@ class TestIndexInfo(unittest.TestCase):
         res = yield self.coll.drop_index(index)
         self.assertEqual(res["ok"], 1)
 
-        self.assertRaises(TypeError, self.coll.drop_index, 123)
+        self.assertFailure(self.coll.drop_index(123), TypeError)
 
 
 class TestRename(unittest.TestCase):

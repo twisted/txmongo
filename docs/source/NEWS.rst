@@ -1,11 +1,32 @@
 Changelog
 =========
 
-Release 15.2.1 (2015-09-15)
+Release 15.2.3 (UNREALISED)
+---------------------------
+
+API Changes
+^^^^^^^^^^^
+
+- ``NotMaster`` instead of ``AutoReconnect`` error will be returned when a call can be safely
+retried.
+
+Features
+^^^^^^^^
+
+- Added ``deadline`` to ``collection`` methods, this will raise a ``DeadlineExceeded`` when the
+deadline, a unix timestamp in seconds, is exceeded. This happens only in methods with
+``getprotocol()`` and methods that reference them.
+- Added ``timeout`` to ``collection`` methods, this will raise a ``TimeoutExceeded`` when the
+timeout, in seconds, is exceeded. This happens only in methods with ``getprotocol()`` and methods that
+reference them.
+
+
+Release 15.2.2 (2015-09-15)
 ---------------------------
 
 Bugfix release to handle str assert that wasn't passing unicode properly in
 python 2.6, used Twisted compat library StringType.
+
 
 Release 15.2.1 (2015-09-07)
 ---------------------------

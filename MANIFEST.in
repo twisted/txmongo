@@ -13,3 +13,4 @@ recursive-include examples *.py
 recursive-include examples *.sh
 recursive-include examples *.tac
 recursive-include tests *.py
+recursive-include txmongo *.py
