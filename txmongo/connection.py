@@ -8,12 +8,15 @@ from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.uri_parser import parse_uri
 from pymongo.read_preferences import ReadPreference
 from pymongo.write_concern import WriteConcern
+from time import time
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory
 from twisted.python import log
 from twisted.python.compat import StringType
 from txmongo.database import Database
+from txmongo.errors import TimeExceeded
 from txmongo.protocol import MongoProtocol, Query
+from txmongo.utils import timeout
 
 
 _PRIMARY_READ_PREFERENCES = {ReadPreference.PRIMARY.mode, ReadPreference.PRIMARY_PREFERRED.mode}
@@ -321,8 +324,10 @@ class ConnectionPool(object):
         except defer.FirstError as e:
             raise e.subFailure.value
 
+    @timeout
     @defer.inlineCallbacks
-    def getprotocol(self):
+    def getprotocol(self, seconds=None):
+        start_time = time()
         # Get the next protocol available for communication in the pool.
         connection = self.__pool[self.__index]
         self.__index = (self.__index + 1) % self.__pool_size
@@ -333,6 +338,10 @@ class ConnectionPool(object):
 
         # Wait for the connection to connection.
         yield connection.notifyReady()
+
+        if seconds is not None:
+            if seconds < time() - start_time:
+                raise TimeExceeded("Deadline reached when trying to connect to MongoDB.")
 
         defer.returnValue(connection.instance)
 

@@ -174,7 +174,7 @@ class TestReplicaSet(unittest.TestCase):
         yield conn.disconnect()
 
     @defer.inlineCallbacks
-    def test_TimeoutExceeded_find(self):
+    def test_find_with_timeout(self):
         self.patch(_Connection, 'maxDelay', 5)
 
         try:
@@ -199,7 +199,32 @@ class TestReplicaSet(unittest.TestCase):
             self.flushLoggedErrors(AutoReconnect)
 
     @defer.inlineCallbacks
-    def test_TimeoutExceeded_insert(self):
+    def test_find_with_deadline(self):
+        self.patch(_Connection, 'maxDelay', 5)
+
+        try:
+            uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
+            conn = ConnectionPool(uri, initial_delay=3)
+
+            yield conn.db.coll.insert({'x': 42}, safe=True)
+
+            yield self.__mongod[0].stop()
+
+            while True:
+                try:
+                    yield conn.db.coll.find_one(deadline=time()+2)
+                    self.fail("TimeExceeded not raised!")
+                except TimeExceeded:
+                    break  # this is what we should have returned
+                except AutoReconnect:
+                    pass
+
+        finally:
+            yield conn.disconnect()
+            self.flushLoggedErrors(AutoReconnect)
+
+    @defer.inlineCallbacks
+    def test_TimeExceeded_insert(self):
         self.patch(_Connection, 'maxDelay', 5)
 
         try:
