@@ -15,17 +15,16 @@
 
 from __future__ import absolute_import, division
 
+from bson import SON
 from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError
+from time import time
 from twisted.trial import unittest
-from twisted.python.compat import _PY3
 from twisted.internet import defer, reactor
 from txmongo.connection import MongoConnection, ConnectionPool, _Connection
+from txmongo.errors import TimeExceeded
 from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
 
 from .mongod import Mongod
-
-if _PY3:
-    from twisted.python.compat import xrange
 
 
 class TestReplicaSet(unittest.TestCase):
@@ -36,7 +35,7 @@ class TestReplicaSet(unittest.TestCase):
     rsconfig = {
         "_id": rsname,
         "members": [
-            {"_id": i, "host": "localhost:{0}".format(port) }
+            {"_id": i, "host": "localhost:{0}".format(port)}
             for i, port in enumerate(ports)
         ]
     }
@@ -55,7 +54,7 @@ class TestReplicaSet(unittest.TestCase):
     def __check_reachable(self, port):
         uri = "mongodb://localhost:{0}/?readPreference=secondaryPreferred".format(port)
         conn = ConnectionPool(uri)
-        cmd = yield conn.admin.command("ismaster", check=False)
+        yield conn.admin.command("ismaster", check=False)
         yield conn.disconnect()
 
     @defer.inlineCallbacks
@@ -71,7 +70,7 @@ class TestReplicaSet(unittest.TestCase):
 
         ready = False
         n_tries = int(self.__init_timeout / self.__ping_interval)
-        for i in xrange(n_tries):
+        for i in range(n_tries):
             yield self.__sleep(self.__ping_interval)
 
             # My practice shows that we need to query both ismaster and replSetGetStatus
@@ -83,7 +82,7 @@ class TestReplicaSet(unittest.TestCase):
             ismaster, replstatus = yield defer.gatherResults([ismaster_req, replstatus_req])
 
             initialized = replstatus["ok"]
-            ok_states = set(["PRIMARY", "SECONDARY"])
+            ok_states = {"PRIMARY", "SECONDARY"}
             states_ready = all(m["stateStr"] in ok_states for m in replstatus.get("members", []))
             ready = initialized and ismaster["ismaster"] and states_ready
 
@@ -92,7 +91,8 @@ class TestReplicaSet(unittest.TestCase):
 
         if not ready:
             yield self.tearDown()
-            raise Exception("ReplicaSet initialization took more than {0}s".format(self.__init_timeout))
+            raise Exception("ReplicaSet initialization took more than {0}s".format(
+                self.__init_timeout))
 
         yield master.disconnect()
 
@@ -144,18 +144,81 @@ class TestReplicaSet(unittest.TestCase):
             uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
             conn = ConnectionPool(uri)
 
-            yield conn.db.coll.insert({'x': 42}, safe = True)
+            yield conn.db.coll.insert({'x': 42}, safe=True)
 
             yield self.__mongod[0].stop()
 
             while True:
                 try:
                     result = yield conn.db.coll.find_one()
+                    self.assertEqual(result['x'], 42)
                     break
                 except AutoReconnect:
                     pass
 
-            self.assertEqual(result['x'], 42)
+        finally:
+            yield conn.disconnect()
+            self.flushLoggedErrors(AutoReconnect)
+
+    @defer.inlineCallbacks
+    def test_AutoReconnect_from_primary_step_down(self):
+        self.patch(_Connection, 'maxDelay', 5)
+        uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
+        conn = ConnectionPool(uri)
+
+        # this will force primary to step down, triggering an AutoReconnect that bubbles up
+        # through the connection pool to the client
+        command = conn.admin.command(SON([('replSetStepDown', 86400), ('force', 1)]))
+        self.assertFailure(command, AutoReconnect)
+
+        yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_TimeoutExceeded_find(self):
+        self.patch(_Connection, 'maxDelay', 5)
+
+        try:
+            uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
+            conn = ConnectionPool(uri, initial_delay=3)
+
+            yield conn.db.coll.insert({'x': 42}, safe=True)
+
+            yield self.__mongod[0].stop()
+
+            while True:
+                try:
+                    yield conn.db.coll.find_one(timeout=2)
+                    self.fail("TimeExceeded not raised!")
+                except TimeExceeded:
+                    break  # this is what we should have returned
+                except AutoReconnect:
+                    pass
+
+        finally:
+            yield conn.disconnect()
+            self.flushLoggedErrors(AutoReconnect)
+
+    @defer.inlineCallbacks
+    def test_TimeoutExceeded_insert(self):
+        self.patch(_Connection, 'maxDelay', 5)
+
+        try:
+            uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
+            conn = ConnectionPool(uri, initial_delay=3)
+
+            yield conn.db.coll.insert({'x': 42}, safe=True)
+
+            yield self.__mongod[0].stop()
+
+            while True:
+                try:
+                    yield conn.db.coll.insert({'y': 42}, safe=True, timeout=2)
+                    self.fail("TimeExceeded not raised!")
+                except TimeExceeded:
+                    break  # this is what we should have returned
+                except AutoReconnect:
+                    pass
+
         finally:
             yield conn.disconnect()
             self.flushLoggedErrors(AutoReconnect)

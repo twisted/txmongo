@@ -1,5 +1,5 @@
 Name:		python-txmongo
-Version:	15.2.2
+Version:	15.3.0
 Release:	1%{?dist}
 Summary:	Twisted driver for MongoDB
 
@@ -33,14 +33,17 @@ protocol on non-blocking sockets. The API derives from the original pymongo.
 
 %files
 %doc README.md
-%doc COPYING
+%doc docs/source/NEWS.rst
+%doc LICENSE
 
 %{python_sitelib}/*
 
 %changelog
+* Thu Sep 22 2015 Bret Curtis <psi29a@gmail.com>
+- Bumped version
+
 * Thu Sep 07 2015 Bret Curtis <psi29a@gmail.com>
-- Code review and cleanup
-- Bug fixes
+- Bumped version
 
 * Thu Oct 02 2014 Alexandre Fiori <fiorix@gmail.com>
 - Code review and cleanup

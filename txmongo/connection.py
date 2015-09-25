@@ -8,12 +8,10 @@ from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.uri_parser import parse_uri
 from pymongo.read_preferences import ReadPreference
 from pymongo.write_concern import WriteConcern
-
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory
 from twisted.python import log
 from twisted.python.compat import StringType
-
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
 
@@ -255,9 +253,9 @@ class ConnectionPool(object):
         wc_options = dict((k, v) for k, v in wc_options.items() if k in self.__wc_possible_options)
         self.__write_concern = WriteConcern(**wc_options)
 
-        initial_timeout = kwargs.get('timeout', 1.0)
+        retry_delay = kwargs.get('retry_delay', 1.0)
         self.__pool_size = pool_size
-        self.__pool = [_Connection(self, self.__uri, i, initial_timeout) for i in range(pool_size)]
+        self.__pool = [_Connection(self, self.__uri, i, retry_delay) for i in range(pool_size)]
 
         if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
             self.authenticate(self.__uri['database'], self.__uri['username'],
@@ -266,13 +264,13 @@ class ConnectionPool(object):
 
         host, port = self.__uri['nodelist'][0]
 
-        connection_timeout = kwargs.get('timeout', 30)
+        initial_delay = kwargs.get('retry_delay', 30)
         for factory in self.__pool:
             if ssl_context_factory:
                 factory.connector = reactor.connectSSL(
-                    host, port, factory, ssl_context_factory, connection_timeout)
+                    host, port, factory, ssl_context_factory, initial_delay)
             else:
-                factory.connector = reactor.connectTCP(host, port, factory, connection_timeout)
+                factory.connector = reactor.connectTCP(host, port, factory, initial_delay)
 
     @property
     def write_concern(self):
@@ -323,7 +321,6 @@ class ConnectionPool(object):
         except defer.FirstError as e:
             raise e.subFailure.value
 
-
     @defer.inlineCallbacks
     def getprotocol(self):
         # Get the next protocol available for communication in the pool.
@@ -336,6 +333,7 @@ class ConnectionPool(object):
 
         # Wait for the connection to connection.
         yield connection.notifyReady()
+
         defer.returnValue(connection.instance)
 
     @property

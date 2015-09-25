@@ -443,7 +443,7 @@ class TestSave(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Save(self):
-        self.assertRaises(TypeError, self.coll.save, 123)
+        yield self.assertFailure(self.coll.save(123), TypeError)
 
         yield self.coll.save({'x': 1})
         id = ObjectId()
@@ -899,8 +899,9 @@ class TestFindOneAndReplace(_SingleCollectionTest):
         ys = yield self.coll.distinct('y')
         self.assertEqual(set(ys), set([5, 20, 40]))
 
+    @defer.inlineCallbacks
     def test_InvalidReplace(self):
-        self.assertRaises(ValueError, self.coll.find_one_and_replace, {}, {"$set": {'z': 1}})
+        yield self.assertFailure(self.coll.find_one_and_replace({}, {"$set": {'z': 1}}), ValueError)
 
     @defer.inlineCallbacks
     def test_Upsert(self):
@@ -951,7 +952,7 @@ class TestFindOneAndUpdate(_SingleCollectionTest):
         self.assertEqual(set(ys), set([5, 20, 35]))
 
     def test_InvalidUpdate(self):
-        self.assertRaises(ValueError, self.coll.find_one_and_update, {}, {'x': 123})
+        self.assertFailure(self.coll.find_one_and_update({}, {'x': 123}), ValueError)
 
     @defer.inlineCallbacks
     def test_Upsert(self):

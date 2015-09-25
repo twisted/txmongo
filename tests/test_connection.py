@@ -14,9 +14,11 @@
 # limitations under the License.
 
 from __future__ import absolute_import, division
+from time import time
 from twisted.trial import unittest
 from twisted.internet import defer
 import txmongo
+from txmongo.errors import TimeExceeded
 
 mongo_host = "127.0.0.1"
 mongo_port = 27017
@@ -54,3 +56,14 @@ class TestMongoConnection(unittest.TestCase):
         yield test.disconnect()
         self.assertRaises(AssertionError, txmongo.connection.ConnectionPool, object)
         self.assertRaises(AssertionError, txmongo.connection.ConnectionPool, 1)
+
+    @defer.inlineCallbacks
+    def test_Timeout_and_Deadline(self):
+        yield self.named_conn.db.coll.insert({'x': 42}, safe=True, timeout=10)
+        yield self.named_conn.db.coll.insert({'x': 42}, safe=True, deadline=time()+10)
+
+        d_insert = self.named_conn.db.coll.insert({'x': 42}, safe=True, deadline=time()-10)
+        yield self.assertFailure(d_insert, TimeExceeded)
+
+        d_insert = self.named_conn.db.coll.insert({'x': 42}, safe=True, timeout=-10)
+        yield self.assertFailure(d_insert, TimeExceeded)
