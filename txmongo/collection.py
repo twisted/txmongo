@@ -17,7 +17,7 @@ from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
     Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
-from txmongo.utils import timeout
+from txmongo.utils import check_deadline, timeout
 from txmongo import filter as qf
 from twisted.internet import defer
 from twisted.python.compat import unicode, comparable
@@ -125,8 +125,8 @@ class Collection(object):
 
     @timeout
     @defer.inlineCallbacks
-    def options(self):
-        result = yield self._database.system.namespaces.find_one({"name": str(self)})
+    def options(self, **kwargs):
+        result = yield self._database.system.namespaces.find_one({"name": str(self)}, **kwargs)
         if not result:
             result = {}
         options = result.get("options", {})
@@ -195,6 +195,9 @@ class Collection(object):
 
         def after_connection(protocol):
             flags = kwargs.get("flags", 0)
+
+            check_deadline(kwargs.pop("_deadline", None))
+
             query = Query(flags=flags, collection=str(self),
                           n_to_skip=skip, n_to_return=limit,
                           query=spec, fields=fields)
@@ -246,23 +249,25 @@ class Collection(object):
     def find_one(self, spec=None, fields=None, **kwargs):
         if isinstance(spec, ObjectId):
             spec = {"_id": spec}
+
+        kwargs.pop("limit", None)   # do not conflict hard limit
         result = yield self.find(
             spec=spec, limit=1, fields=fields, **kwargs)
         defer.returnValue(result[0] if result else None)
 
     @timeout
     @defer.inlineCallbacks
-    def count(self, spec=None, fields=None):
+    def count(self, spec=None, fields=None, **kwargs):
         fields = self._normalize_fields_projection(fields)
 
         result = yield self._database.command("count", self._collection_name,
                                               query=spec or SON(),
-                                              fields=fields)
+                                              fields=fields, **kwargs)
         defer.returnValue(result["n"])
 
     @timeout
     @defer.inlineCallbacks
-    def group(self, keys, initial, reduce, condition=None, finalize=None):
+    def group(self, keys, initial, reduce, condition=None, finalize=None, **kwargs):
         body = {
             "ns": self._collection_name,
             "initial": initial,
@@ -279,22 +284,24 @@ class Collection(object):
         if finalize:
             body["finalize"] = Code(finalize)
 
-        result = yield self._database.command("group", body)
+        result = yield self._database.command("group", body, **kwargs)
         defer.returnValue(result)
 
     @timeout
     @defer.inlineCallbacks
-    def filemd5(self, spec):
+    def filemd5(self, spec, **kwargs):
         if not isinstance(spec, ObjectId):
             raise ValueError("filemd5 expected an objectid for its "
                              "non-keyword argument")
 
-        result = yield self._database.command(
-            "filemd5", spec, root=self._collection_name)
+        result = yield self._database.command("filemd5", spec, root=self._collection_name, **kwargs)
         defer.returnValue(result.get("md5"))
 
-    def _get_write_concern(self, safe=None, **wc_options):
-        from_opts = WriteConcern(**wc_options)
+    def _get_write_concern(self, safe=None, **options):
+        from_opts = WriteConcern(options.get("w"),
+                                 options.get("wtimeout"),
+                                 options.get("j"),
+                                 options.get("fsync"))
         if from_opts.document:
             return from_opts
 
@@ -334,6 +341,7 @@ class Collection(object):
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
         proto = yield self._database.connection.getprotocol()
+        check_deadline(kwargs.pop("_deadline", None))
         proto.send_INSERT(insert)
 
         write_concern = self._get_write_concern(safe, **kwargs)
@@ -343,7 +351,7 @@ class Collection(object):
         defer.returnValue(ids)
 
     @defer.inlineCallbacks
-    def _insert_one_or_many(self, documents, ordered=True):
+    def _insert_one_or_many(self, documents, ordered=True, **kwargs):
         if self.write_concern.acknowledged:
             inserted_ids = []
             for doc in documents:
@@ -355,25 +363,25 @@ class Collection(object):
                            ("documents", documents),
                            ("ordered", ordered),
                            ("writeConcern", self.write_concern.document)])
-            response = yield self._database.command(command)
+            response = yield self._database.command(command, **kwargs)
             _check_write_command_response([[0, response]])
         else:
             # falling back to OP_INSERT in case of unacknowledged op
             flags = INSERT_CONTINUE_ON_ERROR if not ordered else 0
-            inserted_ids = yield self.insert(documents, flags=flags)
+            inserted_ids = yield self.insert(documents, flags=flags, **kwargs)
 
         defer.returnValue(inserted_ids)
 
     @timeout
     @defer.inlineCallbacks
-    def insert_one(self, document):
-        inserted_ids = yield self._insert_one_or_many([document])
+    def insert_one(self, document, **kwargs):
+        inserted_ids = yield self._insert_one_or_many([document], **kwargs)
         defer.returnValue(InsertOneResult(inserted_ids[0], self.write_concern.acknowledged))
 
     @timeout
     @defer.inlineCallbacks
-    def insert_many(self, documents, ordered=True):
-        inserted_ids = yield self._insert_one_or_many(documents, ordered)
+    def insert_many(self, documents, ordered=True, **kwargs):
+        inserted_ids = yield self._insert_one_or_many(documents, ordered, **kwargs)
         defer.returnValue(InsertManyResult(inserted_ids, self.write_concern.acknowledged))
 
     @timeout
@@ -397,6 +405,7 @@ class Collection(object):
                         selector=spec, update=document)
 
         proto = yield self._database.connection.getprotocol()
+        check_deadline(kwargs.pop("_deadline", None))
         proto.send_UPDATE(update)
 
         write_concern = self._get_write_concern(safe, **kwargs)
@@ -405,7 +414,7 @@ class Collection(object):
             defer.returnValue(ret)
 
     @defer.inlineCallbacks
-    def _update(self, filter, update, upsert, multi):
+    def _update(self, filter, update, upsert, multi, **kwargs):
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
 
@@ -416,7 +425,7 @@ class Collection(object):
             command = SON([("update", self._collection_name),
                            ("updates", updates),
                            ("writeConcern", self.write_concern.document)])
-            raw_response = yield self._database.command(command)
+            raw_response = yield self._database.command(command, **kwargs)
             _check_write_command_response([[0, raw_response]])
 
             # Extract upserted_id from returned array
@@ -424,36 +433,33 @@ class Collection(object):
                 raw_response["upserted"] = raw_response["upserted"][0]["_id"]
 
         else:
-            yield self.update(
-                filter, update, upsert=upsert, multi=multi)
+            yield self.update(filter, update, upsert=upsert, multi=multi, **kwargs)
             raw_response = None
 
         defer.returnValue(raw_response)
 
     @timeout
     @defer.inlineCallbacks
-    def update_one(self, filter, update, upsert=False):
+    def update_one(self, filter, update, upsert=False, **kwargs):
         validate_ok_for_update(update)
 
-        raw_response = yield self._update(
-            filter, update, upsert, multi=False)
+        raw_response = yield self._update(filter, update, upsert, multi=False, **kwargs)
         defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
 
     @timeout
     @defer.inlineCallbacks
-    def update_many(self, filter, update, upsert=False):
+    def update_many(self, filter, update, upsert=False, **kwargs):
         validate_ok_for_update(update)
 
-        raw_response = yield self._update(filter, update, upsert, multi=True)
+        raw_response = yield self._update(filter, update, upsert, multi=True, **kwargs)
         defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
 
     @timeout
     @defer.inlineCallbacks
-    def replace_one(self, filter, replacement, upsert=False):
+    def replace_one(self, filter, replacement, upsert=False, **kwargs):
         validate_ok_for_replace(replacement)
 
-        raw_response = yield self._update(
-            filter, replacement, upsert, multi=False)
+        raw_response = yield self._update(filter, replacement, upsert, multi=False, **kwargs)
         defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
 
     @timeout
@@ -484,6 +490,7 @@ class Collection(object):
         spec = BSON.encode(spec)
         delete = Delete(flags=flags, collection=str(self), selector=spec)
         proto = yield self._database.connection.getprotocol()
+        check_deadline(kwargs.pop("_deadline", None))
         proto.send_DELETE(delete)
 
         write_concern = self._get_write_concern(safe, **kwargs)
@@ -491,9 +498,8 @@ class Collection(object):
             ret = yield proto.get_last_error(str(self._database), **write_concern.document)
             defer.returnValue(ret)
 
-    @timeout
     @defer.inlineCallbacks
-    def _delete(self, filter, multi):
+    def _delete(self, filter, multi, **kwargs):
         validate_is_mapping("filter", filter)
 
         if self.write_concern.acknowledged:
@@ -502,34 +508,33 @@ class Collection(object):
                            ("deletes", deletes),
                            ("writeConcern", self.write_concern.document)])
 
-            raw_response = yield self._database.command(command)
+            raw_response = yield self._database.command(command, **kwargs)
             _check_write_command_response([[0, raw_response]])
 
         else:
-            yield self.remove(filter, single=not multi)
+            yield self.remove(filter, single=not multi, **kwargs)
             raw_response = None
 
         defer.returnValue(raw_response)
 
     @timeout
     @defer.inlineCallbacks
-    def delete_one(self, filter):
-        raw_response = yield self._delete(filter, multi=False)
+    def delete_one(self, filter, **kwargs):
+        raw_response = yield self._delete(filter, multi=False, **kwargs)
         defer.returnValue(DeleteResult(raw_response, self.write_concern.acknowledged))
 
     @timeout
     @defer.inlineCallbacks
-    def delete_many(self, filter):
-        raw_response = yield self._delete(filter, multi=True)
+    def delete_many(self, filter, **kwargs):
+        raw_response = yield self._delete(filter, multi=True, **kwargs)
         defer.returnValue(DeleteResult(raw_response, self.write_concern.acknowledged))
 
     @timeout
     @defer.inlineCallbacks
     def drop(self, **kwargs):
-        result = yield self._database.drop_collection(self._collection_name)
+        result = yield self._database.drop_collection(self._collection_name, **kwargs)
         defer.returnValue(result)
 
-    @timeout
     @defer.inlineCallbacks
     def create_index(self, sort_fields, **kwargs):
         if not isinstance(sort_fields, qf.sort):
@@ -557,7 +562,7 @@ class Collection(object):
             kwargs["bucketSize"] = kwargs.pop("bucket_size")
 
         index.update(kwargs)
-        yield self._database.system.indexes.insert(index, safe=True)
+        yield self._database.system.indexes.insert(index, safe=True, **kwargs)
         defer.returnValue(name)
 
     @timeout
@@ -568,9 +573,8 @@ class Collection(object):
         result = yield self.create_index(sort_fields, **kwargs)
         defer.returnValue(result)
 
-    @timeout
     @defer.inlineCallbacks
-    def drop_index(self, index_identifier):
+    def drop_index(self, index_identifier, **kwargs):
         if isinstance(index_identifier, (bytes, unicode)):
             name = index_identifier
         elif isinstance(index_identifier, qf.sort):
@@ -579,19 +583,20 @@ class Collection(object):
             raise TypeError("index_identifier must be a name or instance of filter.sort")
 
         result = yield self._database.command("deleteIndexes", self._collection_name,
-                                              index=name, allowable_errors=["ns not found"])
+                                              index=name, allowable_errors=["ns not found"],
+                                              **kwargs)
         defer.returnValue(result)
 
     @timeout
     @defer.inlineCallbacks
-    def drop_indexes(self):
-        result = yield self.drop_index("*")
+    def drop_indexes(self, **kwargs):
+        result = yield self.drop_index("*", **kwargs)
         defer.returnValue(result)
 
     @timeout
     @defer.inlineCallbacks
-    def index_information(self):
-        raw = yield self._database.system.indexes.find({"ns": str(self)})
+    def index_information(self, **kwargs):
+        raw = yield self._database.system.indexes.find({"ns": str(self)}, **kwargs)
         info = {}
         for idx in raw:
             info[idx["name"]] = idx
@@ -599,17 +604,19 @@ class Collection(object):
 
     @timeout
     @defer.inlineCallbacks
-    def rename(self, new_name):
+    def rename(self, new_name, **kwargs):
         to = "%s.%s" % (str(self._database), new_name)
-        result = yield self._database("admin").command("renameCollection", str(self), to=to)
+        result = yield self._database("admin").command(
+            "renameCollection", str(self), to=to, **kwargs)
         defer.returnValue(result)
 
     @timeout
     @defer.inlineCallbacks
-    def distinct(self, key, spec=None):
+    def distinct(self, key, spec=None, **kwargs):
         params = {"key": key}
         if spec:
             params["query"] = spec
+        params.update(kwargs)
 
         result = yield self._database.command("distinct", self._collection_name, **params)
         defer.returnValue(result.get("values"))
@@ -617,7 +624,8 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def aggregate(self, pipeline, full_response=False, **kwargs):
-        raw = yield self._database.command("aggregate", self._collection_name, pipeline=pipeline)
+        raw = yield self._database.command(
+            "aggregate", self._collection_name, pipeline=pipeline, **kwargs)
         if full_response:
             defer.returnValue(raw)
         defer.returnValue(raw.get("result"))
@@ -691,7 +699,7 @@ class Collection(object):
 
         no_obj_error = "No matching object found"
 
-        result = yield self._database.command(cmd, allowable_errors=[no_obj_error])
+        result = yield self._database.command(cmd, allowable_errors=[no_obj_error], **kwargs)
         defer.returnValue(result.get("value"))
 
     @timeout

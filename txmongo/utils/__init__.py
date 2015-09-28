@@ -3,8 +3,6 @@ from time import time
 from txmongo.errors import TimeExceeded
 from twisted.internet import defer, reactor
 
-TIMEOUT = None
-
 
 def timeout(func):
     """Decorator to add timeout to Deferred calls"""
@@ -12,26 +10,26 @@ def timeout(func):
     @wraps(func)
     @defer.inlineCallbacks
     def _timeout(*args, **kwargs):
-        deadline = kwargs.pop("deadline", None)
+        now = time()
+        deadline = kwargs.get("deadline", None)
         seconds = kwargs.pop("timeout", None)
-        if seconds is None and deadline is not None:
-            seconds = deadline - time()
 
-        if seconds is not None and seconds < 0:
-            raise TimeExceeded("Run time of {0}s exceeded.".format(seconds))
+        if deadline is None and seconds is not None:
+            deadline = now + seconds
+            kwargs["deadline"] = deadline
 
-        global TIMEOUT  # special case, to prevent txmongo from modifying mongodb
-        if func.__name__ != "getprotocol":
-            TIMEOUT = seconds
+        if deadline is not None and deadline < now:
+            raise TimeExceeded("Run time exceeded by {0}s.".format(now-deadline))
 
-        if func.__name__ == "getprotocol":
-            kwargs['seconds'] = TIMEOUT
-
+        kwargs['_deadline'] = deadline
         raw_d = func(*args, **kwargs)
 
-        if seconds is None:
+        if deadline is None:
             raw_result = yield raw_d
             defer.returnValue(raw_result)
+
+        if seconds is None and deadline is not None and deadline - now > 0:
+            seconds = deadline - now
 
         timeout_d = defer.Deferred()
         times_up = reactor.callLater(seconds, timeout_d.callback, None)
@@ -53,3 +51,8 @@ def timeout(func):
         times_up.cancel()
         defer.returnValue(raw_result)
     return _timeout
+
+
+def check_deadline(_deadline):
+    if _deadline is not None and _deadline < time():
+        raise TimeExceeded("Now: {0} Deadline: {1}".format(time(), _deadline))

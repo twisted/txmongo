@@ -7,6 +7,7 @@ from pymongo.helpers import _check_command_response
 from twisted.internet import defer
 from twisted.python.compat import unicode
 from txmongo.collection import Collection
+from txmongo.utils import timeout
 
 
 class Database(object):
@@ -44,14 +45,17 @@ class Database(object):
     def write_concern(self):
         return self.__write_concern or self.__factory.write_concern
 
+    @timeout
     @defer.inlineCallbacks
     def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
         if isinstance(command, (bytes, unicode)):
             command = SON([(command, value)])
-        command.update(kwargs)
+        options = kwargs
+        options.pop("_deadline", None)
+        command.update(options)
 
         ns = self["$cmd"]
-        response = yield ns.find_one(command)
+        response = yield ns.find_one(command, **kwargs)
 
         if check:
             msg = "command {0} on namespace {1} failed: %s".format(repr(command), ns)
@@ -59,18 +63,22 @@ class Database(object):
 
         defer.returnValue(response)
 
+    @timeout
     @defer.inlineCallbacks
-    def create_collection(self, name, options=None):
+    def create_collection(self, name, options=None, **kwargs):
         collection = Collection(self, name)
 
         if options:
             if "size" in options:
                 options["size"] = float(options["size"])
+            options.update(kwargs)
             yield self.command("create", name, **options)
 
         defer.returnValue(collection)
 
-    def drop_collection(self, name_or_collection):
+    @timeout
+    @defer.inlineCallbacks
+    def drop_collection(self, name_or_collection, **kwargs):
         if isinstance(name_or_collection, Collection):
             name = name_or_collection._collection_name
         elif isinstance(name_or_collection, (bytes, unicode)):
@@ -78,18 +86,18 @@ class Database(object):
         else:
             raise TypeError("name must be an instance of basestring or txmongo.Collection")
 
-        return self.command("drop", unicode(name), allowable_errors=["ns not found"])
+        yield self.command("drop", unicode(name), allowable_errors=["ns not found"], **kwargs)
 
+    @timeout
     @defer.inlineCallbacks
-    def collection_names(self):
-        results = yield self["system.namespaces"].find()
+    def collection_names(self, **kwargs):
+        results = yield self["system.namespaces"].find(**kwargs)
 
         names = [r["name"] for r in results]
         names = [n[len(str(self)) + 1:] for n in names
                  if n.startswith(str(self) + ".")]
         names = [n for n in names if "$" not in n]
         defer.returnValue(names)
-
 
     @defer.inlineCallbacks
     def authenticate(self, name, password, mechanism="DEFAULT"):

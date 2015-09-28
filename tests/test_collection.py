@@ -17,14 +17,10 @@ Based on pymongo driver's test_collection.py
 """
 
 from __future__ import absolute_import, division
-
 from pymongo import errors
-
 from twisted.internet import defer
 from twisted.trial import unittest
-
 import txmongo
-
 from txmongo import filter as qf
 from txmongo.collection import Collection
 
@@ -255,6 +251,7 @@ class TestIndexInfo(unittest.TestCase):
                                    maxDistance=6,
                                    search={"type": "restaurant"},
                                    limit=30)
+
         self.assertEqual(2, len(results["results"]))
         self.assertEqual({
             "_id": _id,
