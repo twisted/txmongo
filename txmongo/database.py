@@ -50,7 +50,7 @@ class Database(object):
     def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
         if isinstance(command, (bytes, unicode)):
             command = SON([(command, value)])
-        options = kwargs
+        options = kwargs.copy()
         options.pop("_deadline", None)
         command.update(options)
 

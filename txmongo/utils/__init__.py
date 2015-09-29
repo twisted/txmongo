@@ -11,12 +11,11 @@ def timeout(func):
     @defer.inlineCallbacks
     def _timeout(*args, **kwargs):
         now = time()
-        deadline = kwargs.get("deadline", None)
+        deadline = kwargs.pop("deadline", None)
         seconds = kwargs.pop("timeout", None)
 
         if deadline is None and seconds is not None:
             deadline = now + seconds
-            kwargs["deadline"] = deadline
 
         if deadline is not None and deadline < now:
             raise TimeExceeded("Run time exceeded by {0}s.".format(now-deadline))
