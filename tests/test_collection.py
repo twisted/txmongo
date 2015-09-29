@@ -108,6 +108,7 @@ class TestIndexInfo(unittest.TestCase):
         yield coll.drop_indexes()
         count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
         self.assertEqual(count, 1)
+        self.assertIsInstance(count, int)
 
         yield coll.create_index(qf.sort(qf.ASCENDING("hello")))
         yield coll.create_index(qf.sort(qf.ASCENDING("hello") +

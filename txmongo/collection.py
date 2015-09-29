@@ -263,7 +263,7 @@ class Collection(object):
         result = yield self._database.command("count", self._collection_name,
                                               query=spec or SON(),
                                               fields=fields, **kwargs)
-        defer.returnValue(result["n"])
+        defer.returnValue(int(result["n"]))
 
     @timeout
     @defer.inlineCallbacks
