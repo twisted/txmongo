@@ -14,10 +14,12 @@
 # limitations under the License.
 
 from __future__ import absolute_import, division
+from mock import patch
 from time import time
 from twisted.trial import unittest
 from twisted.internet import defer
-import txmongo
+from txmongo import connection
+from txmongo.utils import check_deadline
 from txmongo.errors import TimeExceeded
 
 mongo_host = "127.0.0.1"
@@ -27,8 +29,8 @@ mongo_port = 27017
 class TestMongoConnection(unittest.TestCase):
 
     def setUp(self):
-        self.named_conn = txmongo.connection.ConnectionPool("mongodb://127.0.0.1/dbname")
-        self.unnamed_conn = txmongo.connection.ConnectionPool("127.0.0.1")
+        self.named_conn = connection.ConnectionPool("mongodb://127.0.0.1/dbname")
+        self.unnamed_conn = connection.ConnectionPool("127.0.0.1")
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -48,14 +50,14 @@ class TestMongoConnection(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_uri_input(self):
-        test = txmongo.connection.ConnectionPool()
+        test = connection.ConnectionPool()
         yield test.disconnect()
-        test = txmongo.connection.ConnectionPool("mongodb://127.0.0.1/dbname")
+        test = connection.ConnectionPool("mongodb://127.0.0.1/dbname")
         yield test.disconnect()
-        test = txmongo.connection.ConnectionPool(u"mongodb://127.0.0.1/dbname")
+        test = connection.ConnectionPool(u"mongodb://127.0.0.1/dbname")
         yield test.disconnect()
-        self.assertRaises(AssertionError, txmongo.connection.ConnectionPool, object)
-        self.assertRaises(AssertionError, txmongo.connection.ConnectionPool, 1)
+        self.assertRaises(AssertionError, connection.ConnectionPool, object)
+        self.assertRaises(AssertionError, connection.ConnectionPool, 1)
 
     @defer.inlineCallbacks
     def test_Timeout_and_Deadline(self):
@@ -67,3 +69,11 @@ class TestMongoConnection(unittest.TestCase):
 
         d_insert = self.named_conn.db.coll.insert({'x': 42}, safe=True, timeout=-10)
         yield self.assertFailure(d_insert, TimeExceeded)
+
+        def patch_deadline(_):
+            check_deadline(time()-2)
+
+        with patch('txmongo.collection.check_deadline', side_effect=patch_deadline):
+            d_insert = self.named_conn.db.coll.find_one(
+                {'x': 42}, deadline=time()+2)
+            yield self.assertFailure(d_insert, TimeExceeded)

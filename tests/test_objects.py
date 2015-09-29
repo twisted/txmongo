@@ -27,7 +27,7 @@ from txmongo import database, collection, filter as qf
 from txmongo.gridfs import GridFS, GridIn, GridOut, GridOutIterator, errors
 from txmongo._gridfs.errors import NoFile
 from twisted.trial import unittest
-from twisted.internet import base, defer
+from twisted.internet import defer
 from twisted.python.compat import _PY3
 from twisted import _version
 
@@ -55,7 +55,7 @@ class TestMongoObjects(unittest.TestCase):
         self.assertEqual(isinstance(mycol3, collection.Collection), True)
         yield mydb.drop_collection("mycol3")
         yield mydb.drop_collection(mycol3)
-        self.assertRaises(TypeError, mydb.drop_collection, None)
+        yield self.assertFailure(mydb.drop_collection(None), TypeError)
         yield conn.disconnect()
 
     @defer.inlineCallbacks

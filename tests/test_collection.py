@@ -17,14 +17,10 @@ Based on pymongo driver's test_collection.py
 """
 
 from __future__ import absolute_import, division
-
 from pymongo import errors
-
 from twisted.internet import defer
 from twisted.trial import unittest
-
 import txmongo
-
 from txmongo import filter as qf
 from txmongo.collection import Collection
 
@@ -112,6 +108,7 @@ class TestIndexInfo(unittest.TestCase):
         yield coll.drop_indexes()
         count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
         self.assertEqual(count, 1)
+        self.assertIsInstance(count, int)
 
         yield coll.create_index(qf.sort(qf.ASCENDING("hello")))
         yield coll.create_index(qf.sort(qf.ASCENDING("hello") +
@@ -255,6 +252,7 @@ class TestIndexInfo(unittest.TestCase):
                                    maxDistance=6,
                                    search={"type": "restaurant"},
                                    limit=30)
+
         self.assertEqual(2, len(results["results"]))
         self.assertEqual({
             "_id": _id,

@@ -175,7 +175,8 @@ class TestMongoQueries(_SingleCollectionTest):
         obj_count_4mb = 4 * 1024**2 // len(BSON.encode(self.__make_big_object())) + 1
 
         first_batch = 5
-        yield self.coll.insert([self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
+        yield self.coll.insert(
+            [self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
         result = yield self.coll.find(limit=first_batch)
 
         self.assertEqual(len(result), 5)
@@ -188,7 +189,8 @@ class TestMongoQueries(_SingleCollectionTest):
         obj_count_4mb = 4 * 1024**2 // len(BSON.encode(self.__make_big_object())) + 1
 
         first_batch = 5
-        yield self.coll.insert([self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
+        yield self.coll.insert(
+            [self.__make_big_object() for _ in range(first_batch + obj_count_4mb)])
 
         result = []
         docs, dfr = yield self.coll.find_with_cursor({}, limit=first_batch)
@@ -234,7 +236,8 @@ class TestMongoQueries(_SingleCollectionTest):
         doc = yield self.coll.find_one({})
         self.assertTrue(type(doc) is dict)
 
-        class CustomDict(dict): pass
+        class CustomDict(dict):
+            pass
 
         doc = yield self.coll.find_one({}, as_class=CustomDict)
         self.assertTrue(type(doc) is CustomDict)
@@ -290,13 +293,13 @@ class TestLimit(_SingleCollectionTest):
         res = yield self.coll.find(limit=100)
         self.assertEqual(len(res), 100)
 
-        yield self.coll.drop(safe=True)
+        yield self.coll.drop()
 
         yield self.coll.insert([{'v': i} for i in range(200)], safe=True)
         res = yield self.coll.find(limit=101)
         self.assertEqual(len(res), 101)
 
-        yield self.coll.drop(safe=True)
+        yield self.coll.drop()
 
         yield self.coll.insert([{'v': i} for i in range(200)], safe=True)
         res = yield self.coll.find(limit=102)
@@ -331,13 +334,13 @@ class TestSkip(_SingleCollectionTest):
         res = yield self.coll.find(skip=3)
         self.assertEqual(len(res), 2)
 
-        yield self.coll.drop(safe=True)
+        yield self.coll.drop()
 
         yield self.coll.insert([{'v': i} for i in range(5)], safe=True)
         res = yield self.coll.find(skip=5)
         self.assertEqual(len(res), 0)
 
-        yield self.coll.drop(safe=True)
+        yield self.coll.drop()
 
         yield self.coll.insert([{'v': i} for i in range(5)], safe=True)
         res = yield self.coll.find(skip=6)
@@ -349,24 +352,23 @@ class TestSkip(_SingleCollectionTest):
         res = yield self.coll.find(skip=3, limit=1)
         self.assertEqual(len(res), 1)
 
-        yield self.coll.drop(safe=True)
+        yield self.coll.drop()
 
         yield self.coll.insert([{'v': i} for i in range(5)], safe=True)
         res = yield self.coll.find(skip=4, limit=2)
         self.assertEqual(len(res), 1)
 
-        yield self.coll.drop(safe=True)
+        yield self.coll.drop()
 
         yield self.coll.insert([{'v': i} for i in range(5)], safe=True)
         res = yield self.coll.find(skip=4, limit=1)
         self.assertEqual(len(res), 1)
 
-        yield self.coll.drop(safe=True)
+        yield self.coll.drop()
 
         yield self.coll.insert([{'v': i} for i in range(5)], safe=True)
         res = yield self.coll.find(skip=5, limit=1)
         self.assertEqual(len(res), 0)
-
 
 
 class TestCommand(_SingleCollectionTest):
@@ -446,13 +448,13 @@ class TestSave(_SingleCollectionTest):
         yield self.assertFailure(self.coll.save(123), TypeError)
 
         yield self.coll.save({'x': 1})
-        id = ObjectId()
-        yield self.coll.save({"_id": id, 'x': 2})
-        yield self.coll.save({"_id": id, 'x': 3})
+        oid = ObjectId()
+        yield self.coll.save({"_id": oid, 'x': 2})
+        yield self.coll.save({"_id": oid, 'x': 3})
 
         docs = yield self.coll.find()
         self.assertTrue(any(doc['x'] == 1 for doc in docs))
-        self.assertTrue({"_id": id, 'x': 3} in docs)
+        self.assertTrue({"_id": oid, 'x': 3} in docs)
 
 
 class TestRemove(_SingleCollectionTest):
@@ -477,9 +479,9 @@ class TestRemove(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_RemoveById(self):
-        id = ObjectId()
-        yield self.coll.insert([{"_id": id, 'x': 42}, {'y': 123}])
-        yield self.coll.remove(id)
+        oid = ObjectId()
+        yield self.coll.insert([{"_id": oid, 'x': 42}, {'y': 123}])
+        yield self.coll.remove(oid)
 
         remaining = yield self.coll.find(fields={"_id": 0})
         self.assertEqual(remaining, [{'y': 123}])
@@ -505,14 +507,14 @@ class TestDistinct(unittest.TestCase):
         yield self.coll.insert([{'x': 13}, {'x': 42}, {'x': 13}])
 
         d = yield self.coll.distinct('x')
-        self.assertEqual(set(d), set([13, 42]))
+        self.assertEqual(set(d), {13, 42})
 
     @defer.inlineCallbacks
     def test_WithQuery(self):
         yield self.coll.insert([{'x': 13}, {'x': 42}, {'x': 123}, {'x': 42}])
 
         d = yield self.coll.distinct('x', {'x': {"$gt": 20}})
-        self.assertEqual(set(d), set([42, 123]))
+        self.assertEqual(set(d), {42, 123})
 
 
 class TestMapReduce(_SingleCollectionTest):
@@ -529,25 +531,25 @@ class TestMapReduce(_SingleCollectionTest):
             {"kid": "John", "grade": 5},
         ])
 
-        map = """
+        t_map = """
             function () {
                 emit(this.kid, this.grade);
             }
         """
 
-        reduce = """
+        t_reduce = """
             function (key, values) {
                 return Array.sum(values);
             }
         """
 
-        result = yield self.coll.map_reduce(map, reduce, out={"inline": 1})
+        result = yield self.coll.map_reduce(t_map, t_reduce, out={"inline": 1})
         self.assertEqual(len(result), 3)
         self.assertTrue({"_id": "John", "value": 14} in result)
         self.assertTrue({"_id": "Kate", "value": 10} in result)
         self.assertTrue({"_id": "Adam", "value": 4} in result)
 
-        result = yield self.coll.map_reduce(map, reduce, out={"inline": 1}, full_response=True)
+        result = yield self.coll.map_reduce(t_map, t_reduce, out={"inline": 1}, full_response=True)
         self.assertTrue(result["ok"], 1)
         self.assertTrue("counts" in result)
         self.assertTrue("results" in result)
@@ -567,11 +569,11 @@ class TestInsertOne(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Unacknowledged(self):
-        id = ObjectId()
-        doc = {'x': 42, "_id": id}
+        oid = ObjectId()
+        doc = {'x': 42, "_id": oid}
         result = yield self.coll.with_options(write_concern=WriteConcern(w=0)).insert_one(doc)
         self.assertEqual(result.acknowledged, False)
-        self.assertEqual(result.inserted_id, id)
+        self.assertEqual(result.inserted_id, oid)
 
         # It's ok to issue count() right after unacknowledged insert because
         # we have exactly one connection
@@ -897,7 +899,7 @@ class TestFindOneAndReplace(_SingleCollectionTest):
         self.assertEqual(doc, {'x': 30, 'y': 30})
 
         ys = yield self.coll.distinct('y')
-        self.assertEqual(set(ys), set([5, 20, 40]))
+        self.assertEqual(set(ys), {5, 20, 40})
 
     @defer.inlineCallbacks
     def test_InvalidReplace(self):
@@ -909,7 +911,7 @@ class TestFindOneAndReplace(_SingleCollectionTest):
         self.assertEqual(doc, None)
 
         xs = yield self.coll.distinct('x')
-        self.assertEqual(set(xs), set([10, 20, 30, 50]))
+        self.assertEqual(set(xs), {10, 20, 30, 50})
 
     @defer.inlineCallbacks
     def test_ReturnDocument(self):
@@ -949,7 +951,7 @@ class TestFindOneAndUpdate(_SingleCollectionTest):
         self.assertEqual(doc, {'x': 30, 'y': 30})
 
         ys = yield self.coll.distinct('y')
-        self.assertEqual(set(ys), set([5, 20, 35]))
+        self.assertEqual(set(ys), {5, 20, 35})
 
     def test_InvalidUpdate(self):
         self.assertFailure(self.coll.find_one_and_update({}, {'x': 123}), ValueError)

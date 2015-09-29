@@ -14,14 +14,12 @@
 # limitations under the License.
 
 from __future__ import absolute_import, division
-
-import tempfile
-import shutil
-import txmongo
 from pymongo.errors import OperationFailure
+import shutil
+import tempfile
 from twisted.trial import unittest
 from twisted.internet import defer
-
+from txmongo import connection
 from txmongo.protocol import MongoAuthenticationError
 
 from .mongod import Mongod
@@ -54,7 +52,7 @@ class TestMongoAuth(unittest.TestCase):
     ua_password = "useradminpwd"
 
     def __get_connection(self, pool_size=1):
-        return txmongo.connection.ConnectionPool(mongo_uri, pool_size)
+        return connection.ConnectionPool(mongo_uri, pool_size)
 
     @defer.inlineCallbacks
     def createUserAdmin(self):
@@ -63,10 +61,10 @@ class TestMongoAuth(unittest.TestCase):
         try:
             self.ismaster = yield conn.admin.command("ismaster")
 
-            r = yield conn.admin.command("createUser", self.ua_login,
-                                         pwd=self.ua_password,
-                                         roles=[{"role": "userAdminAnyDatabase",
-                                                 "db": "admin"}])
+            yield conn.admin.command("createUser", self.ua_login,
+                                     pwd=self.ua_password,
+                                     roles=[{"role": "userAdminAnyDatabase",
+                                             "db": "admin"}])
 
             try:
                 # This should fail if authentication enabled in MongoDB since
@@ -148,7 +146,7 @@ class TestMongoAuth(unittest.TestCase):
     def test_AuthConnectionPoolUri(self):
         pool_size = 5
 
-        conn = txmongo.connection.ConnectionPool(
+        conn = connection.ConnectionPool(
             "mongodb://{0}:{1}@{2}:{3}/{4}".format(self.login1, self.password1, mongo_host,
                                                    mongo_port, self.db1)
         )
@@ -275,7 +273,7 @@ class TestMongoDBCR(unittest.TestCase):
         yield mongod_noauth.start()
 
         try:
-            conn = txmongo.connection.MongoConnection(mongo_host, mongo_port)
+            conn = connection.MongoConnection(mongo_host, mongo_port)
 
             try:
                 ismaster = yield conn.admin.command("ismaster")
@@ -295,7 +293,7 @@ class TestMongoDBCR(unittest.TestCase):
         yield self.mongod.start()
 
         try:
-            conn = txmongo.connection.MongoConnection(mongo_host, mongo_port)
+            conn = connection.MongoConnection(mongo_host, mongo_port)
             try:
                 yield conn.admin.command("createUser", self.ua_login, pwd=self.ua_password,
                                          roles=[{"role": "userAdminAnyDatabase", "db": "admin"}])
@@ -316,7 +314,7 @@ class TestMongoDBCR(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_ConnectionPool(self):
-        conn = txmongo.connection.ConnectionPool(mongo_uri)
+        conn = connection.ConnectionPool(mongo_uri)
 
         try:
             yield conn[self.db1].authenticate(self.login1, self.password1,
@@ -330,7 +328,7 @@ class TestMongoDBCR(unittest.TestCase):
         uri = "mongodb://{0}:{1}@{2}:{3}/{4}?authMechanism=MONGODB-CR".format(
             self.login1, self.password1, mongo_host, mongo_port, self.db1
         )
-        conn = txmongo.connection.ConnectionPool(uri)
+        conn = connection.ConnectionPool(uri)
         try:
             yield conn[self.db1][self.coll].insert_one({'x': 42})
         finally:
@@ -338,7 +336,7 @@ class TestMongoDBCR(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Fail(self):
-        conn = txmongo.connection.ConnectionPool(mongo_uri)
+        conn = connection.ConnectionPool(mongo_uri)
 
         try:
             yield conn[self.db1].authenticate(self.login1, self.password1+'x',
