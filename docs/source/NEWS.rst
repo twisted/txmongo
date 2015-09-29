@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 15.2.3 (UNREALISED)
+Release 15.3.0 (2015-09-29)
 ---------------------------
 
 API Changes
@@ -19,6 +19,12 @@ deadline, a unix timestamp in seconds, is exceeded. This happens only in methods
 - Added ``timeout`` to ``collection`` methods, this will raise a ``TimeoutExceeded`` when the
 timeout, in seconds, is exceeded. This happens only in methods with ``getprotocol()`` and methods that
 reference them.
+
+Bugfixes
+^^^^^^^^
+
+- Fixed ``collection.count()`` to return an int instead of float, this matches how count
+in with PyMongo.
 
 
 Release 15.2.2 (2015-09-15)
