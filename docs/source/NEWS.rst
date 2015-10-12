@@ -1,6 +1,16 @@
 Changelog
 =========
 
+Release 15.3.1 (UNRELEASED)
+---------------------------
+
+Features
+^^^^^^^^
+
+- Updated and simplified setup.py, enforce minimal versions of PyMongo and Twisted necessary to
+install TxMongo.
+
+
 Release 15.3.0 (2015-09-29)
 ---------------------------
 
