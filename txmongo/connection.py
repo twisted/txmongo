@@ -29,18 +29,17 @@ class _Connection(ReconnectingClientFactory):
 
     instance = None
     protocol = MongoProtocol
-    maxDelay = 60
 
-    def __init__(self, pool, uri, id, initial_delay):
+    def __init__(self, pool, uri, connection_id, initial_delay, max_delay):
         self.__allnodes = list(uri["nodelist"])
         self.__notify_ready = []
         self.__pool = pool
         self.__uri = uri
         self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
         self.__conf_loop.start(self.__conf_loop_seconds, now=False)
-        self.connectionid = id
+        self.connection_id = connection_id
         self.initialDelay = initial_delay
-
+        self.maxDelay = max_delay
         self.__auth_creds = {}
 
     def buildProtocol(self, addr):
@@ -255,8 +254,10 @@ class ConnectionPool(object):
         self.__write_concern = WriteConcern(**wc_options)
 
         retry_delay = kwargs.get('retry_delay', 1.0)
+        max_delay = kwargs.get('max_delay', 60.0)
         self.__pool_size = pool_size
-        self.__pool = [_Connection(self, self.__uri, i, retry_delay) for i in range(pool_size)]
+        self.__pool = [_Connection(
+            self, self.__uri, i, retry_delay, max_delay) for i in range(pool_size)]
 
         if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
             self.authenticate(self.__uri['database'], self.__uri['username'],

@@ -4,6 +4,12 @@ Changelog
 Release 15.3.1 (UNRELEASED)
 ---------------------------
 
+API Changes
+^^^^^^^^^^^
+
+- ``connection.ConnectionPool`` exposes `max_delay` which is used to set the maximum number of
+seconds between connection attempts. The default is set to 60.
+
 Features
 ^^^^^^^^
 
