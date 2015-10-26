@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 15.3.1 (UNRELEASED)
+Release 15.3.1 (2015-10-26)
 ---------------------------
 
 API Changes
