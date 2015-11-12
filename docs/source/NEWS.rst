@@ -1,6 +1,17 @@
 Changelog
 =========
 
+Release 15.0.1 (2015-11-13)
+---------------------------
+
+This is a maintenance update to outdated 15.0.0 release
+
+Features
+^^^^^^^^
+
+- Support for "?authMechanism=..." connection URI option
+
+
 Release 15.0 (2015-05-04)
 -------------------------
 

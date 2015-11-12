@@ -16,6 +16,7 @@
 import os
 import shutil
 import txmongo
+from mock import patch
 from bson.son import SON
 from pymongo.errors import OperationFailure
 from twisted.trial import unittest
@@ -224,3 +225,30 @@ class TestMongoAuth(unittest.TestCase):
             yield conn[self.db2][self.coll].find_one()
         finally:
             yield conn.disconnect()
+
+
+class TestAuthMechanismURIParameter(unittest.TestCase):
+    mongo_host = "localhost"
+    mongo_port = 27017
+
+    @defer.inlineCallbacks
+    def _test_uri_auth(self, url_suffix, expected_mechanism):
+        # Connecting to default no-auth MongoDB, so it will be ok with any
+        # auth mechanism
+        with patch("txmongo.connection.ConnectionPool.authenticate") as authfunc:
+            uri = "mongodb://user:pass@{0}/db{2}".format(self.mongo_host,
+                                                         self.mongo_port,
+                                                         url_suffix)
+            conn = txmongo.connection.ConnectionPool(uri)
+            authfunc.assert_called_once_with("db", "user", "pass", expected_mechanism)
+            # Issuing some query to make sure connection is established because
+            # calling disconnect() may leave Trial's reactor unclean if it
+            # happen before name resolution is done
+            yield conn.db.coll.find_one()
+            yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_AuthMechanismURIParameter(self):
+        yield self._test_uri_auth("", "DEFAULT")
+        yield self._test_uri_auth("?authMechanism=MONGODB-CR", "MONGODB-CR")
+        yield self._test_uri_auth("?authMechanism=SCRAM-SHA-1", "SCRAM-SHA-1")

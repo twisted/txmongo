@@ -12,3 +12,4 @@ wheel
 setuptools
 tox
 check-manifest
+mock
