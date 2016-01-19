@@ -11,6 +11,7 @@ env:
     - TOX_ENV=py26-tw121
     - TOX_ENV=py27-twlatest
     - TOX_ENV=py27-twtrunk
+    - TOX_ENV=py27-tw150
     - TOX_ENV=py27-tw140
     - TOX_ENV=py27-tw132
     - TOX_ENV=py27-tw131
@@ -20,6 +21,7 @@ env:
     - TOX_ENV=py27-tw121
     - TOX_ENV=pypy-twlatest
     - TOX_ENV=pypy-twtrunk
+    - TOX_ENV=pypy-tw150
     - TOX_ENV=pypy-tw140
     - TOX_ENV=pypy-tw132
     - TOX_ENV=pypy-tw131
