@@ -2,8 +2,6 @@ language: python
 python: 2.7
 
 env:
-    - TOX_ENV=py26-twlatest
-    - TOX_ENV=py26-twtrunk
     - TOX_ENV=py26-tw140
     - TOX_ENV=py26-tw132
     - TOX_ENV=py26-tw131
