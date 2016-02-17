@@ -203,10 +203,14 @@ class Collection(object):
                           query=spec, fields=fields)
 
             deferred_query = protocol.send_QUERY(query)
-            deferred_query.addCallback(after_reply, protocol)
+            deferred_query.addCallback(after_reply, protocol, after_reply)
             return deferred_query
 
-        def after_reply(reply, protocol, fetched=0):
+        # this_func argument is just a reference to after_reply function itself.
+        # after_reply can reference to itself directly but this will create a circular
+        # reference between closure and function object which will add unnecessary
+        # work for GC.
+        def after_reply(reply, protocol, this_func, fetched=0):
             documents = reply.documents
             docs_count = len(documents)
             if limit > 0:
@@ -236,7 +240,7 @@ class Collection(object):
                     collection=str(self), cursor_id=reply.cursor_id,
                     n_to_return=to_fetch
                 ))
-                next_reply.addCallback(after_reply, protocol, fetched)
+                next_reply.addCallback(this_func, protocol, this_func, fetched)
                 return out, next_reply
 
             return out, defer.succeed(([], None))
