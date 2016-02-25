@@ -1,6 +1,15 @@
 Changelog
 =========
 
+Release 16.0.0 (2016-02-25)
+---------------------------
+
+Bugfixes
+^^^^^^^^
+
+- Memory leak fixed in `find_with_cursor` that affected almost all query methods
+
+
 Release 15.3.1 (2015-10-26)
 ---------------------------
 

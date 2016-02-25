@@ -58,7 +58,7 @@ copyright = u'2015, Alexandre Fiori, Bret Curtis'
 # built documents.
 #
 # The short X.Y version.
-version = '15.3.0'
+version = '16.0.0'
 # The full version, including alpha/beta/rc tags.
 release = version
 
