@@ -89,7 +89,7 @@ class _Connection(ReconnectingClientFactory):
 
         # Make sure we got a result document.
         if len(reply.documents) != 1:
-            raise OperationFailure("Invalid document length.")
+            raise OperationFailure("TxMongo: invalid document length.")
 
         # Get the configuration document from the reply.
         config = reply.documents[0].decode()
@@ -97,7 +97,7 @@ class _Connection(ReconnectingClientFactory):
         # Make sure the command was successful.
         if not config.get("ok"):
             code = config.get("code")
-            msg = config.get("err", "Unknown error")
+            msg = "TxMongo: " + config.get("err", "Unknown error")
             raise OperationFailure(msg, code)
 
         # Check that the replicaSet matches.
@@ -105,7 +105,7 @@ class _Connection(ReconnectingClientFactory):
         expected_set_name = self.uri["options"].get("replicaset")
         if expected_set_name and (expected_set_name != set_name):
             # Log the invalid replica set failure.
-            msg = "Mongo instance does not match requested replicaSet."
+            msg = "TxMongo: Mongo instance does not match requested replicaSet."
             raise ConfigurationError(msg)
 
         # Track max bson object size limit.
@@ -132,7 +132,8 @@ class _Connection(ReconnectingClientFactory):
         # Check if this node is the master.
         ismaster = config.get("ismaster")
         if not ismaster:
-            raise AutoReconnect("MongoDB host `%s` is not master." % config.get('me'))
+            msg = "TxMongo: MongoDB host `%s` is not master." % config.get('me')
+            raise AutoReconnect(msg)
 
     def clientConnectionFailed(self, connector, reason):
         self.instance = None
@@ -167,12 +168,13 @@ class _Connection(ReconnectingClientFactory):
             configured list of hosts.
             """
         if not self.continueTrying:
-            log.msg("Abandoning %s on explicit request" % (connector,))
+            msg = "TxMongo: Abandoning {0} on explicit request.".format(connector)
+            log.msg(msg)
             return
 
         if connector is None:
             if self.connector is None:
-                raise ValueError("no connector to retry")
+                raise ValueError("TxMongo: No additional connector to retry.")
             else:
                 connector = self.connector
 

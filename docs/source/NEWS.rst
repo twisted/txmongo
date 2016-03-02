@@ -1,6 +1,15 @@
 Changelog
 =========
 
+Release 16.0.1 (UNRELEASED)
+---------------------------
+
+Features
+^^^^^^^^
+
+- Make existing logging more verbose, indicate that it is TxMongo raising the error or sending the message.
+- Add additional logging.
+
 Release 16.0.0 (2016-02-25)
 ---------------------------
 

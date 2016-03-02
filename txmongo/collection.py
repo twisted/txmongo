@@ -27,17 +27,19 @@ from twisted.python.compat import unicode, comparable
 class Collection(object):
     def __init__(self, database, name, write_concern=None):
         if not isinstance(name, (bytes, unicode)):
-            raise TypeError("name must be an instance of (bytes, unicode)")
+            raise TypeError("TxMongo: name must be an instance of (bytes, unicode).")
 
         if not name or ".." in name:
-            raise InvalidName("collection names cannot be empty")
+            raise InvalidName("TxMongo: collection names cannot be empty.")
         if "$" in name and not (name.startswith("oplog.$main") or
                                 name.startswith("$cmd")):
-            raise InvalidName("collection names must not contain '$': %r" % name)
+            msg = "TxMongo: collection names must not contain '$', '{0}'".format(repr(name))
+            raise InvalidName(msg)
         if name[0] == "." or name[-1] == ".":
-            raise InvalidName("collection names must not start or end with '.': %r" % name)
+            msg = "TxMongo: collection names must not start or end with '.', '{0}'".format(repr(name))
+            raise InvalidName(msg)
         if "\x00" in name:
-            raise InvalidName("collection names must not contain the null character")
+            raise InvalidName("TxMongo: collection names must not contain the null character.")
 
         self._database = database
         self._collection_name = unicode(name)
@@ -112,7 +114,7 @@ class Collection(object):
         as_dict = {}
         for field in fields:
             if not isinstance(field, (bytes, unicode)):
-                raise TypeError("fields must be a list of key names")
+                raise TypeError("TxMongo: fields must be a list of key names.")
             as_dict[field] = 1
         if not as_dict:
             # Empty list should be treated as "_id only"
@@ -178,13 +180,13 @@ class Collection(object):
             spec = SON()
 
         if not isinstance(spec, dict):
-            raise TypeError("spec must be an instance of dict")
+            raise TypeError("TxMongo: spec must be an instance of dict.")
         if not isinstance(fields, (dict, list)) and fields is not None:
-            raise TypeError("fields must be an instance of dict or list")
+            raise TypeError("TxMongo: fields must be an instance of dict or list.")
         if not isinstance(skip, int):
-            raise TypeError("skip must be an instance of int")
+            raise TypeError("TxMongo: skip must be an instance of int.")
         if not isinstance(limit, int):
-            raise TypeError("limit must be an instance of int")
+            raise TypeError("TxMongo: limit must be an instance of int.")
 
         fields = self._normalize_fields_projection(fields)
 
@@ -295,8 +297,7 @@ class Collection(object):
     @defer.inlineCallbacks
     def filemd5(self, spec, **kwargs):
         if not isinstance(spec, ObjectId):
-            raise ValueError("filemd5 expected an objectid for its "
-                             "non-keyword argument")
+            raise ValueError("TxMongo: filemd5 expected an objectid for its non-keyword argument.")
 
         result = yield self._database.command("filemd5", spec, root=self._collection_name, **kwargs)
         defer.returnValue(result.get("md5"))
@@ -337,9 +338,9 @@ class Collection(object):
                     ids.append(oid)
                     doc["_id"] = oid
                 else:
-                    raise TypeError("insert takes a document or a list of documents")
+                    raise TypeError("TxMongo: insert takes a document or a list of documents.")
         else:
-            raise TypeError("insert takes a document or a list of documents")
+            raise TypeError("TxMongo: insert takes a document or a list of documents.")
 
         docs = [BSON.encode(d) for d in docs]
         insert = Insert(flags=flags, collection=str(self), documents=docs)
@@ -392,11 +393,11 @@ class Collection(object):
     @defer.inlineCallbacks
     def update(self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs):
         if not isinstance(spec, dict):
-            raise TypeError("spec must be an instance of dict")
+            raise TypeError("TxMongo: spec must be an instance of dict.")
         if not isinstance(document, dict):
-            raise TypeError("document must be an instance of dict")
+            raise TypeError("TxMongo: document must be an instance of dict.")
         if not isinstance(upsert, bool):
-            raise TypeError("upsert must be an instance of bool")
+            raise TypeError("TxMongo: upsert must be an instance of bool.")
 
         if multi:
             flags |= UPDATE_MULTI
@@ -470,7 +471,7 @@ class Collection(object):
     @defer.inlineCallbacks
     def save(self, doc, safe=None, **kwargs):
         if not isinstance(doc, dict):
-            raise TypeError("cannot save objects of type %s" % type(doc))
+            raise TypeError("TxMongo: cannot save objects of type {0}".format(type(doc)))
         oid = doc.get("_id")
         if oid:
             result = yield self.update(
@@ -486,7 +487,7 @@ class Collection(object):
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, dict):
-            raise TypeError("spec must be an instance of dict, not %s" % type(spec))
+            raise TypeError("TxMongo: spec must be an instance of dict, not {0}".format(type(spec)))
 
         if single:
             flags |= DELETE_SINGLE_REMOVE
@@ -542,7 +543,7 @@ class Collection(object):
     @defer.inlineCallbacks
     def create_index(self, sort_fields, **kwargs):
         if not isinstance(sort_fields, qf.sort):
-            raise TypeError("sort_fields must be an instance of filter.sort")
+            raise TypeError("TxMongo: sort_fields must be an instance of filter.sort")
 
         if "name" not in kwargs:
             name = self._gen_index_name(sort_fields["orderby"])
@@ -584,7 +585,7 @@ class Collection(object):
         elif isinstance(index_identifier, qf.sort):
             name = self._gen_index_name(index_identifier["orderby"])
         else:
-            raise TypeError("index_identifier must be a name or instance of filter.sort")
+            raise TypeError("TxMongo: index_identifier must be a name or instance of filter.sort")
 
         result = yield self._database.command("deleteIndexes", self._collection_name,
                                               index=name, allowable_errors=["ns not found"],
@@ -650,10 +651,10 @@ class Collection(object):
         no_obj_error = "No matching object found"
 
         if not update and not kwargs.get("remove", None):
-            raise ValueError("Must either update or remove")
+            raise ValueError("TxMongo: must either update or remove.")
 
         if update and kwargs.get("remove", None):
-            raise ValueError("Can't do both update and remove")
+            raise ValueError("TxMongo: can't do both update and remove.")
 
         params = kwargs
         # No need to include empty args
@@ -672,7 +673,7 @@ class Collection(object):
                 defer.returnValue(None)
             else:
                 # Should never get here because of allowable_errors
-                raise ValueError("Unexpected Error: %s" % (result,))
+                raise ValueError("TxMongo: unexpected error '{0}'".format(result))
         defer.returnValue(result.get("value"))
 
     # Distinct findAndModify utility method is needed because traditional
@@ -684,7 +685,7 @@ class Collection(object):
                              return_document=ReturnDocument.BEFORE, **kwargs):
         validate_is_mapping("filter", filter)
         if not isinstance(return_document, bool):
-            raise ValueError("return_document must be ReturnDocument.BEFORE "
+            raise ValueError("TxMongo: return_document must be ReturnDocument.BEFORE "
                              "or ReturnDocument.AFTER")
 
         cmd = SON([("findAndModify", self._collection_name),

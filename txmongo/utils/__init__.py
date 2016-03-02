@@ -18,7 +18,7 @@ def timeout(func):
             deadline = now + seconds
 
         if deadline is not None and deadline < now:
-            raise TimeExceeded("Run time exceeded by {0}s.".format(now-deadline))
+            raise TimeExceeded("TxMongo: run time exceeded by {0}s.".format(now-deadline))
 
         kwargs['_deadline'] = deadline
         raw_d = func(*args, **kwargs)
@@ -44,7 +44,7 @@ def timeout(func):
         else:  # timeout
             if timeout_d.called:
                 raw_d.cancel()
-                raise TimeExceeded("Run time of {0}s exceeded.".format(seconds))
+                raise TimeExceeded("TxMongo: run time of {0}s exceeded.".format(seconds))
 
         # no timeout
         times_up.cancel()
@@ -54,4 +54,4 @@ def timeout(func):
 
 def check_deadline(_deadline):
     if _deadline is not None and _deadline < time():
-        raise TimeExceeded("Now: {0} Deadline: {1}".format(time(), _deadline))
+        raise TimeExceeded("TxMongo: now '{0}', deadline '{1}'".format(time(), _deadline))

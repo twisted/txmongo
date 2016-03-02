@@ -58,7 +58,7 @@ class Database(object):
         response = yield ns.find_one(command, **kwargs)
 
         if check:
-            msg = "command {0} on namespace {1} failed: %s".format(repr(command), ns)
+            msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(repr(command), ns)
             _check_command_response(response, msg, allowable_errors)
 
         defer.returnValue(response)
@@ -84,7 +84,7 @@ class Database(object):
         elif isinstance(name_or_collection, (bytes, unicode)):
             name = name_or_collection
         else:
-            raise TypeError("name must be an instance of basestring or txmongo.Collection")
+            raise TypeError("TxMongo: name must be an instance of basestring or txmongo.Collection")
 
         yield self.command("drop", unicode(name), allowable_errors=["ns not found"], **kwargs)
 
@@ -106,9 +106,9 @@ class Database(object):
         mostly stolen from pymongo
         """
         if not isinstance(name, (bytes, unicode)):
-            raise TypeError("name must be an instance of basestring")
+            raise TypeError("TxMongo: name must be an instance of basestring.")
         if not isinstance(password, (bytes, unicode)):
-            raise TypeError("password must be an instance of basestring")
+            raise TypeError("TxMongo: password must be an instance of basestring.")
 
         """
         Authenticating
