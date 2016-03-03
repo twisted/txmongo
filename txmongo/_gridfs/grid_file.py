@@ -36,14 +36,14 @@ def _create_property(field_name, docstring,
 
     def getter(self):
         if closed_only and not self._closed:
-            raise AttributeError("can only get %r on a closed file" %
-                                 field_name)
+            raise AttributeError(
+                "TxMongo: can only get {0} on a closed file.".format(repr(field_name)))
         return self._file.get(field_name, None)
 
     def setter(self, value):
         if self._closed:
-            raise AttributeError("cannot set %r on a closed file" %
-                                 field_name)
+            raise AttributeError(
+                "TxMongo: cannot set {0} on a closed file.".format(repr(field_name)))
         self._file[field_name] = value
 
     if read_only:
@@ -97,7 +97,7 @@ class GridIn(object):
           - `**kwargs` (optional): file level options (see above)
         """
         if not isinstance(root_collection, Collection):
-            raise TypeError("root_collection must be an instance of Collection")
+            raise TypeError("TxMongo: root_collection must be an instance of Collection.")
 
         # Handle alternative naming
         if "content_type" in kwargs:
@@ -141,11 +141,11 @@ class GridIn(object):
     def __getattr__(self, name):
         if name in self._file:
             return self._file[name]
-        raise AttributeError("GridIn object has no attribute '%s'" % name)
+        raise AttributeError("TxMongo: GridIn object has no attribute '{0}'".format(name))
 
     def __setattr__(self, name, value):
         if self._closed:
-            raise AttributeError("cannot set %r on a closed file" % name)
+            raise AttributeError("TxMongo: cannot set {0} on a closed file.".format(repr(name)))
         object.__setattr__(self, name, value)
 
     @defer.inlineCallbacks
@@ -213,7 +213,7 @@ class GridIn(object):
             to the file
         """
         if self._closed:
-            raise ValueError("cannot write to a closed file")
+            raise ValueError("TxMongo: cannot write to a closed file.")
 
         try:
             # file-like
@@ -221,13 +221,13 @@ class GridIn(object):
         except AttributeError:
             # string
             if not isinstance(data, (bytes, unicode)):
-                raise TypeError("can only write strings or file-like objects")
+                raise TypeError("TxMongo: can only write strings or file-like objects.")
             if isinstance(data, unicode):
                 try:
                     data = data.encode(self.encoding)
                 except AttributeError:
-                    raise TypeError("must specify an encoding for file in "
-                                    "order to write %s" % data)
+                    raise TypeError("TxMongo: must specify an encoding for file in "
+                                    "order to write {0}".format(data))
             read = StringIO(data).read
 
         if self._buffer.tell() > 0:
@@ -287,7 +287,7 @@ class GridOut(object):
           - `file_id`: value of ``"_id"`` for the file to read
         """
         if not isinstance(root_collection, Collection):
-            raise TypeError("root_collection must be an instance of Collection")
+            raise TypeError("TxMongo: root_collection must be an instance of Collection.")
 
         self.__chunks = root_collection.chunks
         self._file = doc
@@ -316,7 +316,7 @@ class GridOut(object):
     def __getattr__(self, name):
         if name in self._file:
             return self._file[name]
-        raise AttributeError("GridOut object has no attribute '%s'" % name)
+        raise AttributeError("TxMongo: GridOut object has no attribute '{0}'".format(name))
 
     @defer.inlineCallbacks
     def read(self, size=-1):
@@ -341,7 +341,7 @@ class GridOut(object):
                 chunk = yield self.__chunks.find_one({"files_id": self._id,
                                                       "n": chunk_number})
                 if not chunk:
-                    raise CorruptGridFile("no chunk #%d" % chunk_number)
+                    raise CorruptGridFile("TxMongo: no chunk #{0}".format(chunk_number))
 
                 if not data:
                     data += chunk["data"][self.__position % self.chunk_size:]
@@ -379,10 +379,10 @@ class GridOut(object):
         elif whence == os.SEEK_END:
             new_pos = int(self.length) + pos
         else:
-            raise IOError(22, "Invalid value for `whence`")
+            raise IOError(22, "TxMongo: invalid value for `whence`")
 
         if new_pos < 0:
-            raise IOError(22, "Invalid value for `pos` - must be positive")
+            raise IOError(22, "TxMongo: invalid value for `pos` - must be positive")
 
         self.__position = new_pos
 
@@ -412,7 +412,7 @@ class GridOutIterator(object):
         chunk = yield self.__chunks.find_one({"files_id": self.__id,
                                               "n": self.__current_chunk})
         if not chunk:
-            raise CorruptGridFile("no chunk #%d" % self.__current_chunk)
+            raise CorruptGridFile("TxMongo: no chunk #{0}".format(self.__current_chunk))
         self.__current_chunk += 1
         defer.returnValue(bytes(chunk["data"]))
     next = __next__

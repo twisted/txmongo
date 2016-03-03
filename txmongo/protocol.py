@@ -19,6 +19,7 @@ from bson import BSON, SON, Binary
 from collections import namedtuple
 from hashlib import sha1
 import hmac
+import logging
 from pymongo import auth
 from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure, \
     NotMasterError
@@ -179,7 +180,7 @@ class MongoClientProtocol(protocol.Protocol):
         if callable(sender):
             return sender(request)
         else:
-            log.msg("No sender for opcode: %d" % request.opcode)
+            log.msg("TxMongo: no sender for opcode '%d'" % request.opcode)
 
     def send_REPLY(self, request):
         iovec = [struct.pack("<iiiqii", *request[2:8])]
@@ -257,7 +258,7 @@ class MongoServerProtocol(protocol.Protocol):
         if callable(handler):
             handler(request)
         else:
-            log.msg("No handler found for opcode: %d" % request.opcode)
+            log.msg("TxMongo: no handler found for opcode '%d'" % request.opcode)
 
     def handle_REPLY(self, request):
         pass
@@ -322,7 +323,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         # too late.
         self.factory.setInstance(None, reason)
 
-        auto_reconnect = AutoReconnect("Connection lost.")
+        auto_reconnect = AutoReconnect("TxMongo lost connection to MongoDB.")
 
         if self.__deferreds:
             deferreds, self.__deferreds = self.__deferreds, {}
@@ -337,6 +338,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
     def connectionReady(self):
         if self.transport:
+            log.msg("TxMongo: connection to MongoDB established.", logLevel=logging.INFO)
             return defer.succeed(None)
         if not self.__connection_ready:
             self.__connection_ready = []
@@ -362,7 +364,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
             if request.response_flags & REPLY_QUERY_FAILURE:
                 doc = request.documents[0].decode()
                 code = doc.get("code")
-                msg = doc.get("$err", "Unknown error")
+                msg = "TxMongo: " + doc.get("$err", "Unknown error")
                 fail_conn = False
                 if code == 13435:
                     err = NotMasterError(msg)
@@ -452,7 +454,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         salt = parsed[b's']
         rnonce = parsed[b'r']
         if not rnonce.startswith(nonce):
-            raise MongoAuthenticationError("Server returned an invalid nonce.")
+            raise MongoAuthenticationError("TxMongo: server returned an invalid nonce.")
 
         without_proof = b"c=biws,r=" + rnonce
         salted_pass = auth._hi(auth._password_digest(username, password).encode("utf-8"),
@@ -475,11 +477,11 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         result = yield self.__run_command(database_name, cmd)
 
         if not result["ok"]:
-            raise MongoAuthenticationError("Authentication failed")
+            raise MongoAuthenticationError("TxMongo: authentication failed.")
 
         parsed = auth._parse_scram_response(result["payload"])
         if parsed[b'v'] != server_sig:
-            raise MongoAuthenticationError("Server returned an invalid signature.")
+            raise MongoAuthenticationError("TxMongo: server returned an invalid signature.")
 
         # Depending on how it's configured, Cyrus SASL (which the server uses)
         # requires a third empty challenge.
@@ -489,7 +491,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                        ("payload", Binary(b''))])
             result = yield self.__run_command(database_name, cmd)
             if not result["done"]:
-                raise MongoAuthenticationError("SASL conversation failed to complete.")
+                raise MongoAuthenticationError("TxMongo: SASL conversation failed to complete.")
 
     @defer.inlineCallbacks
     def authenticate(self, database_name, username, password, mechanism):
@@ -511,7 +513,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                     auth_func = self.authenticate_mongo_cr
             else:
                 raise MongoAuthenticationError(
-                    "Unknown authentication mechanism: {0}".format(mechanism))
+                    "TxMongo: Unknown authentication mechanism: {0}".format(mechanism))
 
             result = yield auth_func(database_name, username, password)
             defer.returnValue(result)

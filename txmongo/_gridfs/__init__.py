@@ -46,7 +46,7 @@ class GridFS(object):
            The `collection` parameter.
         """
         if not isinstance(database, Database):
-            raise TypeError("database must be an instance of Database")
+            raise TypeError("TxMongo: database must be an instance of Database.")
 
         self.__database = database
         self.__collection = database[collection]
@@ -140,7 +140,7 @@ class GridFS(object):
         doc = yield self.__files.find_one({"filename": filename},
                                           filter=filter.sort(DESCENDING("uploadDate")))
         if doc is None:
-            raise NoFile("no file in gridfs with filename %r" % filename)
+            raise NoFile("TxMongo: no file in gridfs with filename {0}".format(repr(filename)))
 
         defer.returnValue(GridOut(self.__collection, doc))
 
