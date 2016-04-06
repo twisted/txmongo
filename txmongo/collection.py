@@ -7,7 +7,7 @@ import bson
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
-from pymongo.errors import InvalidName
+from pymongo.errors import InvalidName, BulkWriteError
 from pymongo.helpers import _check_write_command_response
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult
@@ -369,24 +369,29 @@ class Collection(object):
                            ("ordered", ordered),
                            ("writeConcern", self.write_concern.document)])
             response = yield self._database.command(command, **kwargs)
-            _check_write_command_response([[0, response]])
         else:
             # falling back to OP_INSERT in case of unacknowledged op
             flags = INSERT_CONTINUE_ON_ERROR if not ordered else 0
             inserted_ids = yield self.insert(documents, flags=flags, **kwargs)
+            response = None
 
-        defer.returnValue(inserted_ids)
+        defer.returnValue((inserted_ids, response))
 
     @timeout
     @defer.inlineCallbacks
     def insert_one(self, document, **kwargs):
-        inserted_ids = yield self._insert_one_or_many([document], **kwargs)
+        inserted_ids, response = yield self._insert_one_or_many([document], **kwargs)
+        if response:
+            _check_write_command_response([[0, response]])
         defer.returnValue(InsertOneResult(inserted_ids[0], self.write_concern.acknowledged))
 
     @timeout
     @defer.inlineCallbacks
     def insert_many(self, documents, ordered=True, **kwargs):
-        inserted_ids = yield self._insert_one_or_many(documents, ordered, **kwargs)
+        inserted_ids, response = yield self._insert_one_or_many(documents, ordered, **kwargs)
+        if response and ("writeErrors" in response or "writeConcernErrors" in response):
+            response.get("writeErrors", []).sort(key=lambda error: error["index"])
+            raise BulkWriteError(response)
         defer.returnValue(InsertManyResult(inserted_ids, self.write_concern.acknowledged))
 
     @timeout
