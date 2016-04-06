@@ -17,7 +17,8 @@ from __future__ import absolute_import, division
 
 from bson import BSON, ObjectId
 from bson.son import SON
-from pymongo.errors import OperationFailure, WriteError
+from pymongo.errors import OperationFailure, WriteError, BulkWriteError, \
+    DuplicateKeyError
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult
 from pymongo.collection import ReturnDocument
@@ -580,6 +581,16 @@ class TestInsertOne(_SingleCollectionTest):
         count = yield self.coll.count()
         self.assertEqual(count, 1)
 
+    @defer.inlineCallbacks
+    def test_Failures(self):
+        yield self.coll.insert_one({"_id": 1})
+
+        yield self.assertFailure(self.coll.insert_one({"_id": 1}), DuplicateKeyError)
+        yield self.coll.with_options(write_concern=WriteConcern(w=0)).insert_one({"_id": 1})
+
+        yield self.assertFailure(self.coll.insert_one({'$': 1}), WriteError)
+        yield self.coll.with_options(write_concern=WriteConcern(w=0)).insert_one({'$': 1})
+
 
 class TestInsertMany(_SingleCollectionTest):
 
@@ -613,7 +624,7 @@ class TestInsertMany(_SingleCollectionTest):
     @defer.inlineCallbacks
     def test_OrderedAck(self):
         docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
-        yield self.assertFailure(self.coll.insert_many(docs), WriteError)
+        yield self.assertFailure(self.coll.insert_many(docs), BulkWriteError)
 
         count = yield self.coll.count()
         self.assertEqual(count, 1)
@@ -630,7 +641,7 @@ class TestInsertMany(_SingleCollectionTest):
     @defer.inlineCallbacks
     def test_Unordered(self):
         docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
-        yield self.assertFailure(self.coll.insert_many(docs, ordered=False), WriteError)
+        yield self.assertFailure(self.coll.insert_many(docs, ordered=False), BulkWriteError)
 
         count = yield self.coll.count()
         self.assertEqual(count, 2)
@@ -690,6 +701,16 @@ class TestUpdateOne(_SingleCollectionTest):
         # update_one/update_many only allow $-operators, not whole document replace)
         yield self.assertFailure(self.coll.update_one({'x': 1}, {'y': 123}), ValueError)
 
+    @defer.inlineCallbacks
+    def test_Failures(self):
+        # can't alter _id
+        yield self.assertFailure(self.coll.update_one({'x': 1}, {"$set": {"_id": 1}}), WriteError)
+        # invalid field name
+        yield self.assertFailure(self.coll.update_one({'x': 1}, {"$set": {'$': 1}}), WriteError)
+
+        yield self.coll.create_index(qf.sort(qf.ASCENDING('x')), unique=True)
+        yield self.assertFailure(self.coll.update_one({'x': 2}, {"$set": {'x': 1}}), DuplicateKeyError)
+
 
 class TestReplaceOne(_SingleCollectionTest):
 
@@ -736,6 +757,13 @@ class TestReplaceOne(_SingleCollectionTest):
         # replace_one does not allow $-operators, only whole document replace
         yield self.assertFailure(self.coll.replace_one({'x': 1}, {"$set": {'y': 123}}),
                                  ValueError)
+
+    @defer.inlineCallbacks
+    def test_Failures(self):
+        yield self.assertFailure(self.coll.replace_one({'x': 1}, {'x': {'$': 5}}), WriteError)
+
+        yield self.coll.create_index(qf.sort(qf.ASCENDING('x')), unique=True)
+        yield self.assertFailure(self.coll.replace_one({'x': 1}, {'x': 2}), DuplicateKeyError)
 
 
 class TestUpdateMany(_SingleCollectionTest):
@@ -792,6 +820,16 @@ class TestUpdateMany(_SingleCollectionTest):
         # update_one/update_many only allow $-operators, not whole document replace)
         yield self.assertFailure(self.coll.update_many({'x': 1}, {'y': 123}), ValueError)
 
+    @defer.inlineCallbacks
+    def test_Failures(self):
+        # can't alter _id
+        yield self.assertFailure(self.coll.update_many({}, {"$set": {"_id": 1}}), WriteError)
+        # invalid field name
+        yield self.assertFailure(self.coll.update_many({}, {"$set": {'$': 1}}), WriteError)
+
+        yield self.coll.create_index(qf.sort(qf.ASCENDING('x')), unique=True)
+        yield self.assertFailure(self.coll.update_many({'x': 2}, {"$set": {'x': 1}}), DuplicateKeyError)
+
 
 class TestDeleteOne(_SingleCollectionTest):
 
@@ -820,6 +858,10 @@ class TestDeleteOne(_SingleCollectionTest):
         cnt = yield self.coll.count()
         self.assertEqual(cnt, 1)
 
+    @defer.inlineCallbacks
+    def test_Failures(self):
+        yield self.assertFailure(self.coll.delete_one({'x': {'$': 1}}), WriteError)
+
 
 class TestDeleteMany(_SingleCollectionTest):
 
@@ -847,6 +889,10 @@ class TestDeleteMany(_SingleCollectionTest):
 
         cnt = yield self.coll.count()
         self.assertEqual(cnt, 0)
+
+    @defer.inlineCallbacks
+    def test_Failures(self):
+        yield self.assertFailure(self.coll.delete_many({'x': {'$': 1}}), WriteError)
 
 
 class TestFindOneAndDelete(_SingleCollectionTest):
