@@ -26,13 +26,13 @@ API Changes
 ^^^^^^^^^^^
 
 - ``connection.ConnectionPool`` exposes `max_delay` which is used to set the maximum number of
-seconds between connection attempts. The default is set to 60.
+  seconds between connection attempts. The default is set to 60.
 
 Features
 ^^^^^^^^
 
 - Updated and simplified setup.py, enforce minimal versions of PyMongo and Twisted necessary to
-install TxMongo.
+  install TxMongo.
 
 
 Release 15.3.0 (2015-09-29)
@@ -42,23 +42,23 @@ API Changes
 ^^^^^^^^^^^
 
 - ``NotMaster`` instead of ``AutoReconnect`` error will be returned when a call can be safely
-retried.
+  retried.
 
 Features
 ^^^^^^^^
 
 - Added ``deadline`` to ``collection`` methods, this will raise a ``DeadlineExceeded`` when the
-deadline, a unix timestamp in seconds, is exceeded. This happens only in methods with
-``getprotocol()`` and methods that reference them.
+  deadline, a unix timestamp in seconds, is exceeded. This happens only in methods with
+  ``getprotocol()`` and methods that reference them.
 - Added ``timeout`` to ``collection`` methods, this will raise a ``TimeoutExceeded`` when the
-timeout, in seconds, is exceeded. This happens only in methods with ``getprotocol()`` and methods that
-reference them.
+  timeout, in seconds, is exceeded. This happens only in methods with ``getprotocol()`` and methods that
+  reference them.
 
 Bugfixes
 ^^^^^^^^
 
 - Fixed ``collection.count()`` to return an int instead of float, this matches how count
-in with PyMongo.
+  in with PyMongo.
 
 
 Release 15.2.2 (2015-09-15)
@@ -219,7 +219,7 @@ Code review and cleanup
 Bugfixes
 ^^^^^^^^
 
- - Bug fixes
+- Bug fixes
 
 
 Release 0.4 (2013-01-07)
@@ -241,7 +241,7 @@ Features
 Bugfixes
 ^^^^^^^^
 
- - Bug fixes
+- Bug fixes
 
 Release 0.3 (2010-09-13)
 ------------------------
