@@ -1,6 +1,16 @@
 Changelog
 =========
 
+Release 16.1.0 (UNRELEASED)
+---------------------------
+
+API Changes
+^^^^^^^^^^^
+
+- ``insert_many()`` raises ``BulkWriteError`` instead ``WriteError``/``DuplicateKeyError`` to
+  match PyMongo's behavior. This is also allows to extract multiple duplicate key errors from
+  exception object when ``insert_many`` is used with ``ordered=False``.
+
 Release 16.0.1 (2016-03-03)
 ---------------------------
 
