@@ -623,7 +623,7 @@ class TestInsertMany(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_OrderedAck(self):
-        docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
+        docs = [{"_id": 1}, {"_id": 1, }, {"_id": 2}]
         yield self.assertFailure(self.coll.insert_many(docs), BulkWriteError)
 
         count = yield self.coll.count()
@@ -631,7 +631,7 @@ class TestInsertMany(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_OrderedUnack(self):
-        docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
+        docs = [{"_id": 1}, {"_id": 1, }, {"_id": 2}]
         coll = self.coll.with_options(write_concern=WriteConcern(w=0))
         yield coll.insert_many(docs)
 
@@ -640,7 +640,7 @@ class TestInsertMany(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Unordered(self):
-        docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
+        docs = [{"_id": 1}, {"_id": 1, }, {"_id": 2}]
         yield self.assertFailure(self.coll.insert_many(docs, ordered=False), BulkWriteError)
 
         count = yield self.coll.count()
@@ -648,7 +648,7 @@ class TestInsertMany(_SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_UnorderedUnack(self):
-        docs = [{'x': 1}, {'x': 2, '$': "error"}, {'x': 3}]
+        docs = [{"_id": 1}, {"_id": 1, }, {"_id": 2}]
         coll = self.coll.with_options(write_concern=WriteConcern(w=0))
         yield coll.insert_many(docs, ordered=False)
 
