@@ -3,7 +3,10 @@
 # found in the LICENSE file.
 
 from __future__ import absolute_import, division
+import io
+import struct
 import bson
+import collections
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
@@ -385,13 +388,135 @@ class Collection(object):
             _check_write_command_response([[0, response]])
         defer.returnValue(InsertOneResult(inserted_ids[0], self.write_concern.acknowledged))
 
+    @staticmethod
+    def _generate_insert_many_batches(collname, documents, ordered, write_concern, max_bson, max_count):
+        # Takes a list of documents and generates one or many `insert` commands
+        # with documents list in each command is less or equal to max_bson bytes
+        # and contains less or equal documents than max_count
+
+        # Manually composing command in BSON form because this way we can
+        # perform costly documents serialization only once
+
+        msg = SON([("insert", collname),
+                   ("ordered", ordered),
+                   ("writeConcern", write_concern.document)])
+
+        buf = io.BytesIO()
+        buf.write(BSON.encode(msg))
+        buf.seek(-1, io.SEEK_END)  # -1 because we don't need final NUL from partial command
+        buf.write(b'\x04documents\x00')  # type and name of 'documents' array
+        docs_start = buf.tell()
+        buf.write(b'\x00\x00\x00\x00')   # 'documents' length placeholder
+
+        def prepare_command():
+            docs_end = buf.tell() + 1  # +1 for final NUL for 'documents'
+            buf.write(b'\x00\x00')  # final NULs for 'documents' and the command itself
+            total_length = buf.tell()
+
+            # writing 'documents' length
+            buf.seek(docs_start)
+            buf.write(struct.pack('<i', docs_end - docs_start))
+
+            # writing total message length
+            buf.seek(0)
+            buf.write(struct.pack('<i', total_length))
+
+            return BSON(buf.getvalue())
+
+        idx = 0
+        for doc in documents:
+            key = str(idx).encode('ascii')
+            value = BSON.encode(doc)
+
+            enough_size = buf.tell() + len(key)+2 + len(value) - docs_start > max_bson
+            enough_count = idx >= max_count
+            if enough_size or enough_count:
+                yield prepare_command()
+
+                buf.seek(docs_start + 4)
+                buf.truncate()
+
+                idx = 0
+                key = b'0'
+
+            buf.write(b'\x03' + key + b'\x00')  # type and key of document
+            buf.write(value)
+
+            idx += 1
+
+        yield prepare_command()
+
     @timeout
     @defer.inlineCallbacks
     def insert_many(self, documents, ordered=True, **kwargs):
-        inserted_ids, response = yield self._insert_one_or_many(documents, ordered, **kwargs)
-        if response and ("writeErrors" in response or "writeConcernErrors" in response):
-            response.get("writeErrors", []).sort(key=lambda error: error["index"])
-            raise BulkWriteError(response)
+        inserted_ids = []
+        for doc in documents:
+            if isinstance(doc, collections.Mapping):
+                inserted_ids.append(doc.setdefault("_id", ObjectId()))
+            else:
+                raise TypeError("TxMongo: insert_many takes list of documents.")
+
+        cmd_collname = str(self._database["$cmd"])
+        proto = yield self._database.connection.getprotocol()
+
+        error = {
+            "nInserted": 0,
+            "writeErrors": [],
+            "writeConcernErrors": []
+        }
+
+        def accumulate_response(reply):
+            response = reply.documents[0].decode()
+            error["nInserted"] += response.get('n', 0)
+            error["writeErrors"].extend(response.get("writeErrors", []))
+            if "writeConcernError" in response:
+                error["writeConcernErrors"].append(response["writeConcernError"])
+
+        def has_errors():
+            return error["writeErrors"] or error["writeConcernErrors"]
+
+        def raise_error():
+            error["writeErrors"].sort(key=lambda error: error["index"])
+            for write_error in error["writeErrors"]:
+                write_error[u"op"] = documents[write_error["index"]]
+            raise BulkWriteError(error)
+
+        batches = self._generate_insert_many_batches(self._collection_name, documents, ordered,
+                                                     self.write_concern, proto.max_bson_size,
+                                                     proto.max_write_batch_size)
+
+        # There are four major cases with different behavior of insert_many:
+        #   * Unack, Unordered:  sending all batches and not handling responses at all
+        #                        so ignoring any errors
+        #
+        #   * Ack, Unordered:    sending all batches, accumulating all responses and
+        #                        returning aggregated response
+        #
+        #   * Unack, Ordered:    handling DB responses despite unacknowledged write_concern
+        #                        because we must stop on first error (not raising it though)
+        #
+        #   * Ack, Ordered:      stopping on first error and raising BulkWriteError
+
+        all_responses = []
+        for batch in batches:
+            batch_result = proto.send_QUERY(Query(collection=cmd_collname, query=batch))
+            if self.write_concern.acknowledged or ordered:
+                batch_result.addCallback(accumulate_response)
+                if ordered:
+                    yield batch_result
+                    if has_errors:
+                        if self.write_concern.acknowledged:
+                            raise_error()
+                        else:
+                            break
+                else:
+                    all_responses.append(batch_result)
+
+        if self.write_concern.acknowledged and not ordered:
+            yield defer.DeferredList(all_responses)
+            if has_errors():
+                raise_error()
+
         defer.returnValue(InsertManyResult(inserted_ids, self.write_concern.acknowledged))
 
     @timeout

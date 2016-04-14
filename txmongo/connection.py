@@ -16,6 +16,10 @@ from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
 
 
+DEFAULT_MAX_BSON_SIZE = 16 * 1024**2
+DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
+
+
 _PRIMARY_READ_PREFERENCES = {ReadPreference.PRIMARY.mode, ReadPreference.PRIMARY_PREFERRED.mode}
 
 
@@ -109,9 +113,8 @@ class _Connection(ReconnectingClientFactory):
             raise ConfigurationError(msg)
 
         # Track max bson object size limit.
-        max_bson_size = config.get("maxBsonObjectSize")
-        if max_bson_size:
-            proto.max_bson_size = max_bson_size
+        proto.max_bson_size = config.get("maxBsonObjectSize", DEFAULT_MAX_BSON_SIZE)
+        proto.max_write_batch_size = config.get("maxWriteBatchSize", DEFAULT_MAX_WRITE_BATCH_SIZE)
 
         proto.set_wire_versions(config.get("minWireVersion", 0),
                                 config.get("maxWireVersion", 0))
