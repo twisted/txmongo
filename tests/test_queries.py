@@ -643,13 +643,12 @@ class TestInsertMany(_SingleCollectionTest):
     @defer.inlineCallbacks
     def testOrderedAck_Fail(self):
         self.more_than_1k[500] = self.more_than_1k[499]
-        with self.assertRaises(BulkWriteError) as raised:
-            yield self.coll.insert_many(self.more_than_1k)
-        self.assertEqual(raised.exception.details["nInserted"], 500)
+        error = yield self.assertFailure(self.coll.insert_many(self.more_than_1k), BulkWriteError)
+        self.assertEqual(error.details["nInserted"], 500)
         self.assertEqual((yield self.coll.count()), 500)
-        self.assertEqual(len(raised.exception.details["writeErrors"]), 1)
-        self.assertEqual(raised.exception.details["writeErrors"][0]["index"], 500)
-        self.assertEqual(raised.exception.details["writeErrors"][0]["op"], {"_id": 499})
+        self.assertEqual(len(error.details["writeErrors"]), 1)
+        self.assertEqual(error.details["writeErrors"][0]["index"], 500)
+        self.assertEqual(error.details["writeErrors"][0]["op"], {"_id": 499})
 
     @defer.inlineCallbacks
     def test_OrderedUnack_Fail(self):
@@ -665,13 +664,13 @@ class TestInsertMany(_SingleCollectionTest):
     @defer.inlineCallbacks
     def test_UnorderedAck_Fail(self):
         self.more_than_1k[500] = self.more_than_1k[499]
-        with self.assertRaises(BulkWriteError) as raised:
-            yield self.coll.insert_many(self.more_than_1k, ordered=False)
-        self.assertEqual(raised.exception.details["nInserted"], len(self.more_than_1k) - 1)
+        error = yield self.assertFailure(self.coll.insert_many(self.more_than_1k, ordered=False),
+                                         BulkWriteError)
+        self.assertEqual(error.details["nInserted"], len(self.more_than_1k) - 1)
         self.assertEqual((yield self.coll.count()), len(self.more_than_1k) - 1)
-        self.assertEqual(len(raised.exception.details["writeErrors"]), 1)
-        self.assertEqual(raised.exception.details["writeErrors"][0]["index"], 500)
-        self.assertEqual(raised.exception.details["writeErrors"][0]["op"], {"_id": 499})
+        self.assertEqual(len(error.details["writeErrors"]), 1)
+        self.assertEqual(error.details["writeErrors"][0]["index"], 500)
+        self.assertEqual(error.details["writeErrors"][0]["op"], {"_id": 499})
 
     @defer.inlineCallbacks
     def test_UnorderedUnack_Fail(self):
