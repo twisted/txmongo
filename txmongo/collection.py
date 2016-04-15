@@ -504,7 +504,7 @@ class Collection(object):
                 batch_result.addCallback(accumulate_response)
                 if ordered:
                     yield batch_result
-                    if has_errors:
+                    if has_errors():
                         if self.write_concern.acknowledged:
                             raise_error()
                         else:
