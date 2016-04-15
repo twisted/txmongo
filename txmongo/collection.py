@@ -481,10 +481,6 @@ class Collection(object):
                 write_error[u"op"] = documents[write_error["index"]]
             raise BulkWriteError(error)
 
-        batches = self._generate_insert_many_batches(self._collection_name, documents, ordered,
-                                                     self.write_concern, proto.max_bson_size,
-                                                     proto.max_write_batch_size)
-
         # There are four major cases with different behavior of insert_many:
         #   * Unack, Unordered:  sending all batches and not handling responses at all
         #                        so ignoring any errors
@@ -496,6 +492,14 @@ class Collection(object):
         #                        because we must stop on first error (not raising it though)
         #
         #   * Ack, Ordered:      stopping on first error and raising BulkWriteError
+
+        actual_write_concern = self.write_concern
+        if ordered and self.write_concern.acknowledged is False:
+            actual_write_concern = WriteConcern(w=1)
+
+        batches = self._generate_insert_many_batches(self._collection_name, documents, ordered,
+                                                     actual_write_concern, proto.max_bson_size,
+                                                     proto.max_write_batch_size)
 
         all_responses = []
         for batch in batches:
