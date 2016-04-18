@@ -10,6 +10,11 @@ API Changes
 - ``insert_many()`` raises ``BulkWriteError`` instead ``WriteError``/``DuplicateKeyError`` to
   match PyMongo's behavior. This is also allows to extract multiple duplicate key errors from
   exception object when ``insert_many`` is used with ``ordered=False``.
+  
+Features
+^^^^^^^^
+
+- ``insert_many()`` is new able to insert more than 1000 documents or more than 16Mb of documents at once.
 
 Release 16.0.1 (2016-03-03)
 ---------------------------

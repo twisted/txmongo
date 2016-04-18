@@ -594,6 +594,10 @@ class TestInsertOne(_SingleCollectionTest):
 
 class TestInsertMany(_SingleCollectionTest):
 
+    def setUp(self):
+        self.more_than_1k = [{"_id": i} for i in range(2016)]
+        return super(TestInsertMany, self).setUp()
+
     @defer.inlineCallbacks
     def test_InvalidArg(self):
         yield self.assertFailure(self.coll.insert_many({'x': 42}), TypeError)
@@ -617,43 +621,79 @@ class TestInsertMany(_SingleCollectionTest):
         self.assertEqual(result.acknowledged, False)
 
         docs = yield self.coll.find()
-        ids = set(doc["_id"] for doc in docs)
-
-        self.assertEqual(ids, set(result.inserted_ids))
+        self.assertEqual({doc["_id"] for doc in docs}, set(result.inserted_ids))
 
     @defer.inlineCallbacks
-    def test_OrderedAck(self):
-        docs = [{"_id": 1}, {"_id": 1, }, {"_id": 2}]
-        yield self.assertFailure(self.coll.insert_many(docs), BulkWriteError)
-
-        count = yield self.coll.count()
-        self.assertEqual(count, 1)
-
-    @defer.inlineCallbacks
-    def test_OrderedUnack(self):
-        docs = [{"_id": 1}, {"_id": 1, }, {"_id": 2}]
-        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
-        yield coll.insert_many(docs)
-
-        count = yield self.coll.count()
-        self.assertEqual(count, 1)
+    def test_OrderedAck_Ok(self):
+        result = yield self.coll.insert_many(self.more_than_1k)
+        found = yield self.coll.find()
+        self.assertEqual(len(result.inserted_ids), len(self.more_than_1k))
+        self.assertEqual(len(found), len(self.more_than_1k))
+        self.assertEqual(set(result.inserted_ids), {doc["_id"] for doc in found})
 
     @defer.inlineCallbacks
-    def test_Unordered(self):
-        docs = [{"_id": 1}, {"_id": 1, }, {"_id": 2}]
-        yield self.assertFailure(self.coll.insert_many(docs, ordered=False), BulkWriteError)
-
-        count = yield self.coll.count()
-        self.assertEqual(count, 2)
+    def test_OrderedUnack_Ok(self):
+        w_0 = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield w_0.insert_many(self.more_than_1k)
+        found = yield self.coll.find()
+        self.assertEqual(len(result.inserted_ids), len(self.more_than_1k))
+        self.assertEqual(len(found), len(self.more_than_1k))
+        self.assertEqual(set(result.inserted_ids), {doc["_id"] for doc in found})
 
     @defer.inlineCallbacks
-    def test_UnorderedUnack(self):
-        docs = [{"_id": 1}, {"_id": 1, }, {"_id": 2}]
-        coll = self.coll.with_options(write_concern=WriteConcern(w=0))
-        yield coll.insert_many(docs, ordered=False)
+    def testOrderedAck_Fail(self):
+        self.more_than_1k[500] = self.more_than_1k[499]
+        error = yield self.assertFailure(self.coll.insert_many(self.more_than_1k), BulkWriteError)
+        self.assertEqual(error.details["nInserted"], 500)
+        self.assertEqual((yield self.coll.count()), 500)
+        self.assertEqual(len(error.details["writeErrors"]), 1)
+        self.assertEqual(error.details["writeErrors"][0]["index"], 500)
+        self.assertEqual(error.details["writeErrors"][0]["op"], {"_id": 499})
 
-        count = yield self.coll.count()
-        self.assertEqual(count, 2)
+    @defer.inlineCallbacks
+    def test_OrderedUnack_Fail(self):
+        self.more_than_1k[500] = self.more_than_1k[499]
+
+        w_0 = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield w_0.insert_many(self.more_than_1k)
+        self.assertEqual(len(result.inserted_ids), len(self.more_than_1k))
+        found = yield self.coll.find()
+        self.assertEqual(len(found), 500)
+        self.assertEqual({doc["_id"] for doc in found[:500]}, set(result.inserted_ids[:500]))
+
+    @defer.inlineCallbacks
+    def test_UnorderedAck_Fail(self):
+        self.more_than_1k[500] = self.more_than_1k[499]
+        error = yield self.assertFailure(self.coll.insert_many(self.more_than_1k, ordered=False),
+                                         BulkWriteError)
+        self.assertEqual(error.details["nInserted"], len(self.more_than_1k) - 1)
+        self.assertEqual((yield self.coll.count()), len(self.more_than_1k) - 1)
+        self.assertEqual(len(error.details["writeErrors"]), 1)
+        self.assertEqual(error.details["writeErrors"][0]["index"], 500)
+        self.assertEqual(error.details["writeErrors"][0]["op"], {"_id": 499})
+
+    @defer.inlineCallbacks
+    def test_UnorderedUnack_Fail(self):
+        self.more_than_1k[500] = self.more_than_1k[499]
+
+        w_0 = self.coll.with_options(write_concern=WriteConcern(w=0))
+        result = yield w_0.insert_many(self.more_than_1k, ordered=False)
+        self.assertEqual(len(result.inserted_ids), len(self.more_than_1k))
+        found = yield self.coll.find()
+        self.assertEqual(len(found), len(self.more_than_1k) - 1)
+        self.assertEqual({doc["_id"] for doc in found}, set(result.inserted_ids) - {500})
+
+    @defer.inlineCallbacks
+    def test_MoreThan16Mb(self):
+        # 8mb x 5
+        mb40 = [{"_id": i, 'x': 'y'*(8*1024**2)} for i in range(5)]
+
+        result = yield self.coll.insert_many(mb40)
+        self.assertEqual(result.inserted_ids, list(range(5)))
+        found = yield self.coll.find()
+        self.assertEqual(len(found), 5)
+        total_size = sum(len(BSON.encode(doc)) for doc in found)
+        self.assertGreater(total_size, 40*1024**2)
 
 
 class TestUpdateOne(_SingleCollectionTest):
