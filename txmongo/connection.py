@@ -16,7 +16,7 @@ from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
 
 
-DEFAULT_MAX_BSON_SIZE = 16 * 1024**2
+DEFAULT_MAX_BSON_SIZE = 16777216
 DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
 
 
