@@ -28,6 +28,15 @@ from twisted.python.compat import unicode, comparable
 
 @comparable
 class Collection(object):
+    """Creates new :class:`Collection` object
+
+    :Parameters:
+      - `database`: the :class:`Database` instance to get collection from
+      - `name`: the name of the collection to get
+      - `write_concern` (optional): An instance of :class:`pymongo.write_concern.WriteConcern`.
+        If ``None``, ``database.write_concern`` is used.
+    """
+
     def __init__(self, database, name, write_concern=None):
         if not isinstance(name, (bytes, unicode)):
             raise TypeError("TxMongo: name must be an instance of (bytes, unicode).")
@@ -56,17 +65,23 @@ class Collection(object):
 
     @property
     def full_name(self):
+        """Full name of this :class:`Collection`, i.e.
+        `db_name.collection_name`"""
         return '{0}.{1}'.format(str(self._database), self._collection_name)
 
     @property
     def name(self):
+        """Name of this :class:`Collection` (without database name)."""
         return self._collection_name
 
     @property
     def database(self):
+        """The :class:`~txmongo.database.Database` that this :class:`Collection`
+        is a part of."""
         return self._database
 
     def __getitem__(self, collection_name):
+        """Get a sub-collection of this collection by name."""
         return Collection(self._database,
                           "%s.%s" % (self._collection_name, collection_name))
 
@@ -81,17 +96,30 @@ class Collection(object):
         return NotImplemented
 
     def __getattr__(self, collection_name):
+        """Get a sub-collection of this collection by name."""
         return self[collection_name]
 
     def __call__(self, collection_name):
+        """Get a sub-collection of this collection by name."""
         return self[collection_name]
 
     @property
     def write_concern(self):
+        """Read only access to the :class:`~pymongo.write_concern.WriteConcern`
+        of this instance.
+
+        Use ``coll.with_options(write_concern=WriteConcern(...))`` to change
+        the Write Concern.
+        """
         return self.__write_concern or self._database.write_concern
 
     def with_options(self, **kwargs):
-        """Get a clone of collection changing the specified settings."""
+        """Get a clone of collection changing the specified settings.
+
+        :Keyword parameters:
+          - `write_concern`: new :class:`~pymongo.write_concern.WriteConcern`
+            to use.
+        """
         # PyMongo's method gets several positional arguments. We support
         # only write_concern for now which is the 3rd positional argument.
         # So we are using **kwargs here to force user's code to specify
@@ -131,6 +159,13 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def options(self, **kwargs):
+        """Get the options set on this collection.
+
+        Returns :class:`Deferred` that called back with dictionary of options
+        and their values.
+
+        *This method only works with MongoDB 2.x*
+        """
         result = yield self._database.system.namespaces.find_one({"name": str(self)}, **kwargs)
         if not result:
             result = {}
@@ -142,6 +177,48 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
+        """Find documents in a collection.
+
+        The `spec` argument is a MongoDB query document. To return all documents
+        in a collection, omit this parameter or pass an empty document (``{}``).
+        You can pass ``{"key": "value"}`` to select documents having ``key``
+        field equal to ``"value"`` or use any of `MongoDB's query selectors
+        <https://docs.mongodb.org/manual/reference/operator/query/#query-selectors>`_.
+
+        Ordering, indexing hints and other query parameters can be set with
+        `filter` argument. See :mod:`txmongo.filter` for details.
+
+        :Parameters:
+          - `skip`: the number of documents to omit from the start of the
+            result set.
+          - `limit`: the maximum number of documents to return. All documents
+            are returned when `limit` is zero.
+          - `fields`: a list of field names that should be returned for each
+            document in the result set or a dict specifying field names to
+            include or exclude. If `fields` is a list ``_id`` fields will
+            always be returned. Use a dict form to exclude fields:
+            ``fields={"_id": False}``.
+          - `as_class` (keyword only): if not ``None``, returned documents will
+            be converted to type specified. For example, you can use
+            ``as_class=collections.OrderedDict`` or ``as_class=bson.SON`` when
+            field ordering in documents is important.
+
+        Returns an instance of :class:`Deferred` that called back with one of:
+          - if `cursor` is ``False`` (the default) --- all documents found
+          - if `cursor` is ``True`` --- tuple of ``(docs, dfr)``, where ``docs``
+            is a partial result, returned by MongoDB in a first batch and
+            ``dfr`` is a :class:`Deferred` that fires with next ``(docs, dfr)``.
+            Last result will be ``([], None)``. Using this mode you can iterate
+            over the result set with code like that:
+            ::
+                @defer.inlineCallbacks
+                def query():
+                    docs, dfr = yield coll.find(query, cursor=True)
+                    while docs:
+                        for doc in docs:
+                            do_something(doc)
+                        docs, dfr = yield dfr
+        """
         docs, dfr = yield self.find_with_cursor(spec=spec, skip=skip, limit=limit,
                                                 fields=fields, filter=filter, **kwargs)
 
