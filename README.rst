@@ -9,6 +9,9 @@ TxMongo
 .. image:: https://badge.fury.io/py/txmongo.png
     :target: https://pypi.python.org/pypi/txmongo
 
+.. image:: https://readthedocs.org/projects/txmongo/badge/?version=latest
+    :target: https://txmongo.readthedocs.org/en/latest/?badge=latest
+    :alt: Documentation Status
 
 
 TxMongo is an asynchronous Python/Twisted driver for MongoDB that implements the wire
