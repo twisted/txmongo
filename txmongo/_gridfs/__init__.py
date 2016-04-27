@@ -55,6 +55,7 @@ class GridFS(object):
         self.__chunks.create_index(filter.sort(ASCENDING("files_id") + ASCENDING("n")),
                                    unique=True)
 
+
     def new_file(self, **kwargs):
         """Create a new file in GridFS.
 
@@ -114,6 +115,8 @@ class GridFS(object):
         """
 
         doc = yield self.__collection.files.find_one({"_id": file_id})
+        if doc is None:
+            raise NoFile("TxMongo: no file in gridfs with _id {0}".format(repr(file_id)))
 
         defer.returnValue(GridOut(self.__collection, doc))
 

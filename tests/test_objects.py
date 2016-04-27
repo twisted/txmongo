@@ -179,8 +179,8 @@ class TestGridFsObjects(unittest.TestCase):
         """ Tests gridfs objects """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
-        db.fs.files.remove({})  # drop all objects there first
-        db.fs.chunks.remove({})
+        yield db.fs.files.remove({})  # drop all objects there first
+        yield db.fs.chunks.remove({})
         self.assertRaises(TypeError, GridFS, None)
         _ = GridFS(db)  # Default collection
         self.assertRaises(TypeError, GridIn, None)
@@ -239,8 +239,8 @@ class TestGridFsObjects(unittest.TestCase):
         """ Tests gridfs objects """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
-        db.fs.files.remove({})  # drop all objects there first
-        db.fs.chunks.remove({})
+        yield db.fs.files.remove({})  # drop all objects there first
+        yield db.fs.chunks.remove({})
         gfs = GridFS(db)  # Default collection
         yield gfs.delete(u"test")
 
@@ -248,7 +248,7 @@ class TestGridFsObjects(unittest.TestCase):
         yield conn.disconnect()
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
-        db.fs.files.remove({})  # drop all objects there first
+        yield db.fs.files.remove({})  # drop all objects there first
         gfs = GridFS(db)  # Default collection
         _ = yield gfs.put(b"0xDEADBEEF", filename="test_2", contentType="text/plain",
                           chunk_size=65536)
@@ -258,7 +258,9 @@ class TestGridFsObjects(unittest.TestCase):
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
         gfs = GridFS(db)  # Default collection
-        _ = yield gfs.get("test_3")
+        # Missing file raises error
+        with self.assertRaises(NoFile):
+            _ = yield gfs.get("test_3")
         # disconnect
         yield conn.disconnect()
 
@@ -267,8 +269,8 @@ class TestGridFsObjects(unittest.TestCase):
         """ Tests gridfs iterator """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
-        db.fs.files.remove({})  # drop all objects there first
-        db.fs.chunks.remove({})
+        yield db.fs.files.remove({})  # drop all objects there first
+        yield db.fs.chunks.remove({})
         gfs = GridFS(db)  # Default collection
         new_file = gfs.new_file(filename="testName", contentType="text/plain", length=1048576,
                                 chunk_size=4096)
@@ -300,7 +302,7 @@ class TestGridFsObjects(unittest.TestCase):
         """ Tests gridfs operations """
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
-        db.fs.files.remove({})  # Drop files first TODO: iterate through files and delete them
+        yield db.fs.files.remove({})  # Drop files first TODO: iterate through files and delete them
 
         # Don't forget to disconnect
         self.addCleanup(self._disconnect, conn)
