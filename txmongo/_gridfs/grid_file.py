@@ -26,7 +26,7 @@ from txmongo._gridfs.errors import CorruptGridFile
 from txmongo.collection import Collection
 
 """Default chunk size, in bytes."""
-DEFAULT_CHUNK_SIZE = 256 * 1024
+DEFAULT_CHUNK_SIZE = 255 * 1024
 
 
 def _create_property(field_name, docstring,
@@ -90,7 +90,7 @@ class GridIn(object):
             for the file
 
           - ``"chunkSize"`` or ``"chunk_size"``: size of each of the
-            chunks, in bytes (default: 256 kb)
+            chunks, in bytes (default: 255 kB)
 
         :Parameters:
           - `root_collection`: root collection to write to

@@ -15,6 +15,7 @@ Features
 ^^^^^^^^
 
 - ``insert_many()`` is new able to insert more than 1000 documents or more than 16Mb of documents at once.
+- GridFS's default ``chunkSize`` changed to 255kB
 
 Release 16.0.1 (2016-03-03)
 ---------------------------
