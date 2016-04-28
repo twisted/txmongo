@@ -121,13 +121,10 @@ class TestMongoQueries(_SingleCollectionTest):
     def test_SpecifiedFields(self):
         yield self.coll.insert([dict((k, v) for k in "abcdefg") for v in range(5)], safe=True)
         res = yield self.coll.find(fields={'a': 1, 'c': 1})
-        yield self.coll.count(fields={'a': 1, 'c': 1})
         self.assertTrue(all(x in ['a', 'c', "_id"] for x in res[0].keys()))
         res = yield self.coll.find(fields=['a', 'c'])
-        yield self.coll.count(fields=['a', 'c'])
         self.assertTrue(all(x in ['a', 'c', "_id"] for x in res[0].keys()))
         res = yield self.coll.find(fields=[])
-        yield self.coll.count(fields=[])
         self.assertTrue(all(x in ["_id"] for x in res[0].keys()))
         yield self.assertFailure(self.coll.find({}, fields=[1]), TypeError)
 
