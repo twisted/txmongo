@@ -52,9 +52,19 @@ class GridFS(object):
         self.__collection = database[collection]
         self.__files = self.__collection.files
         self.__chunks = self.__collection.chunks
-        self.__chunks.create_index(filter.sort(ASCENDING("files_id") + ASCENDING("n")),
-                                   unique=True)
+        self.__indexes_created_defer = defer.DeferredList([
+            self.__files.create_index(
+                filter.sort(ASCENDING("filesname") + ASCENDING("uploadDate"))),
+            self.__chunks.create_index(
+                filter.sort(ASCENDING("files_id") + ASCENDING("n")), unique=True)
+        ])
 
+    def get_indexes_created_defer(self):
+        """Returns a defer on
+        """
+        d = defer.Deferred()
+        self.__indexes_created_defer.chainDeferred(d)
+        return d
 
     def new_file(self, **kwargs):
         """Create a new file in GridFS.
