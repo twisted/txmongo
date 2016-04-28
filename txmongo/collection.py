@@ -30,10 +30,14 @@ from twisted.python.compat import unicode, comparable
 class Collection(object):
     """Creates new :class:`Collection` object
 
-    :Parameters:
-      - `database`: the :class:`Database` instance to get collection from
-      - `name`: the name of the collection to get
-      - `write_concern` (optional): An instance of :class:`pymongo.write_concern.WriteConcern`.
+    :param database:
+        the :class:`Database` instance to get collection from
+
+    :param name:
+        the name of the collection to get
+
+    :param write_concern:
+        An instance of :class:`pymongo.write_concern.WriteConcern`.
         If ``None``, ``database.write_concern`` is used.
     """
 
@@ -116,9 +120,8 @@ class Collection(object):
     def with_options(self, **kwargs):
         """Get a clone of collection changing the specified settings.
 
-        :Keyword parameters:
-          - `write_concern`: new :class:`~pymongo.write_concern.WriteConcern`
-            to use.
+        :param write_concern: *(keyword only)*
+            new :class:`~pymongo.write_concern.WriteConcern` to use.
         """
         # PyMongo's method gets several positional arguments. We support
         # only write_concern for now which is the 3rd positional argument.
@@ -161,8 +164,9 @@ class Collection(object):
     def options(self, **kwargs):
         """Get the options set on this collection.
 
-        Returns :class:`Deferred` that called back with dictionary of options
-        and their values.
+        :returns:
+            :class:`Deferred` that called back with dictionary of options
+            and their values.
 
         *This method only works with MongoDB 2.x*
         """
@@ -188,36 +192,41 @@ class Collection(object):
         Ordering, indexing hints and other query parameters can be set with
         `filter` argument. See :mod:`txmongo.filter` for details.
 
-        :Parameters:
-          - `skip`: the number of documents to omit from the start of the
-            result set.
-          - `limit`: the maximum number of documents to return. All documents
-            are returned when `limit` is zero.
-          - `fields`: a list of field names that should be returned for each
-            document in the result set or a dict specifying field names to
-            include or exclude. If `fields` is a list ``_id`` fields will
-            always be returned. Use a dict form to exclude fields:
-            ``fields={"_id": False}``.
-          - `as_class` (keyword only): if not ``None``, returned documents will
-            be converted to type specified. For example, you can use
-            ``as_class=collections.OrderedDict`` or ``as_class=bson.SON`` when
-            field ordering in documents is important.
+        :param skip:
+            the number of documents to omit from the start of the result set.
 
-        Returns an instance of :class:`Deferred` that called back with one of:
-          - if `cursor` is ``False`` (the default) --- all documents found
-          - if `cursor` is ``True`` --- tuple of ``(docs, dfr)``, where ``docs``
-            is a partial result, returned by MongoDB in a first batch and
-            ``dfr`` is a :class:`Deferred` that fires with next ``(docs, dfr)``.
-            Last result will be ``([], None)``. Using this mode you can iterate
-            over the result set with code like that:
-            ::
-                @defer.inlineCallbacks
-                def query():
-                    docs, dfr = yield coll.find(query, cursor=True)
-                    while docs:
-                        for doc in docs:
-                            do_something(doc)
-                        docs, dfr = yield dfr
+        :param limit:
+            the maximum number of documents to return. All documents are
+            returned when `limit` is zero.
+
+        :param fields:
+            a list of field names that should be returned for each document
+            in the result set or a dict specifying field names to include or
+            exclude. If `fields` is a list ``_id`` fields will always be
+            returned. Use a dict form to exclude fields:
+            ``fields={"_id": False}``.
+
+        :param as_class: *(keyword only)*
+            if not ``None``, returned documents will be converted to type
+            specified. For example, you can use ``as_class=collections.OrderedDict``
+            or ``as_class=bson.SON`` when field ordering in documents is important.
+
+        :returns: an instance of :class:`Deferred` that called back with one of:
+
+            - if `cursor` is ``False`` (the default) --- all documents found
+            - if `cursor` is ``True`` --- tuple of ``(docs, dfr)``, where
+              ``docs`` is a partial result, returned by MongoDB in a first
+              batch and ``dfr`` is a :class:`Deferred` that fires with next
+              ``(docs, dfr)``. Last result will be ``([], None)``. Using this
+              mode you can iterate over the result set with code like that:
+              ::
+                  @defer.inlineCallbacks
+                  def query():
+                      docs, dfr = yield coll.find(query, cursor=True)
+                      while docs:
+                          for doc in docs:
+                              do_something(doc)
+                          docs, dfr = yield dfr
         """
         docs, dfr = yield self.find_with_cursor(spec=spec, skip=skip, limit=limit,
                                                 fields=fields, filter=filter, **kwargs)
@@ -335,8 +344,9 @@ class Collection(object):
         All arguments to :meth:`find()` are also valid for :meth:`find_one()`,
         although `limit` will be ignored.
 
-        Returns a :class:`Deferred` that called back with single document
-        or ``None`` if no matching documents is found.
+        :returns:
+            a :class:`Deferred` that called back with single document
+            or ``None`` if no matching documents is found.
         """
         if isinstance(spec, ObjectId):
             spec = {"_id": spec}
@@ -351,11 +361,15 @@ class Collection(object):
     def count(self, spec=None, **kwargs):
         """Get the number of documents in this collection.
 
-        `spec` argument is a query document that selects which documents to
-        count in the collection.
+        :param spec:
+            argument is a query document that selects which documents to
+            count in the collection.
 
-        Returns a :class:`Deferred` that called back with a number of
-        documents matching the criteria.
+        :param hint: *(keyword only)*
+            :class:`~txmongo.filter.hint` instance specifying index to use.
+
+        :returns: a :class:`Deferred` that called back with a number of
+                  documents matching the criteria.
         """
         result = yield self._database.command("count", self._collection_name,
                                               query=spec or SON(), **kwargs)
