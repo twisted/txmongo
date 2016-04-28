@@ -98,7 +98,7 @@ class GridFS(object):
         try:
             yield grid_file.write(data)
         finally:
-            grid_file.close()
+            yield grid_file.close()
         defer.returnValue(grid_file._id)
 
     @defer.inlineCallbacks
