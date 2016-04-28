@@ -178,7 +178,10 @@ class TestGridFsObjects(unittest.TestCase):
         """
         Drop the default gridfs instance (i.e. ``fs``) associate to this database
         """
-        return defer.gatherResults([db.fs.files.remove({}), db.fs.chunks.remove({})])
+        return defer.gatherResults([
+            db.drop_collection('fs.files'),
+            db.drop_collection('fs.chunks')
+        ])
 
     @defer.inlineCallbacks
     def test_GridFileObjects(self):
