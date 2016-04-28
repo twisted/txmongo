@@ -1073,7 +1073,3 @@ class TestCount(_SingleCollectionTest):
         self.assertEqual((yield self.coll.count({'x': {"$gt": 15}})), 2)
 
         self.assertEqual((yield self.db.non_existing.count()), 0)
-
-        # This should fail with 'bad hint' if hint parameter works correctly
-        yield self.assertFailure(self.coll.count(hint=qf.sort(qf.ASCENDING('x'))),
-                                 OperationFailure)
