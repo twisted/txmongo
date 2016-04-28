@@ -42,6 +42,13 @@ class GridFS(object):
           - `database`: database to use
           - `collection` (optional): root collection to use
 
+        .. note::
+
+            Instantiating a GridFS object will implicitly create it indexes.
+            This could leads to errors if the underlaying connection is closed
+            before the indexes creation request has returned. To avoid this you
+            should use the defer returned by :meth:`GridFS.indexes_created`.
+
         .. versionadded:: 1.6
            The `collection` parameter.
         """
@@ -59,8 +66,8 @@ class GridFS(object):
                 filter.sort(ASCENDING("files_id") + ASCENDING("n")), unique=True)
         ])
 
-    def get_indexes_created_defer(self):
-        """Returns a defer on
+    def indexes_created(self):
+        """Returns a defer on the creation of this GridFS instance's indexes
         """
         d = defer.Deferred()
         self.__indexes_created_defer.chainDeferred(d)

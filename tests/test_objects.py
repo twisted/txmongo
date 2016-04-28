@@ -367,9 +367,8 @@ class TestGridFsObjects(unittest.TestCase):
         gfs = GridFS(db)
 
         # Multiple calls should return multiple defer not to mix between them
-        self.assertNotEqual(gfs.get_indexes_created_defer(),
-                            gfs.get_indexes_created_defer())
+        self.assertNotEqual(gfs.indexes_created(), gfs.indexes_created())
 
-        yield gfs.get_indexes_created_defer()
+        yield gfs.indexes_created()
 
         yield conn.disconnect()
