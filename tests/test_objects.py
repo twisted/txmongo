@@ -266,8 +266,7 @@ class TestGridFsObjects(unittest.TestCase):
         db = conn.test
         gfs = GridFS(db)  # Default collection
         # Missing file raises error
-        with self.assertRaises(NoFile):
-            _ = yield gfs.get("test_3")
+        yield self.assertFailure(gfs.get("test_3"), NoFile)
         # disconnect
         yield conn.disconnect()
 
