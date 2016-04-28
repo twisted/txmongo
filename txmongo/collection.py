@@ -248,13 +248,10 @@ class Collection(object):
 
     @timeout
     def find_with_cursor(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
-        """ find method that uses the cursor to only return a block of
-        results at a time.
-        Arguments are the same as with find()
-        returns deferred that results in a tuple: (docs, deferred) where
-        docs are the current page of results and deferred results in the next
-        tuple. When the cursor is exhausted, it will return the tuple
-        ([], None)
+        """Find documents in a collection and return them in one batch at a time
+
+        This methid is equivalent of :meth:`find()` with `cursor=True`.
+        See :meth:`find()` for description of parameters and return value.
         """
         if spec is None:
             spec = SON()
@@ -333,6 +330,14 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def find_one(self, spec=None, fields=None, **kwargs):
+        """Get a single document from the collection.
+
+        All arguments to :meth:`find()` are also valid for :meth:`find_one()`,
+        although `limit` will be ignored.
+
+        Returns a :class:`Deferred` that called back with single document
+        or ``None`` if no matching documents is found.
+        """
         if isinstance(spec, ObjectId):
             spec = {"_id": spec}
 
@@ -344,6 +349,14 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def count(self, spec=None, **kwargs):
+        """Get the number of documents in this collection.
+
+        `spec` argument is a query document that selects which documents to
+        count in the collection.
+
+        Returns a :class:`Deferred` that called back with a number of
+        documents matching the criteria.
+        """
         result = yield self._database.command("count", self._collection_name,
                                               query=spec or SON(), **kwargs)
         defer.returnValue(int(result["n"]))
