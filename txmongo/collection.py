@@ -430,6 +430,35 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def insert(self, docs, safe=None, flags=0, **kwargs):
+        """Insert a document(s) into this collection.
+
+        *Please consider using new-style* :meth:`insert_one()` *or*
+        :meth:`insert_many()` *methods instead.*
+
+        If document doesn't have ``"_id"`` field, :meth:`insert()` will generate
+        new :class:`~bson.ObjectId` and set it to ``"_id"`` field of the document.
+
+        :param docs:
+            Document or a list of documents to insert into a collection.
+
+        :param safe:
+            ``True`` or ``False`` forces usage of respectively acknowledged or
+            unacknowledged Write Concern. If ``None``, :attr:`write_concern` is
+            used.
+
+        :param flags:
+            If zero (default), inserting will stop after the first error
+            encountered. When ``flags`` set to
+            :const:`txmongo.protocol.INSERT_CONTINUE_ON_ERROR`, MongoDB will
+            try to insert all documents passed even if inserting some of
+            them will fail (for example, because of duplicate ``_id``). Not
+            that :meth:`insert()` won't raise any errors when this flag is
+            used.
+
+        :returns:
+            :class:`Deferred` that fires with single ``_id`` field or a list of
+            ``_id`` fields of inserted documents.
+        """
         if isinstance(docs, dict):
             ids = docs.get("_id", ObjectId())
             docs["_id"] = ids
@@ -484,6 +513,13 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def insert_one(self, document, **kwargs):
+        """Insert a single document into collection
+
+        :param document: Document to insert
+        :returns:
+            :class:`Deferred` that called back with
+            :class:`pymongo.results.InsertOneResult`
+        """
         inserted_ids, response = yield self._insert_one_or_many([document], **kwargs)
         if response:
             _check_write_command_response([[0, response]])
@@ -550,6 +586,23 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def insert_many(self, documents, ordered=True, **kwargs):
+        """Insert an iterable of documents into collection
+
+        :param documents:
+            An iterable of documents to insert (``list``,
+            ``tuple``, ...)
+
+        :param ordered:
+            If ``True`` (the default) documents will be inserted on the server
+            serially, in the order provided. If an error occurs, all remaining
+            inserts are aborted. If ``False``, documents will be inserted on
+            the server in arbitrary order, possibly in parallel, and all
+            document inserts will be attempted.
+
+        :returns:
+            :class:`Deferred` that called back with
+            :class:`pymongo.results.InsertManyResult`
+        """
         inserted_ids = []
         for doc in documents:
             if isinstance(doc, collections.Mapping):
