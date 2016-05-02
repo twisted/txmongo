@@ -10,7 +10,8 @@ API Changes
 - ``insert_many()`` raises ``BulkWriteError`` instead ``WriteError``/``DuplicateKeyError`` to
   match PyMongo's behavior. This is also allows to extract multiple duplicate key errors from
   exception object when ``insert_many`` is used with ``ordered=False``.
-  
+- ``fields`` parameter removed for ``Collection.count()``.
+
 Features
 ^^^^^^^^
 

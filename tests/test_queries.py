@@ -121,13 +121,10 @@ class TestMongoQueries(_SingleCollectionTest):
     def test_SpecifiedFields(self):
         yield self.coll.insert([dict((k, v) for k in "abcdefg") for v in range(5)], safe=True)
         res = yield self.coll.find(fields={'a': 1, 'c': 1})
-        yield self.coll.count(fields={'a': 1, 'c': 1})
         self.assertTrue(all(x in ['a', 'c', "_id"] for x in res[0].keys()))
         res = yield self.coll.find(fields=['a', 'c'])
-        yield self.coll.count(fields=['a', 'c'])
         self.assertTrue(all(x in ['a', 'c', "_id"] for x in res[0].keys()))
         res = yield self.coll.find(fields=[])
-        yield self.coll.count(fields=[])
         self.assertTrue(all(x in ["_id"] for x in res[0].keys()))
         yield self.assertFailure(self.coll.find({}, fields=[1]), TypeError)
 
@@ -1060,3 +1057,19 @@ class TestFindOneAndUpdate(_SingleCollectionTest):
         doc = yield self.coll.find_one_and_update({'x': 10}, {"$set": {'y': 15}},
                                                   return_document=ReturnDocument.AFTER)
         self.assertEqual(doc['y'], 15)
+
+
+class TestCount(_SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super(TestCount, self).setUp()
+        yield self.coll.insert_many([{'x': 10}, {'x': 20}, {'x': 30}])
+
+    @defer.inlineCallbacks
+    def test_count(self):
+        self.assertEqual((yield self.coll.count()), 3)
+        self.assertEqual((yield self.coll.count({'x': 20})), 1)
+        self.assertEqual((yield self.coll.count({'x': {"$gt": 15}})), 2)
+
+        self.assertEqual((yield self.db.non_existing.count()), 0)

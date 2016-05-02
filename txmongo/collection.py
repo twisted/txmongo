@@ -266,12 +266,9 @@ class Collection(object):
 
     @timeout
     @defer.inlineCallbacks
-    def count(self, spec=None, fields=None, **kwargs):
-        fields = self._normalize_fields_projection(fields)
-
+    def count(self, spec=None, **kwargs):
         result = yield self._database.command("count", self._collection_name,
-                                              query=spec or SON(),
-                                              fields=fields, **kwargs)
+                                              query=spec or SON(), **kwargs)
         defer.returnValue(int(result["n"]))
 
     @timeout
