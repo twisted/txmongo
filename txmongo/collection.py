@@ -680,6 +680,41 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def update(self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs):
+        """Update document(s) in this collection
+
+        *Please consider using new-style* :meth:`update_one()`, :meth:`update_many()`
+        and :meth:`replace_one()` *methods instead.*
+
+        :raises TypeError:
+            if `spec` or `document` are not instances of `dict`
+            or `upsert` is not an instance of `bool`.
+
+        :param spec:
+            query document that selects documents to be updated
+
+        :param document:
+            update document to be used for updating or upserting. See
+            `MongoDB Update docs
+            <https://docs.mongodb.org/manual/tutorial/modify-documents/>`_
+            for the format of this document and allowed operators.
+
+        :param upsert:
+            perform an upsert if ``True``
+
+        :param multi:
+            update all documents that match `spec`, rather than just the first
+            matching document. The default value is ``False``.
+
+        :param safe:
+            ``True`` or ``False`` forces usage of respectively acknowledged or
+            unacknowledged Write Concern. If ``None``, :attr:`write_concern` is
+            used.
+
+        :returns:
+            :class:`Deferred` that is called back when request is sent to
+            MongoDB or confirmed by MongoDB (depending on selected Write Concern).
+        """
+
         if not isinstance(spec, dict):
             raise TypeError("TxMongo: spec must be an instance of dict.")
         if not isinstance(document, dict):
