@@ -769,6 +769,31 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def update_one(self, filter, update, upsert=False, **kwargs):
+        """Update a single document matching the filter.
+
+        :raises ValueError:
+            if `update` document is empty.
+
+        :raises ValueError:
+            if `update` document has any fields that don't start with `$` sign.
+            This method only allows *modification* of document (with `$set`,
+            `$inc`, etc.), not *replacing* it. For replacing use
+            :meth:`replace_one()` instead.
+
+        :param filter:
+            A query that matches the document to update.
+
+        :param update:
+            update document to be used for updating or upserting. See `MongoDB
+            Update docs <https://docs.mongodb.org/manual/tutorial/modify-documents/>`_
+            for allowed operators.
+
+        :param upsert:
+            If ``True``, perform an insert if no documents match the `filter`.
+
+        :returns:
+            deferred instance of :class:`pymongo.results.UpdateResult`.
+        """
         validate_ok_for_update(update)
 
         raw_response = yield self._update(filter, update, upsert, multi=False, **kwargs)
@@ -777,6 +802,31 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def update_many(self, filter, update, upsert=False, **kwargs):
+        """Update one or more documents that match the filter.
+
+        :raises ValueError:
+            if `update` document is empty.
+
+        :raises ValueError:
+            if `update` document has fields that don't start with `$` sign.
+            This method only allows *modification* of document (with `$set`,
+            `$inc`, etc.), not *replacing* it. For replacing use
+            :meth:`replace_one()` instead.
+
+        :param filter:
+            A query that matches the documents to update.
+
+        :param update:
+            update document to be used for updating or upserting. See `MongoDB
+            Update docs <https://docs.mongodb.org/manual/tutorial/modify-documents/>`_
+            for allowed operators.
+
+        :param upsert:
+            If ``True``, perform an insert if no documents match the `filter`.
+
+        :returns:
+            deferred instance of :class:`pymongo.results.UpdateResult`.
+        """
         validate_ok_for_update(update)
 
         raw_response = yield self._update(filter, update, upsert, multi=True, **kwargs)
@@ -785,6 +835,28 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def replace_one(self, filter, replacement, upsert=False, **kwargs):
+        """Replace a single document matching the filter.
+
+        :raises ValueError:
+            if `update` document is empty
+
+        :raises ValueError:
+            if `update` document has fields that starts with `$` sign.
+            This method only allows *replacing* document completely. Use
+            :meth:`update_one()` for modifying existing document.
+
+        :param filter:
+            A query that matches the document to replace.
+
+        :param replacement:
+            The new document to replace with.
+
+        :param upsert:
+            If ``True``, perform an insert if no documents match the filter.
+
+        :returns:
+            deferred instance of :class:`pymongo.results.UpdateResult`.
+        """
         validate_ok_for_replace(replacement)
 
         raw_response = yield self._update(filter, replacement, upsert, multi=False, **kwargs)
