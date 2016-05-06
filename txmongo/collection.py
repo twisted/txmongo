@@ -28,6 +28,19 @@ from twisted.python.compat import unicode, comparable
 
 @comparable
 class Collection(object):
+    """Creates new :class:`Collection` object
+
+    :param database:
+        the :class:`Database` instance to get collection from
+
+    :param name:
+        the name of the collection to get
+
+    :param write_concern:
+        An instance of :class:`pymongo.write_concern.WriteConcern`.
+        If ``None``, ``database.write_concern`` is used.
+    """
+
     def __init__(self, database, name, write_concern=None):
         if not isinstance(name, (bytes, unicode)):
             raise TypeError("TxMongo: name must be an instance of (bytes, unicode).")
@@ -56,17 +69,23 @@ class Collection(object):
 
     @property
     def full_name(self):
+        """Full name of this :class:`Collection`, i.e.
+        `db_name.collection_name`"""
         return '{0}.{1}'.format(str(self._database), self._collection_name)
 
     @property
     def name(self):
+        """Name of this :class:`Collection` (without database name)."""
         return self._collection_name
 
     @property
     def database(self):
+        """The :class:`~txmongo.database.Database` that this :class:`Collection`
+        is a part of."""
         return self._database
 
     def __getitem__(self, collection_name):
+        """Get a sub-collection of this collection by name."""
         return Collection(self._database,
                           "%s.%s" % (self._collection_name, collection_name))
 
@@ -81,17 +100,29 @@ class Collection(object):
         return NotImplemented
 
     def __getattr__(self, collection_name):
+        """Get a sub-collection of this collection by name."""
         return self[collection_name]
 
     def __call__(self, collection_name):
+        """Get a sub-collection of this collection by name."""
         return self[collection_name]
 
     @property
     def write_concern(self):
+        """Read only access to the :class:`~pymongo.write_concern.WriteConcern`
+        of this instance.
+
+        Use ``coll.with_options(write_concern=WriteConcern(...))`` to change
+        the Write Concern.
+        """
         return self.__write_concern or self._database.write_concern
 
     def with_options(self, **kwargs):
-        """Get a clone of collection changing the specified settings."""
+        """Get a clone of collection changing the specified settings.
+
+        :param write_concern: *(keyword only)*
+            new :class:`~pymongo.write_concern.WriteConcern` to use.
+        """
         # PyMongo's method gets several positional arguments. We support
         # only write_concern for now which is the 3rd positional argument.
         # So we are using **kwargs here to force user's code to specify
@@ -131,6 +162,14 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def options(self, **kwargs):
+        """Get the options set on this collection.
+
+        :returns:
+            :class:`Deferred` that called back with dictionary of options
+            and their values.
+
+        *This method only works with MongoDB 2.x*
+        """
         result = yield self._database.system.namespaces.find_one({"name": str(self)}, **kwargs)
         if not result:
             result = {}
@@ -142,6 +181,53 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
+        """Find documents in a collection.
+
+        The `spec` argument is a MongoDB query document. To return all documents
+        in a collection, omit this parameter or pass an empty document (``{}``).
+        You can pass ``{"key": "value"}`` to select documents having ``key``
+        field equal to ``"value"`` or use any of `MongoDB's query selectors
+        <https://docs.mongodb.org/manual/reference/operator/query/#query-selectors>`_.
+
+        Ordering, indexing hints and other query parameters can be set with
+        `filter` argument. See :mod:`txmongo.filter` for details.
+
+        :param skip:
+            the number of documents to omit from the start of the result set.
+
+        :param limit:
+            the maximum number of documents to return. All documents are
+            returned when `limit` is zero.
+
+        :param fields:
+            a list of field names that should be returned for each document
+            in the result set or a dict specifying field names to include or
+            exclude. If `fields` is a list ``_id`` fields will always be
+            returned. Use a dict form to exclude fields:
+            ``fields={"_id": False}``.
+
+        :param as_class: *(keyword only)*
+            if not ``None``, returned documents will be converted to type
+            specified. For example, you can use ``as_class=collections.OrderedDict``
+            or ``as_class=bson.SON`` when field ordering in documents is important.
+
+        :returns: an instance of :class:`Deferred` that called back with one of:
+
+            - if `cursor` is ``False`` (the default) --- all documents found
+            - if `cursor` is ``True`` --- tuple of ``(docs, dfr)``, where
+              ``docs`` is a partial result, returned by MongoDB in a first
+              batch and ``dfr`` is a :class:`Deferred` that fires with next
+              ``(docs, dfr)``. Last result will be ``([], None)``. Using this
+              mode you can iterate over the result set with code like that:
+              ::
+                  @defer.inlineCallbacks
+                  def query():
+                      docs, dfr = yield coll.find(query, cursor=True)
+                      while docs:
+                          for doc in docs:
+                              do_something(doc)
+                          docs, dfr = yield dfr
+        """
         docs, dfr = yield self.find_with_cursor(spec=spec, skip=skip, limit=limit,
                                                 fields=fields, filter=filter, **kwargs)
 
@@ -171,13 +257,10 @@ class Collection(object):
 
     @timeout
     def find_with_cursor(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
-        """ find method that uses the cursor to only return a block of
-        results at a time.
-        Arguments are the same as with find()
-        returns deferred that results in a tuple: (docs, deferred) where
-        docs are the current page of results and deferred results in the next
-        tuple. When the cursor is exhausted, it will return the tuple
-        ([], None)
+        """Find documents in a collection and return them in one batch at a time
+
+        This methid is equivalent of :meth:`find()` with `cursor=True`.
+        See :meth:`find()` for description of parameters and return value.
         """
         if spec is None:
             spec = SON()
@@ -256,6 +339,15 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def find_one(self, spec=None, fields=None, **kwargs):
+        """Get a single document from the collection.
+
+        All arguments to :meth:`find()` are also valid for :meth:`find_one()`,
+        although `limit` will be ignored.
+
+        :returns:
+            a :class:`Deferred` that called back with single document
+            or ``None`` if no matching documents is found.
+        """
         if isinstance(spec, ObjectId):
             spec = {"_id": spec}
 
@@ -267,6 +359,18 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def count(self, spec=None, **kwargs):
+        """Get the number of documents in this collection.
+
+        :param spec:
+            argument is a query document that selects which documents to
+            count in the collection.
+
+        :param hint: *(keyword only)*
+            :class:`~txmongo.filter.hint` instance specifying index to use.
+
+        :returns: a :class:`Deferred` that called back with a number of
+                  documents matching the criteria.
+        """
         result = yield self._database.command("count", self._collection_name,
                                               query=spec or SON(), **kwargs)
         defer.returnValue(int(result["n"]))
@@ -326,6 +430,35 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def insert(self, docs, safe=None, flags=0, **kwargs):
+        """Insert a document(s) into this collection.
+
+        *Please consider using new-style* :meth:`insert_one()` *or*
+        :meth:`insert_many()` *methods instead.*
+
+        If document doesn't have ``"_id"`` field, :meth:`insert()` will generate
+        new :class:`~bson.ObjectId` and set it to ``"_id"`` field of the document.
+
+        :param docs:
+            Document or a list of documents to insert into a collection.
+
+        :param safe:
+            ``True`` or ``False`` forces usage of respectively acknowledged or
+            unacknowledged Write Concern. If ``None``, :attr:`write_concern` is
+            used.
+
+        :param flags:
+            If zero (default), inserting will stop after the first error
+            encountered. When ``flags`` set to
+            :const:`txmongo.protocol.INSERT_CONTINUE_ON_ERROR`, MongoDB will
+            try to insert all documents passed even if inserting some of
+            them will fail (for example, because of duplicate ``_id``). Not
+            that :meth:`insert()` won't raise any errors when this flag is
+            used.
+
+        :returns:
+            :class:`Deferred` that fires with single ``_id`` field or a list of
+            ``_id`` fields of inserted documents.
+        """
         if isinstance(docs, dict):
             ids = docs.get("_id", ObjectId())
             docs["_id"] = ids
@@ -380,6 +513,13 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def insert_one(self, document, **kwargs):
+        """Insert a single document into collection
+
+        :param document: Document to insert
+        :returns:
+            :class:`Deferred` that called back with
+            :class:`pymongo.results.InsertOneResult`
+        """
         inserted_ids, response = yield self._insert_one_or_many([document], **kwargs)
         if response:
             _check_write_command_response([[0, response]])
@@ -446,6 +586,23 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def insert_many(self, documents, ordered=True, **kwargs):
+        """Insert an iterable of documents into collection
+
+        :param documents:
+            An iterable of documents to insert (``list``,
+            ``tuple``, ...)
+
+        :param ordered:
+            If ``True`` (the default) documents will be inserted on the server
+            serially, in the order provided. If an error occurs, all remaining
+            inserts are aborted. If ``False``, documents will be inserted on
+            the server in arbitrary order, possibly in parallel, and all
+            document inserts will be attempted.
+
+        :returns:
+            :class:`Deferred` that called back with
+            :class:`pymongo.results.InsertManyResult`
+        """
         inserted_ids = []
         for doc in documents:
             if isinstance(doc, collections.Mapping):
@@ -523,6 +680,41 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def update(self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs):
+        """Update document(s) in this collection
+
+        *Please consider using new-style* :meth:`update_one()`, :meth:`update_many()`
+        and :meth:`replace_one()` *methods instead.*
+
+        :raises TypeError:
+            if `spec` or `document` are not instances of `dict`
+            or `upsert` is not an instance of `bool`.
+
+        :param spec:
+            query document that selects documents to be updated
+
+        :param document:
+            update document to be used for updating or upserting. See
+            `MongoDB Update docs
+            <https://docs.mongodb.org/manual/tutorial/modify-documents/>`_
+            for the format of this document and allowed operators.
+
+        :param upsert:
+            perform an upsert if ``True``
+
+        :param multi:
+            update all documents that match `spec`, rather than just the first
+            matching document. The default value is ``False``.
+
+        :param safe:
+            ``True`` or ``False`` forces usage of respectively acknowledged or
+            unacknowledged Write Concern. If ``None``, :attr:`write_concern` is
+            used.
+
+        :returns:
+            :class:`Deferred` that is called back when request is sent to
+            MongoDB or confirmed by MongoDB (depending on selected Write Concern).
+        """
+
         if not isinstance(spec, dict):
             raise TypeError("TxMongo: spec must be an instance of dict.")
         if not isinstance(document, dict):
@@ -577,6 +769,31 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def update_one(self, filter, update, upsert=False, **kwargs):
+        """Update a single document matching the filter.
+
+        :raises ValueError:
+            if `update` document is empty.
+
+        :raises ValueError:
+            if `update` document has any fields that don't start with `$` sign.
+            This method only allows *modification* of document (with `$set`,
+            `$inc`, etc.), not *replacing* it. For replacing use
+            :meth:`replace_one()` instead.
+
+        :param filter:
+            A query that matches the document to update.
+
+        :param update:
+            update document to be used for updating or upserting. See `MongoDB
+            Update docs <https://docs.mongodb.org/manual/tutorial/modify-documents/>`_
+            for allowed operators.
+
+        :param upsert:
+            If ``True``, perform an insert if no documents match the `filter`.
+
+        :returns:
+            deferred instance of :class:`pymongo.results.UpdateResult`.
+        """
         validate_ok_for_update(update)
 
         raw_response = yield self._update(filter, update, upsert, multi=False, **kwargs)
@@ -585,6 +802,31 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def update_many(self, filter, update, upsert=False, **kwargs):
+        """Update one or more documents that match the filter.
+
+        :raises ValueError:
+            if `update` document is empty.
+
+        :raises ValueError:
+            if `update` document has fields that don't start with `$` sign.
+            This method only allows *modification* of document (with `$set`,
+            `$inc`, etc.), not *replacing* it. For replacing use
+            :meth:`replace_one()` instead.
+
+        :param filter:
+            A query that matches the documents to update.
+
+        :param update:
+            update document to be used for updating or upserting. See `MongoDB
+            Update docs <https://docs.mongodb.org/manual/tutorial/modify-documents/>`_
+            for allowed operators.
+
+        :param upsert:
+            If ``True``, perform an insert if no documents match the `filter`.
+
+        :returns:
+            deferred instance of :class:`pymongo.results.UpdateResult`.
+        """
         validate_ok_for_update(update)
 
         raw_response = yield self._update(filter, update, upsert, multi=True, **kwargs)
@@ -593,6 +835,28 @@ class Collection(object):
     @timeout
     @defer.inlineCallbacks
     def replace_one(self, filter, replacement, upsert=False, **kwargs):
+        """Replace a single document matching the filter.
+
+        :raises ValueError:
+            if `update` document is empty
+
+        :raises ValueError:
+            if `update` document has fields that starts with `$` sign.
+            This method only allows *replacing* document completely. Use
+            :meth:`update_one()` for modifying existing document.
+
+        :param filter:
+            A query that matches the document to replace.
+
+        :param replacement:
+            The new document to replace with.
+
+        :param upsert:
+            If ``True``, perform an insert if no documents match the filter.
+
+        :returns:
+            deferred instance of :class:`pymongo.results.UpdateResult`.
+        """
         validate_ok_for_replace(replacement)
 
         raw_response = yield self._update(filter, replacement, upsert, multi=False, **kwargs)
