@@ -355,3 +355,20 @@ class TestGridFsObjects(unittest.TestCase):
                          "`optest` is the only expected file and we received %s" % listed_files)
 
         yield gfs.delete(_id)
+
+    @defer.inlineCallbacks
+    def test_GridFsIndexesCreation(self):
+        """ Tests gridfs indexes creation"""
+        conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
+        db = conn.test
+        yield self._drop_gridfs(db)
+
+        # Create a new GridFS instance should trigger indexes creation
+        gfs = GridFS(db)
+
+        # Multiple calls should return multiple defer not to mix between them
+        self.assertNotEqual(gfs.indexes_created(), gfs.indexes_created())
+
+        yield gfs.indexes_created()
+
+        yield conn.disconnect()
