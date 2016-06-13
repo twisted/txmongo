@@ -13,8 +13,9 @@ from twisted.internet.protocol import ReconnectingClientFactory
 from twisted.python import log
 from twisted.python.compat import StringType
 from txmongo.database import Database
+from txmongo.errors import TimeExceeded
 from txmongo.protocol import MongoProtocol, Query
-
+from txmongo.utils import timeout
 
 DEFAULT_MAX_BSON_SIZE = 16777216
 DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
@@ -30,6 +31,7 @@ class _Connection(ReconnectingClientFactory):
     __uri = None
     __conf_loop = None
     __conf_loop_seconds = 300.0
+    __conf_timeout = 15
 
     instance = None
     protocol = MongoProtocol
@@ -73,6 +75,12 @@ class _Connection(ReconnectingClientFactory):
         except Exception as e:
             proto.fail(e)
 
+    @staticmethod
+    @timeout
+    def __send_ismaster(proto, _deadline=None):
+        query = Query(collection="admin.$cmd", query={"ismaster": 1})
+        return proto.send_QUERY(query)
+
     @defer.inlineCallbacks
     def configure(self, proto):
         """
@@ -85,8 +93,11 @@ class _Connection(ReconnectingClientFactory):
         if not proto:
             defer.returnValue(None)
 
-        query = Query(collection="admin.$cmd", query={"ismaster": 1})
-        reply = yield proto.send_QUERY(query)
+        try:
+            reply = yield self.__send_ismaster(proto, timeout=self.__conf_timeout)
+        except TimeExceeded:
+            proto.transport.abortConnection()
+            defer.returnValue(None)
 
         # Handle the reply from the "ismaster" query. The reply contains
         # configuration information about the peer.
