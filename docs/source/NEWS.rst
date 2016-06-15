@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 16.1.0 (UNRELEASED)
+Release 16.1.0 (2016-06-15)
 ---------------------------
 
 API Changes
@@ -11,10 +11,14 @@ API Changes
   match PyMongo's behavior. This is also allows to extract multiple duplicate key errors from
   exception object when ``insert_many`` is used with ``ordered=False``.
 - ``fields`` parameter removed for ``Collection.count()``.
+- ``ConnectionPool`` has two new parameters: ``watchdog_interval`` which is how many seconds before
+  testing a connection to see if it is stale, and ``watchdog_timeout``is how long the check takes
+  before dropping the stale connection and try to reconnect.
 
 Features
 ^^^^^^^^
 
+- Stale connections are now dropped after failing to contact mongodb longer than ``watchdog_timeout``.
 - ``insert_many()`` is now able to insert more than 1000 documents and more than 16Mb of documents at once.
 - GridFS's default ``chunkSize`` changed to 255kB, to avoid the overhead with usePowerOf2Sizes option.
 - Add ``GridFS.indexes_created`` to obtain a defer on the creation of the current
