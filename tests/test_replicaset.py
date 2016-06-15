@@ -15,6 +15,7 @@
 
 from __future__ import absolute_import, division
 
+import signal
 from bson import SON
 from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError
 from time import time
@@ -275,3 +276,20 @@ class TestReplicaSet(unittest.TestCase):
                                  fireOnOneCallback=True,
                                  fireOnOneErrback=True)
         self.flushLoggedErrors(AutoReconnect)
+
+    @defer.inlineCallbacks
+    def test_StaleConnection(self):
+        conn = MongoConnection("localhost", self.ports[0])
+        try:
+            yield conn.db.coll.count()
+            self.__mongod[0].kill(signal.SIGSTOP)
+            yield self.__sleep(0.2)
+            while True:
+                try:
+                    yield conn.db.coll.count()
+                    break
+                except AutoReconnect:
+                    pass
+        finally:
+            self.__mongod[0].kill(signal.SIGCONT)
+            yield conn.disconnect()

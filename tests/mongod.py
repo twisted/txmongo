@@ -89,6 +89,9 @@ class Mongod(object):
             else:
                 return defer.fail(self.__end_reason)
 
+    def kill(self, signal):
+        self.__proc.signalProcess(signal)
+
     def makeConnection(self, process): pass
     def childConnectionLost(self, child_fd): pass
     def processExited(self, reason): pass
