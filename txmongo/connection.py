@@ -30,23 +30,23 @@ class _Connection(ReconnectingClientFactory):
     __index = -1
     __uri = None
     __conf_loop = None
-    __conf_loop_seconds = 300.0
-    __conf_timeout = 15
 
     instance = None
     protocol = MongoProtocol
 
-    def __init__(self, pool, uri, connection_id, initial_delay, max_delay):
+    def __init__(self, pool, uri, connection_id, initial_delay, max_delay, watchdog_interval,
+                 watchdog_timeout):
         self.__allnodes = list(uri["nodelist"])
         self.__notify_ready = []
         self.__pool = pool
         self.__uri = uri
         self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
-        self.__conf_loop.start(self.__conf_loop_seconds, now=False)
+        self.__conf_loop.start(watchdog_interval, now=False)
         self.connection_id = connection_id
         self.initialDelay = initial_delay
         self.maxDelay = max_delay
         self.__auth_creds = {}
+        self.__watchdog_timeout = watchdog_timeout
 
     def buildProtocol(self, addr):
         # Build the protocol.
@@ -94,7 +94,7 @@ class _Connection(ReconnectingClientFactory):
             defer.returnValue(None)
 
         try:
-            reply = yield self.__send_ismaster(proto, timeout=self.__conf_timeout)
+            reply = yield self.__send_ismaster(proto, timeout=self.__watchdog_timeout)
         except TimeExceeded:
             proto.transport.abortConnection()
             defer.returnValue(None)
@@ -254,10 +254,12 @@ class ConnectionPool(object):
     __wc_possible_options = {'w', "wtimeout", 'j', "fsync"}
 
     def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None,
-                 **kwargs):
+                 watchdog_interval=15, watchdog_timeout=5, **kwargs):
         assert isinstance(uri, StringType)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
+        assert watchdog_interval > 0
+        assert watchdog_timeout > 0
 
         if not uri.startswith("mongodb://"):
             uri = "mongodb://" + uri
@@ -272,8 +274,10 @@ class ConnectionPool(object):
         retry_delay = kwargs.get('retry_delay', 1.0)
         max_delay = kwargs.get('max_delay', 60.0)
         self.__pool_size = pool_size
-        self.__pool = [_Connection(
-            self, self.__uri, i, retry_delay, max_delay) for i in range(pool_size)]
+        self.__pool = [
+            _Connection(self, self.__uri, i, retry_delay, max_delay, watchdog_interval, watchdog_timeout)
+            for i in range(pool_size)
+        ]
 
         if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
             self.authenticate(self.__uri['database'], self.__uri['username'],
