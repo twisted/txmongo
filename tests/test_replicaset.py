@@ -279,9 +279,6 @@ class TestReplicaSet(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_StaleConnection(self):
-        self.patch(_Connection, '_Connection__conf_loop_seconds', 15)
-        self.patch(_Connection, '_Connection__conf_timeout', 5)
-
         conn = MongoConnection("localhost", self.ports[0])
         try:
             yield conn.db.coll.count()
