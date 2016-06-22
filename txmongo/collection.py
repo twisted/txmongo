@@ -10,10 +10,13 @@ import collections
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
-from pymongo.errors import InvalidName, BulkWriteError
+from pymongo.bulk import _Bulk, _COMMANDS, _merge_command
+from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation
 from pymongo.helpers import _check_write_command_response
+from pymongo.operations import _WriteOp
+from pymongo.message import _OP_MAP, _INSERT
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
-    DeleteResult
+    DeleteResult, BulkWriteResult
 from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
     validate_is_mapping, validate_boolean
 from pymongo.collection import ReturnDocument
@@ -526,7 +529,8 @@ class Collection(object):
         defer.returnValue(InsertOneResult(inserted_ids[0], self.write_concern.acknowledged))
 
     @staticmethod
-    def _generate_insert_many_batches(collname, documents, ordered, write_concern, max_bson, max_count):
+    def _generate_batch_commands(collname, command, docs_field, documents, ordered,
+                                 write_concern, max_bson, max_count):
         # Takes a list of documents and generates one or many `insert` commands
         # with documents list in each command is less or equal to max_bson bytes
         # and contains less or equal documents than max_count
@@ -534,16 +538,15 @@ class Collection(object):
         # Manually composing command in BSON form because this way we can
         # perform costly documents serialization only once
 
-        msg = SON([("insert", collname),
+        msg = SON([(command, collname),
                    ("ordered", ordered),
                    ("writeConcern", write_concern.document)])
 
         buf = io.BytesIO()
         buf.write(BSON.encode(msg))
         buf.seek(-1, io.SEEK_END)  # -1 because we don't need final NUL from partial command
-        buf.write(b'\x04documents\x00')  # type and name of 'documents' array
-        docs_start = buf.tell()
-        buf.write(b'\x00\x00\x00\x00')   # 'documents' length placeholder
+        buf.write(docs_field)  # type, name and length placeholder of 'documents' array
+        docs_start = buf.tell() - 4
 
         def prepare_command():
             docs_end = buf.tell() + 1  # +1 for final NUL for 'documents'
@@ -561,6 +564,7 @@ class Collection(object):
             return BSON(buf.getvalue())
 
         idx = 0
+        idx_offset = 0
         for doc in documents:
             key = str(idx).encode('ascii')
             value = BSON.encode(doc)
@@ -568,11 +572,12 @@ class Collection(object):
             enough_size = buf.tell() + len(key)+2 + len(value) - docs_start > max_bson
             enough_count = idx >= max_count
             if enough_size or enough_count:
-                yield prepare_command()
+                yield idx_offset, prepare_command()
 
                 buf.seek(docs_start + 4)
                 buf.truncate()
 
+                idx_offset += idx
                 idx = 0
                 key = b'0'
 
@@ -581,7 +586,7 @@ class Collection(object):
 
             idx += 1
 
-        yield prepare_command()
+        yield idx_offset, prepare_command()
 
     @timeout
     @defer.inlineCallbacks
@@ -610,71 +615,9 @@ class Collection(object):
             else:
                 raise TypeError("TxMongo: insert_many takes list of documents.")
 
-        cmd_collname = str(self._database["$cmd"])
-        proto = yield self._database.connection.getprotocol()
-
-        error = {
-            "nInserted": 0,
-            "writeErrors": [],
-            "writeConcernErrors": []
-        }
-
-        def accumulate_response(reply):
-            response = reply.documents[0].decode()
-            error["nInserted"] += response.get('n', 0)
-            error["writeErrors"].extend(response.get("writeErrors", []))
-            if "writeConcernError" in response:
-                error["writeConcernErrors"].append(response["writeConcernError"])
-
-        def has_errors():
-            return error["writeErrors"] or error["writeConcernErrors"]
-
-        def raise_error():
-            error["writeErrors"].sort(key=lambda error: error["index"])
-            for write_error in error["writeErrors"]:
-                write_error[u"op"] = documents[write_error["index"]]
-            raise BulkWriteError(error)
-
-        # There are four major cases with different behavior of insert_many:
-        #   * Unack, Unordered:  sending all batches and not handling responses at all
-        #                        so ignoring any errors
-        #
-        #   * Ack, Unordered:    sending all batches, accumulating all responses and
-        #                        returning aggregated response
-        #
-        #   * Unack, Ordered:    handling DB responses despite unacknowledged write_concern
-        #                        because we must stop on first error (not raising it though)
-        #
-        #   * Ack, Ordered:      stopping on first error and raising BulkWriteError
-
-        actual_write_concern = self.write_concern
-        if ordered and self.write_concern.acknowledged is False:
-            actual_write_concern = WriteConcern(w=1)
-
-        batches = self._generate_insert_many_batches(self._collection_name, documents, ordered,
-                                                     actual_write_concern, proto.max_bson_size,
-                                                     proto.max_write_batch_size)
-
-        all_responses = []
-        for batch in batches:
-            batch_result = proto.send_QUERY(Query(collection=cmd_collname, query=batch))
-            if self.write_concern.acknowledged or ordered:
-                batch_result.addCallback(accumulate_response)
-                if ordered:
-                    yield batch_result
-                    if has_errors():
-                        if self.write_concern.acknowledged:
-                            raise_error()
-                        else:
-                            break
-                else:
-                    all_responses.append(batch_result)
-
-        if self.write_concern.acknowledged and not ordered:
-            yield defer.DeferredList(all_responses)
-            if has_errors():
-                raise_error()
-
+        bulk = _Bulk(self, ordered, bypass_document_validation=False)
+        bulk.ops = [(_INSERT, doc) for doc in documents]
+        yield self._execute_bulk(bulk)
         defer.returnValue(InsertManyResult(inserted_ids, self.write_concern.acknowledged))
 
     @timeout
@@ -1125,3 +1068,109 @@ class Collection(object):
         result = yield self._new_find_and_modify(filter, projection, sort, upsert, return_document,
                                                  update=update, **kwargs)
         defer.returnValue(result)
+
+    def bulk_write(self, requests, ordered=True):
+        if not isinstance(requests, collections.Iterable):
+            raise TypeError("requests must be iterable")
+
+        requests = list(requests)
+
+        blk = _Bulk(self, ordered, bypass_document_validation=False)
+        for request in requests:
+            if not isinstance(request, _WriteOp):
+                raise TypeError("{} is not a valid request".format(request))
+            request._add_to_bulk(blk)
+
+        return self._execute_bulk(blk)
+
+    @defer.inlineCallbacks
+    def _execute_bulk(self, bulk):
+        if not bulk.ops:
+            raise InvalidOperation("No operations to execute")
+        if bulk.executed:
+            raise InvalidOperation("Bulk operations can only be executed once")
+
+        bulk.executed = True
+
+        if bulk.ordered:
+            generator = bulk.gen_ordered()
+        else:
+            generator = bulk.gen_unordered()
+
+        full_result = {
+            "writeErrors": [],
+            "writeConcernErrors": [],
+            "nInserted": 0,
+            "nUpserted": 0,
+            "nMatched": 0,
+            "nModified": 0,
+            "nRemoved": 0,
+            "upserted": [],
+        }
+
+        for run in generator:
+            result = yield self._execute_batch_command(run.op_type, run.ops, bulk.ordered)
+            _merge_command(run, full_result, result)
+
+            if bulk.ordered and full_result["writeErrors"]:
+                break
+
+        if self.write_concern.acknowledged:
+            if full_result["writeErrors"] or full_result["writeConcernErrors"]:
+                if full_result["writeErrors"]:
+                    full_result["writeErrors"].sort(key=lambda error: error["index"])
+                raise BulkWriteError(full_result)
+
+        defer.returnValue(BulkWriteResult(full_result, self.write_concern.acknowledged))
+
+    @defer.inlineCallbacks
+    def _execute_batch_command(self, command_type, documents, ordered):
+        assert command_type in _OP_MAP
+
+        cmd_collname = str(self._database["$cmd"])
+        proto = yield self._database.connection.getprotocol()
+
+        results = []
+
+        def accumulate_result(reply, idx_offset):
+            result = reply.documents[0].decode()
+            results.append((idx_offset, result))
+            return result
+
+        # There are four major cases with different behavior of insert_many:
+        #   * Unack, Unordered:  sending all batches and not handling responses at all
+        #                        so ignoring any errors
+        #
+        #   * Ack, Unordered:    sending all batches, accumulating all responses and
+        #                        returning aggregated response
+        #
+        #   * Unack, Ordered:    handling DB responses despite unacknowledged write_concern
+        #                        because we must stop on first error (not raising it though)
+        #
+        #   * Ack, Ordered:      stopping on first error and raising BulkWriteError
+
+        actual_write_concern = self.write_concern
+        if ordered and self.write_concern.acknowledged is False:
+            actual_write_concern = WriteConcern(w=1)
+
+        batches = self._generate_batch_commands(self._collection_name, _COMMANDS[command_type],
+                                                _OP_MAP[command_type], documents, ordered,
+                                                actual_write_concern, proto.max_bson_size,
+                                                proto.max_write_batch_size)
+
+        all_responses = []
+        for idx_offset, batch in batches:
+            batch_result = proto.send_QUERY(Query(collection=cmd_collname, query=batch))
+            if self.write_concern.acknowledged or ordered:
+                batch_result.addCallback(accumulate_result, idx_offset)
+                if ordered:
+                    result = yield batch_result
+                    if "writeErrors" in result:
+                        break
+                else:
+                    all_responses.append(batch_result)
+
+        if self.write_concern.acknowledged and not ordered:
+            yield defer.DeferredList(all_responses)
+
+        defer.returnValue(results)

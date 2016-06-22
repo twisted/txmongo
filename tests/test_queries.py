@@ -24,13 +24,9 @@ from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
 from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
-from twisted.trial import unittest
-import txmongo
 from txmongo.protocol import MongoClientProtocol
 import txmongo.filter as qf
-
-mongo_host = "localhost"
-mongo_port = 27017
+from tests.utils import SingleCollectionTest
 
 
 class _CallCounter(object):
@@ -43,20 +39,7 @@ class _CallCounter(object):
         return self.original(this, *args, **kwargs)
 
 
-class _SingleCollectionTest(unittest.TestCase):
-
-    def setUp(self):
-        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
-        self.db = self.conn.mydb
-        self.coll = self.db.mycol
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
-
-
-class TestMongoQueries(_SingleCollectionTest):
+class TestMongoQueries(SingleCollectionTest):
 
     timeout = 15
 
@@ -246,7 +229,7 @@ class TestMongoQueries(_SingleCollectionTest):
         self.assertEqual(doc, None)
 
 
-class TestMongoQueriesEdgeCases(_SingleCollectionTest):
+class TestMongoQueriesEdgeCases(SingleCollectionTest):
 
     timeout = 15
 
@@ -269,7 +252,7 @@ class TestMongoQueriesEdgeCases(_SingleCollectionTest):
         self.assertEqual(len(res), 102)
 
 
-class TestLimit(_SingleCollectionTest):
+class TestLimit(SingleCollectionTest):
 
     timeout = 15
 
@@ -322,7 +305,7 @@ class TestLimit(_SingleCollectionTest):
         self.assertEqual(len(res), 4)
 
 
-class TestSkip(_SingleCollectionTest):
+class TestSkip(SingleCollectionTest):
 
     timeout = 15
 
@@ -369,7 +352,7 @@ class TestSkip(_SingleCollectionTest):
         self.assertEqual(len(res), 0)
 
 
-class TestCommand(_SingleCollectionTest):
+class TestCommand(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_SimpleCommand(self):
@@ -403,7 +386,7 @@ class TestCommand(_SingleCollectionTest):
         self.assertFalse(result["ok"])
 
 
-class TestUpdate(_SingleCollectionTest):
+class TestUpdate(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_SimpleUpdate(self):
@@ -439,7 +422,7 @@ class TestUpdate(_SingleCollectionTest):
         self.assertEqual(docs[0], {'x': 123})
 
 
-class TestSave(_SingleCollectionTest):
+class TestSave(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Save(self):
@@ -455,7 +438,7 @@ class TestSave(_SingleCollectionTest):
         self.assertTrue({"_id": oid, 'x': 3} in docs)
 
 
-class TestRemove(_SingleCollectionTest):
+class TestRemove(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_RemoveOne(self):
@@ -488,17 +471,7 @@ class TestRemove(_SingleCollectionTest):
         self.assertFailure(self.coll.remove(123), TypeError)
 
 
-class TestDistinct(unittest.TestCase):
-
-    def setUp(self):
-        self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
-        self.db = self.conn.mydb
-        self.coll = self.db.mycol
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.coll.drop()
-        yield self.conn.disconnect()
+class TestDistinct(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Simple(self):
@@ -515,7 +488,7 @@ class TestDistinct(unittest.TestCase):
         self.assertEqual(set(d), {42, 123})
 
 
-class TestMapReduce(_SingleCollectionTest):
+class TestMapReduce(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_MapReduce(self):
@@ -553,7 +526,7 @@ class TestMapReduce(_SingleCollectionTest):
         self.assertTrue("results" in result)
 
 
-class TestInsertOne(_SingleCollectionTest):
+class TestInsertOne(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Acknowledged(self):
@@ -589,7 +562,7 @@ class TestInsertOne(_SingleCollectionTest):
         yield self.coll.with_options(write_concern=WriteConcern(w=0)).insert_one({'$': 1})
 
 
-class TestInsertMany(_SingleCollectionTest):
+class TestInsertMany(SingleCollectionTest):
 
     def setUp(self):
         self.more_than_1k = [{"_id": i} for i in range(2016)]
@@ -638,7 +611,7 @@ class TestInsertMany(_SingleCollectionTest):
         self.assertEqual(set(result.inserted_ids), {doc["_id"] for doc in found})
 
     @defer.inlineCallbacks
-    def testOrderedAck_Fail(self):
+    def test_OrderedAck_Fail(self):
         self.more_than_1k[500] = self.more_than_1k[499]
         error = yield self.assertFailure(self.coll.insert_many(self.more_than_1k), BulkWriteError)
         self.assertEqual(error.details["nInserted"], 500)
@@ -693,7 +666,7 @@ class TestInsertMany(_SingleCollectionTest):
         self.assertGreater(total_size, 40*1024**2)
 
 
-class TestUpdateOne(_SingleCollectionTest):
+class TestUpdateOne(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -749,7 +722,7 @@ class TestUpdateOne(_SingleCollectionTest):
         yield self.assertFailure(self.coll.update_one({'x': 2}, {"$set": {'x': 1}}), DuplicateKeyError)
 
 
-class TestReplaceOne(_SingleCollectionTest):
+class TestReplaceOne(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -803,7 +776,7 @@ class TestReplaceOne(_SingleCollectionTest):
         yield self.assertFailure(self.coll.replace_one({'x': 1}, {'x': 2}), DuplicateKeyError)
 
 
-class TestUpdateMany(_SingleCollectionTest):
+class TestUpdateMany(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -868,7 +841,7 @@ class TestUpdateMany(_SingleCollectionTest):
         yield self.assertFailure(self.coll.update_many({'x': 2}, {"$set": {'x': 1}}), DuplicateKeyError)
 
 
-class TestDeleteOne(_SingleCollectionTest):
+class TestDeleteOne(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -900,7 +873,7 @@ class TestDeleteOne(_SingleCollectionTest):
         yield self.assertFailure(self.coll.delete_one({'x': {'$': 1}}), WriteError)
 
 
-class TestDeleteMany(_SingleCollectionTest):
+class TestDeleteMany(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -932,7 +905,7 @@ class TestDeleteMany(_SingleCollectionTest):
         yield self.assertFailure(self.coll.delete_many({'x': {'$': 1}}), WriteError)
 
 
-class TestFindOneAndDelete(_SingleCollectionTest):
+class TestFindOneAndDelete(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -960,7 +933,7 @@ class TestFindOneAndDelete(_SingleCollectionTest):
         self.assertEqual(doc, {'y': 2})
 
 
-class TestFindOneAndReplace(_SingleCollectionTest):
+class TestFindOneAndReplace(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -1012,7 +985,7 @@ class TestFindOneAndReplace(_SingleCollectionTest):
                                  ValueError)
 
 
-class TestFindOneAndUpdate(_SingleCollectionTest):
+class TestFindOneAndUpdate(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -1059,7 +1032,7 @@ class TestFindOneAndUpdate(_SingleCollectionTest):
         self.assertEqual(doc['y'], 15)
 
 
-class TestCount(_SingleCollectionTest):
+class TestCount(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
