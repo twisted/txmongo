@@ -1,6 +1,16 @@
 Changelog
 =========
 
+Release 16.2.0 (UNRELEASED)
+---------------------------
+
+Features
+^^^^^^^^
+
+- ``Collection.bulk_write()`` that maches behavior of corresponding PyMongo's method. It accepts
+  an iterable of ``InsertOne``, ``UpdateOne``, ... from ``pymongo.operations``, packs them into
+  batches and returns aggregated response from MongoDB.
+
 Release 16.1.0 (2016-06-15)
 ---------------------------
 
