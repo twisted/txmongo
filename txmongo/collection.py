@@ -1171,6 +1171,9 @@ class Collection(object):
                     all_responses.append(batch_result)
 
         if self.write_concern.acknowledged and not ordered:
-            yield defer.DeferredList(all_responses)
+            try:
+                yield defer.gatherResults(all_responses, consumeErrors=True)
+            except defer.FirstError as e:
+                e.subFailure.raiseException()
 
         defer.returnValue(results)
