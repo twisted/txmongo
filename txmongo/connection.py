@@ -4,6 +4,7 @@
 
 from __future__ import absolute_import, division
 
+from bson.codec_options import DEFAULT_CODEC_OPTIONS
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.uri_parser import parse_uri
 from pymongo.read_preferences import ReadPreference
@@ -271,6 +272,8 @@ class ConnectionPool(object):
         wc_options = dict((k, v) for k, v in wc_options.items() if k in self.__wc_possible_options)
         self.__write_concern = WriteConcern(**wc_options)
 
+        self.__codec_options = kwargs.get('codec_options', DEFAULT_CODEC_OPTIONS)
+
         retry_delay = kwargs.get('retry_delay', 1.0)
         max_delay = kwargs.get('max_delay', 60.0)
         self.__pool_size = pool_size
@@ -297,6 +300,10 @@ class ConnectionPool(object):
     @property
     def write_concern(self):
         return self.__write_concern
+
+    @property
+    def codec_options(self):
+        return self.__codec_options
 
     def getprotocols(self):
         return self.__pool

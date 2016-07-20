@@ -10,6 +10,9 @@ Features
 - ``Collection.bulk_write()`` that maches behavior of corresponding PyMongo's method. It accepts
   an iterable of ``InsertOne``, ``UpdateOne``, ... from ``pymongo.operations``, packs them into
   batches and returns aggregated response from MongoDB.
+- ``codec_options`` properties for ``ConnectionPool``, ``Database`` and ``Collection``.
+  ``Collection.with_options(codec_options=CodecOptions(document_class=...))`` is now preferred
+  over ``Collection.find(..., as_class=...)``.
 
 Release 16.1.0 (2016-06-15)
 ---------------------------
