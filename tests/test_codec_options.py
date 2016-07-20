@@ -34,7 +34,7 @@ class TestCodecOptions(unittest.TestCase):
         self.conn = MongoConnection(mongo_host, mongo_port)
         self.db = self.conn.db
         self.coll = self.db.coll
-        yield self.coll.insert_one({'x': 42, 'y': datetime.datetime.now(), 'z': b'a\xffb'})
+        yield self.coll.insert_one({'x': 42, 'y': datetime.datetime.now()})
 
     @defer.inlineCallbacks
     def tearDown(self):
