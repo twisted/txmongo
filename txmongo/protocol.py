@@ -500,7 +500,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                  ('user', username)])
         result = yield self.__run_command('$external', query)
         if not result["ok"]:
-            raise txmongo.MongoProtocol.MongoAuthenticationError(result["errmsg"])
+            raise MongoAuthenticationError(result["errmsg"])
         defer.returnValue(result)
 
     @defer.inlineCallbacks
