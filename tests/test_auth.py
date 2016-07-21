@@ -273,9 +273,9 @@ class TestMongoDBCR(unittest.TestCase):
         yield mongod_noauth.start()
 
         try:
-            conn = connection.MongoConnection(mongo_host, mongo_port)
-
             try:
+                conn = connection.MongoConnection(mongo_host, mongo_port)
+
                 ismaster = yield conn.admin.command("ismaster")
                 if ismaster["maxWireVersion"] < 3:
                     raise unittest.SkipTest("This test is only for MongoDB 3.0")
@@ -286,8 +286,10 @@ class TestMongoDBCR(unittest.TestCase):
                                                            upsert=True)
             finally:
                 yield conn.disconnect()
-        finally:
-            yield mongod_noauth.stop()
+                yield mongod_noauth.stop()
+        except unittest.SkipTest:
+            shutil.rmtree(self.dbpath)
+            raise
 
         self.mongod = Mongod(port=mongo_port, auth=True, dbpath=self.dbpath)
         yield self.mongod.start()
