@@ -13,9 +13,11 @@ from txmongo.utils import timeout
 class Database(object):
     __factory = None
 
-    def __init__(self, factory, database_name, write_concern=None):
+    def __init__(self, factory, database_name, write_concern=None,
+                 codec_options=None):
         self.__factory = factory
         self.__write_concern = write_concern
+        self.__codec_options = codec_options
         self._database_name = unicode(database_name)
 
     def __str__(self):
@@ -25,7 +27,8 @@ class Database(object):
         return "Database(%r, %r)" % (self.__factory, self._database_name,)
 
     def __call__(self, database_name):
-        return Database(self.__factory, database_name, self.__write_concern)
+        return Database(self.__factory, database_name, self.__write_concern,
+                        self.__codec_options)
 
     def __getitem__(self, collection_name):
         return Collection(self, collection_name)
@@ -44,6 +47,10 @@ class Database(object):
     @property
     def write_concern(self):
         return self.__write_concern or self.__factory.write_concern
+
+    @property
+    def codec_options(self):
+        return self.__codec_options or self.__factory.codec_options
 
     @timeout
     @defer.inlineCallbacks

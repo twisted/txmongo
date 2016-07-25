@@ -40,11 +40,15 @@ class Collection(object):
         the name of the collection to get
 
     :param write_concern:
-        An instance of :class:`pymongo.write_concern.WriteConcern`.
+        An instance of :class:`~pymongo.write_concern.WriteConcern`.
         If ``None``, ``database.write_concern`` is used.
+
+    :param codec_options:
+        An instance of :class:`~bson.codec_options.CodecOptions`.
+        If ``None``, ``database.codec_options`` is used.
     """
 
-    def __init__(self, database, name, write_concern=None):
+    def __init__(self, database, name, write_concern=None, codec_options=None):
         if not isinstance(name, (bytes, unicode)):
             raise TypeError("TxMongo: name must be an instance of (bytes, unicode).")
 
@@ -63,6 +67,7 @@ class Collection(object):
         self._database = database
         self._collection_name = unicode(name)
         self.__write_concern = write_concern
+        self.__codec_options = codec_options
 
     def __str__(self):
         return "%s.%s" % (str(self._database), self._collection_name)
@@ -111,6 +116,16 @@ class Collection(object):
         return self[collection_name]
 
     @property
+    def codec_options(self):
+        """Read only access to the :class:`~bson.codec_options.CodecOptions`
+        of this instance.
+
+        Use ``coll.with_options(codec_options=CodecOptions(...))`` to change
+        codec options.
+        """
+        return self.__codec_options or self._database.codec_options
+
+    @property
     def write_concern(self):
         """Read only access to the :class:`~pymongo.write_concern.WriteConcern`
         of this instance.
@@ -125,6 +140,9 @@ class Collection(object):
 
         :param write_concern: *(keyword only)*
             new :class:`~pymongo.write_concern.WriteConcern` to use.
+
+        :param codec_options: *(keyword only)*
+            new :class:`~bson.codec_options.CodecOptions` to use.
         """
         # PyMongo's method gets several positional arguments. We support
         # only write_concern for now which is the 3rd positional argument.
@@ -132,9 +150,11 @@ class Collection(object):
         # write_concern as named argument, so adding other args in future
         # won't break compatibility
         write_concern = kwargs.get("write_concern") or self.__write_concern
+        codec_options = kwargs.get("codec_options") or self.codec_options
 
         return Collection(self._database, self._collection_name,
-                          write_concern=write_concern)
+                          write_concern=write_concern,
+                          codec_options=codec_options)
 
     @staticmethod
     def _normalize_fields_projection(fields):
@@ -281,7 +301,7 @@ class Collection(object):
 
         spec = self.__apply_find_filter(spec, filter)
 
-        as_class = kwargs.get("as_class", dict)
+        as_class = kwargs.get("as_class")
         proto = self._database.connection.getprotocol()
 
         def after_connection(protocol):
@@ -308,7 +328,9 @@ class Collection(object):
                 docs_count = min(docs_count, limit - fetched)
             fetched += docs_count
 
-            options = bson.codec_options.CodecOptions(document_class=as_class)
+            options = self.codec_options
+            if as_class is not None:
+                options = options._replace(document_class=as_class)
             out = [document.decode(codec_options=options) for document in documents[:docs_count]]
 
             if reply.cursor_id:
