@@ -255,7 +255,7 @@ class ConnectionPool(object):
     __wc_possible_options = {'w', "wtimeout", 'j', "fsync"}
 
     def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None,
-                 watchdog_interval=15, watchdog_timeout=5, **kwargs):
+                 watchdog_interval=30, watchdog_timeout=120, **kwargs):
         assert isinstance(uri, StringType)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
