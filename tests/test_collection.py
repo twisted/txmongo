@@ -106,7 +106,7 @@ class TestIndexInfo(unittest.TestCase):
         yield coll.insert({'c': 1})  # make sure collection exists.
 
         yield coll.drop_indexes()
-        count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
+        count = len((yield coll.index_information()))
         self.assertEqual(count, 1)
         self.assertIsInstance(count, int)
 
@@ -114,7 +114,7 @@ class TestIndexInfo(unittest.TestCase):
         yield coll.create_index(qf.sort(qf.ASCENDING("hello") +
                                 qf.DESCENDING("world")))
 
-        count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
+        count = len((yield coll.index_information()))
         self.assertEqual(count, 3)
 
         yield coll.drop_indexes()
@@ -123,15 +123,15 @@ class TestIndexInfo(unittest.TestCase):
         self.assertEquals(ix, "hello_world")
 
         yield coll.drop_indexes()
-        count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
+        count = len((yield coll.index_information()))
         self.assertEqual(count, 1)
 
         yield coll.create_index(qf.sort(qf.ASCENDING("hello")))
-        indices = yield db.system.indexes.find({"ns": u"mydb.mycol"})
-        self.assert_(u"hello_1" in [a["name"] for a in indices])
+        indices = yield coll.index_information()
+        self.assert_(u"hello_1" in indices)
 
         yield coll.drop_indexes()
-        count = yield db.system.indexes.count({"ns": u"mydb.mycol"})
+        count = len((yield coll.index_information()))
         self.assertEqual(count, 1)
 
         ix = yield coll.create_index(qf.sort(qf.ASCENDING("hello") +
@@ -170,8 +170,8 @@ class TestIndexInfo(unittest.TestCase):
         coll = self.coll
 
         yield coll.ensure_index(qf.sort(qf.ASCENDING("hello")))
-        indices = yield db.system.indexes.find({"ns": u"mydb.mycol"})
-        self.assert_(u"hello_1" in [a["name"] for a in indices])
+        indices = yield coll.index_information()
+        self.assert_(u"hello_1" in indices)
 
         yield coll.drop_indexes()
 
