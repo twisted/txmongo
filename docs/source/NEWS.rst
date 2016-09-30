@@ -13,6 +13,11 @@ Features
 - ``codec_options`` properties for ``ConnectionPool``, ``Database`` and ``Collection``.
   ``Collection.with_options(codec_options=CodecOptions(document_class=...))`` is now preferred
   over ``Collection.find(..., as_class=...)``.
+  
+Bugfixes
+^^^^^^^^
+
+- Fixed bug in `find()` that can cause undefined ordering of the results when sorting on multiple fields is requested.
 
 Release 16.1.0 (2016-06-15)
 ---------------------------
