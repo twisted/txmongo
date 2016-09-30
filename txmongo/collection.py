@@ -11,7 +11,7 @@ from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
 from pymongo.bulk import _Bulk, _COMMANDS, _merge_command
-from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation
+from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure
 from pymongo.helpers import _check_write_command_response
 from pymongo.operations import _WriteOp
 from pymongo.message import _OP_MAP, _INSERT
@@ -182,6 +182,17 @@ class Collection(object):
     def _gen_index_name(keys):
         return u'_'.join([u"%s_%s" % item for item in keys])
 
+    @defer.inlineCallbacks
+    def _list_collections_3_0(self):
+        response = yield self._database.command(SON([("listCollections", 1),
+                                                     ("filter", {"name": self.name})]))
+        assert response["cursor"]["id"] == 0
+        first_batch = response["cursor"]["firstBatch"]
+        if first_batch:
+            defer.returnValue(first_batch[0])
+        else:
+            defer.returnValue(None)
+
     @timeout
     @defer.inlineCallbacks
     def options(self, **kwargs):
@@ -190,10 +201,11 @@ class Collection(object):
         :returns:
             :class:`Deferred` that called back with dictionary of options
             and their values.
-
-        *This method only works with MongoDB 2.x*
         """
-        result = yield self._database.system.namespaces.find_one({"name": str(self)}, **kwargs)
+        try:
+            result = yield self._list_collections_3_0()
+        except OperationFailure:
+            result = yield self._database.system.namespaces.find_one({"name": str(self)}, **kwargs)
         if not result:
             result = {}
         options = result.get("options", {})
@@ -958,10 +970,20 @@ class Collection(object):
         result = yield self.drop_index("*", **kwargs)
         defer.returnValue(result)
 
+    @defer.inlineCallbacks
+    def __index_information_3_0(self):
+        indexes_info = yield self._database.command("listIndexes", self.name)
+        assert indexes_info["cursor"]["id"] == 0
+        defer.returnValue(indexes_info["cursor"]["firstBatch"])
+
     @timeout
     @defer.inlineCallbacks
     def index_information(self, **kwargs):
-        raw = yield self._database.system.indexes.find({"ns": str(self)}, **kwargs)
+        try:
+            raw = yield self.__index_information_3_0()
+        except OperationFailure:
+            raw = yield self._database.system.indexes.find({"ns": str(self)}, **kwargs)
+
         info = {}
         for idx in raw:
             info[idx["name"]] = idx
