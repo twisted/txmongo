@@ -284,7 +284,7 @@ class Collection(object):
 
             for k, v in c_filter.items():
                 if isinstance(v, (list, tuple)):
-                    spec['$' + k] = dict(v)
+                    spec['$' + k] = SON(v)
                 else:
                     spec['$' + k] = v
 
