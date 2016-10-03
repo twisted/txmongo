@@ -60,7 +60,7 @@ def TEXT(keys):
 
 class _QueryFilter(defaultdict):
 
-    ALLOWED_DIRECTIONS = (1, -1, '2d', '2dsphere', 'geoHaystack', 'text',)
+    ALLOWED_DIRECTIONS = {1, -1, "2d", "2dsphere", "geoHaystack", "text"}
 
     def __init__(self):
         defaultdict.__init__(self, lambda: ())
@@ -81,7 +81,7 @@ class _QueryFilter(defaultdict):
                 if not isinstance(key, (bytes, unicode)):
                     raise TypeError("TxMongo: invalid {0}ing key '{1}'"
                                     .format(name, repr(key)))
-                if direction not in self.__class__.ALLOWED_DIRECTIONS:
+                if direction not in self.ALLOWED_DIRECTIONS:
                     raise TypeError("TxMongo invalid {0}ing direction '{1}'"
                                     .format(name, direction))
                 self[operation] += tuple(((key, direction),))
