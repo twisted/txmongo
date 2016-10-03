@@ -494,6 +494,16 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 raise MongoAuthenticationError("TxMongo: SASL conversation failed to complete.")
 
     @defer.inlineCallbacks
+    def authenticate_mongo_x509(self,  database_name, username, password):
+        query = SON([('authenticate', 1),
+                 ('mechanism', 'MONGODB-X509'),
+                 ('user', username)])
+        result = yield self.__run_command('$external', query)
+        if not result["ok"]:
+            raise MongoAuthenticationError(result["errmsg"])
+        defer.returnValue(result)
+
+    @defer.inlineCallbacks
     def authenticate(self, database_name, username, password, mechanism):
         database_name = str(database_name)
         username = unicode(username)
@@ -506,6 +516,8 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 auth_func = self.authenticate_mongo_cr
             elif mechanism == "SCRAM-SHA-1":
                 auth_func = self.authenticate_scram_sha1
+            elif mechanism == "MONGODB-X509":
+                auth_func = self.authenticate_mongo_x509
             elif mechanism == "DEFAULT":
                 if self.max_wire_version >= 3:
                     auth_func = self.authenticate_scram_sha1
