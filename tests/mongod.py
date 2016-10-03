@@ -32,7 +32,7 @@ class Mongod(object):
     # so leaving this for now
     success_message = b"waiting for connections on port"
 
-    def __init__(self, port=27017, auth=False, replset=None, dbpath=None):
+    def __init__(self, port=27017, auth=False, replset=None, dbpath=None, args=()):
         self.__proc = None
         self.__notify_waiting = []
         self.__notify_stop = []
@@ -44,6 +44,7 @@ class Mongod(object):
         self.port = port
         self.auth = auth
         self.replset = replset
+        self.args = args
 
         if dbpath is None:
             self.__datadir = tempfile.mkdtemp()
@@ -71,6 +72,7 @@ class Mongod(object):
         ]
         if self.auth: args.append(b"--auth")
         if self.replset: args.extend([b"--replSet", self.replset])
+        args.extend(arg.encode() for arg in self.args)
         from os import environ
         self.__proc = reactor.spawnProcess(self, b"mongod", args, env=environ)
         return d
