@@ -74,6 +74,9 @@ class TestMongoFilters(unittest.TestCase):
         self.assertEqual(qf.sort(qf.GEO2DSPHERE('x')), qf.sort([('x', "2dsphere")]))
         self.assertEqual(qf.sort(qf.GEOHAYSTACK('x')), qf.sort([('x', "geoHaystack")]))
 
+    def __3_2_or_higher(self):
+        return self.db.command("buildInfo").addCallback(lambda info: info["versionArray"] >= [3, 2])
+
     @defer.inlineCallbacks
     def __test_simple_filter(self, filter, optionname, optionvalue):
         # Checking that `optionname` appears in profiler log with specified value
@@ -82,18 +85,24 @@ class TestMongoFilters(unittest.TestCase):
         yield self.coll.find({}, filter=filter)
         yield self.db.command("profile", 0)
 
-        cnt = yield self.db.system.profile.count({"query." + optionname: optionvalue})
+        if (yield self.__3_2_or_higher()):
+            # query options format in system.profile have changed in MongoDB 3.2
+            profile_filter = {"query." + optionname: optionvalue}
+        else:
+            profile_filter = {"query.$" + optionname: optionvalue}
+
+        cnt = yield self.db.system.profile.count(profile_filter)
         self.assertEqual(cnt, 1)
 
     @defer.inlineCallbacks
     def test_Comment(self):
         comment = "hello world"
 
-        yield self.__test_simple_filter(qf.comment(comment), "$comment", comment)
+        yield self.__test_simple_filter(qf.comment(comment), "comment", comment)
 
     @defer.inlineCallbacks
     def test_Snapshot(self):
-        yield self.__test_simple_filter(qf.snapshot(), "$snapshot", True)
+        yield self.__test_simple_filter(qf.snapshot(), "snapshot", True)
 
     @defer.inlineCallbacks
     def test_Explain(self):
@@ -111,8 +120,11 @@ class TestMongoFilters(unittest.TestCase):
         yield self.coll.find({}, filter=qf.sort(qf.ASCENDING('x')) + qf.comment(comment))
         yield self.db.command("profile", 0)
 
-        cnt = yield self.db.system.profile.count({"query.$orderby.x": 1,
-                                                  "query.$comment": comment})
+        if (yield self.__3_2_or_higher()):
+            profile_filter = {"query.sort.x": 1, "query.comment": comment}
+        else:
+            profile_filter = {"query.$orderby.x": 1, "query.$comment": comment}
+        cnt = yield self.db.system.profile.count(profile_filter)
         self.assertEqual(cnt, 1)
 
     def test_Repr(self):
