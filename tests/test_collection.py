@@ -228,6 +228,17 @@ class TestIndexInfo(unittest.TestCase):
         self.assertEqual(index_info["loc_2dsphere"]["key"], {"loc": "2dsphere"})
 
     @defer.inlineCallbacks
+    def test_index_text(self):
+        yield self.coll.drop_indexes()
+        ix = yield self.coll.create_index(qf.sort(qf.TEXT("title") + qf.TEXT("summary")),
+                                          weights={"title": 100, "summary": 20})
+        self.assertEqual("title_text_summary_text", ix)
+
+        index_info = yield self.coll.index_information()
+        self.assertEqual(index_info[ix]["key"], {"_fts": "text", "_ftsx": 1})
+        self.assertEqual(index_info[ix]["weights"], {"title": 100, "summary": 20})
+
+    @defer.inlineCallbacks
     def test_index_haystack(self):
         db = self.db
         coll = self.coll

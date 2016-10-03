@@ -74,6 +74,9 @@ class TestMongoFilters(unittest.TestCase):
         self.assertEqual(qf.sort(qf.GEO2DSPHERE('x')), qf.sort([('x', "2dsphere")]))
         self.assertEqual(qf.sort(qf.GEOHAYSTACK('x')), qf.sort([('x', "geoHaystack")]))
 
+    def test_TextIndex(self):
+        self.assertEqual(qf.sort(qf.TEXT("title")), qf.sort([("title", "text")]))
+
     def __3_2_or_higher(self):
         return self.db.command("buildInfo").addCallback(lambda info: info["versionArray"] >= [3, 2])
 
