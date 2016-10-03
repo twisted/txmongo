@@ -495,10 +495,10 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
     @defer.inlineCallbacks
     def authenticate_mongo_x509(self,  database_name, username, password):
-        query = SON([('authenticate', 1),
-                 ('mechanism', 'MONGODB-X509'),
-                 ('user', username)])
-        result = yield self.__run_command('$external', query)
+        query = SON([("authenticate", 1),
+                     ("mechanism", "MONGODB-X509"),
+                     ("user", username)])
+        result = yield self.__run_command("$external", query)
         if not result["ok"]:
             raise MongoAuthenticationError(result["errmsg"])
         defer.returnValue(result)
