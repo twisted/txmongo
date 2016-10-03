@@ -469,6 +469,11 @@ V37FR1u/s35pM/csU6V/hNpOBhrZ4SjxhJy8vAOs9sHA
         self.client_keyfile = self.__create_keyfile(self.client_key)
         self.client_certfile = self.__create_keyfile(self.client_cert)
 
+        self.ssl_factory = ssl.DefaultOpenSSLContextFactory(
+            privateKeyFileName = self.client_keyfile,
+            certificateFileName = self.client_certfile,
+        )
+
         mongod_noauth = Mongod(port=mongo_port, auth=False, dbpath=self.dbpath)
         yield mongod_noauth.start()
 
@@ -503,17 +508,31 @@ V37FR1u/s35pM/csU6V/hNpOBhrZ4SjxhJy8vAOs9sHA
 
     @defer.inlineCallbacks
     def test_auth(self):
-        ssl_factory = ssl.DefaultOpenSSLContextFactory(
-            privateKeyFileName = self.client_keyfile,
-            certificateFileName = self.client_certfile,
-        )
-
-        conn = connection.MongoConnection(port=mongo_port, ssl_context_factory=ssl_factory)
+        conn = connection.MongoConnection(port=mongo_port, ssl_context_factory=self.ssl_factory)
         yield self.assertFailure(conn.db.coll.find(), OperationFailure)
         try:
-            yield conn.admin.authenticate(self.client_subject, '', mechanism="MONGODB-X509")
+            yield conn.db.authenticate(self.client_subject, '', mechanism="MONGODB-X509")
             yield conn.db.coll.insert_one({'x': 42})
             cnt = yield conn.db.coll.count()
             self.assertEqual(cnt, 1)
+        finally:
+            yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_fail(self):
+        conn = connection.MongoConnection(port=mongo_port, ssl_context_factory=self.ssl_factory)
+        yield self.assertFailure(conn.db.coll.find(), OperationFailure)
+        try:
+            auth = conn.db.authenticate("DC=another,O=txmongo", '', mechanism="MONGODB-X509")
+            yield self.assertFailure(auth, MongoAuthenticationError)
+        finally:
+            yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_lazy_fail(self):
+        conn = connection.MongoConnection(port=mongo_port, ssl_context_factory=self.ssl_factory)
+        try:
+            yield conn.db.authenticate("DC=another,O=txmongo", '', mechanism="MONGODB-X509")
+            yield self.assertFailure(conn.db.coll.find(), OperationFailure)
         finally:
             yield conn.disconnect()
