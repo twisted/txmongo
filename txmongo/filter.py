@@ -50,7 +50,18 @@ def GEOHAYSTACK(keys):
     return _direction(keys, "geoHaystack")
 
 
+def TEXT(keys):
+    """
+    Text-based index
+    https://docs.mongodb.com/manual/core/index-text/
+    """
+    return _direction(keys, "text")
+
+
 class _QueryFilter(defaultdict):
+
+    ALLOWED_DIRECTIONS = {1, -1, "2d", "2dsphere", "geoHaystack", "text"}
+
     def __init__(self):
         defaultdict.__init__(self, lambda: ())
 
@@ -68,12 +79,15 @@ class _QueryFilter(defaultdict):
             assert isinstance(index_list, (list, tuple))
             for key, direction in index_list:
                 if not isinstance(key, (bytes, unicode)):
-                    raise TypeError("TxMongo: invalid {0}ing key '{1}'".format(name, repr(key)))
-                if direction not in (1, -1, "2d", "2dsphere", "geoHaystack"):
-                    raise TypeError("TxMongo invalid {0}ing direction '{1}'".format(name, direction))
+                    raise TypeError("TxMongo: invalid {0}ing key '{1}'"
+                                    .format(name, repr(key)))
+                if direction not in self.ALLOWED_DIRECTIONS:
+                    raise TypeError("TxMongo invalid {0}ing direction '{1}'"
+                                    .format(name, direction))
                 self[operation] += tuple(((key, direction),))
         except Exception:
-            raise TypeError("TxMongo: invalid list of keys for {0}, {1}".format(name, repr(index_list)))
+            raise TypeError("TxMongo: invalid list of keys for {0}, {1}"
+                            .format(name, repr(index_list)))
 
     def __repr__(self):
         return "<mongodb QueryFilter: %s>" % dict.__repr__(self)
