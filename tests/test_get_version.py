@@ -45,18 +45,13 @@ class TestGFS(unittest.TestCase):
         index = 9
         while True:
             try:
-                doc = yield self.gfs.get_last_version('world')
+                doc = yield self.gfs.get_version('world', -1)
                 text = yield doc.read()
                 self.assertEqual(text, 'Hello' + str(index))
                 index -= 1
                 yield self.gfs.delete(doc._id)
             except NoFile:
                 break
-        try:
-            doc = yield self.gfs.get_last_version('world')
-            self.assertEqual(doc, None)
-        except NoFile:
-            return
 
     @defer.inlineCallbacks
     def test_GFSVersion_last(self):
