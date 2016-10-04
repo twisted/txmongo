@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Release 16.3.0 (UNRELEASED)
+---------------------------
+
+Features
+^^^^^^^^
+
+- Full-text indexes can be used with new ``filter.TEXT()``
+
 Release 16.2.0 (2016-10-02)
 ---------------------------
 
