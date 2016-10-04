@@ -11,6 +11,10 @@ Features
 - Client authentication by X509 certificates. Use your client certificate when connecting
   to MongoDB and then call ``Database.authenticate`` with certificate subject as username,
   empty password and ``mechanism="MONGODB-X509"``.
+- ``get_version()`` to approximate the behaviour of get_version in PyMongo. One noteable exception		
+  is the omission of searching by random (unindexed) meta-data which should be considered a bad idea		
+  as it may create *very* variable conditions in terms of loading and timing. An additional index is		
+  also added to facilitate bi-directional movement between versions. Additional Unit test for GFS also added.
 
 Release 16.2.0 (2016-10-02)
 ---------------------------
