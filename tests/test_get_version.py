@@ -21,27 +21,61 @@ from twisted.internet import defer
 from txmongo import connection, gridfs
 from txmongo.utils import check_deadline
 from txmongo.errors import TimeExceeded
+from txmongo._gridfs.errors import NoFile
 
-class TestGetVersion(unittest.TestCase):
+class TestGFS(unittest.TestCase):
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.conn = connection.ConnectionPool("mongodb://127.0.0.1/dbname")
-        self.gfs = gridfs.GridFS(self.conn)
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.conn.disconnect()
-
-    def test_GetDefaultDatabase(self):
-        self.assertEqual(self.named_conn.get_default_database().name,
-                         self.named_conn["dbname"].name)
-
-    @defer.inlineCallbacks
-    def test_GFSVersion(self):
+        self.db = self.conn['dbname']
+        self.gfs = gridfs.GridFS(self.db)
         for n in xrange(0,10):
             yield self.gfs.put("Hello" + str(n), filename="world")
 
+    @defer.inlineCallbacks
+    def tearDown(self):
+        docs = yield self.gfs.list()
+        self.assertEqual(docs, ['world'])
+        index = 9
+        while True:
+            try:
+            	doc = yield self.gfs.get_last_version('world')
+                text = yield doc.read()
+        	self.assertEqual(text, 'Hello' + str(index))
+                index -= 1
+                yield self.gfs.delete(doc._id)
+            except NoFile:
+                break
+
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_GFSVersion_last(self):
         doc = yield self.gfs.get_last_version("world")
         text = yield doc.read()
-        self.assertEqual(text, 'Hello10')
+        self.assertEqual(text, 'Hello9')
+ 
+    @defer.inlineCallbacks
+    def test_GFSVersion_get_last(self):
+        doc = yield self.gfs.get_version("world",-1)
+        text = yield doc.read()
+        self.assertEqual(text, 'Hello9')
+            
+    @defer.inlineCallbacks
+    def test_GFSVersion_first(self):
+        doc = yield self.gfs.get_version("world",0)
+        text = yield doc.read()
+        self.assertEqual(text, 'Hello0')
 
+    @defer.inlineCallbacks
+    def test_GFSVersion_second(self):
+        doc = yield self.gfs.get_version("world",1)
+        text = yield doc.read()
+        self.assertEqual(text, 'Hello1')
+
+    @defer.inlineCallbacks
+    def test_GFSVersion_last_but_1(self):
+        doc = yield self.gfs.get_version("world",-2)
+        text = yield doc.read()
+        self.assertEqual(text, 'Hello8')

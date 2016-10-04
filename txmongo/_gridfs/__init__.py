@@ -165,8 +165,9 @@ class GridFS(object):
             to -1, the most recent version uploaded)            
         """        
         query = {"filename": filename}
+        skip = abs(version) 
         if version < 0:
-            skip = abs(version) 
+            skip -= 1
             myorder = DESCENDING("uploadDate")
         else:
             myorder = ASCENDING("uploadDate")
