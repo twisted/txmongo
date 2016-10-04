@@ -61,9 +61,9 @@ class GridFS(object):
         self.__chunks = self.__collection.chunks
         self.__indexes_created_defer = defer.DeferredList([
         self.__files.create_index(
-                filter.sort(ASCENDING("filesname") + ASCENDING("uploadDate"))),
+            filter.sort(ASCENDING("filesname") + ASCENDING("uploadDate"))),
         self.__chunks.create_index(
-                filter.sort(ASCENDING("files_id") + ASCENDING("n")), unique=True)
+            filter.sort(ASCENDING("files_id") + ASCENDING("n")), unique=True)
         ])
 
     def indexes_created(self):
