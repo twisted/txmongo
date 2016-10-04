@@ -9,6 +9,7 @@ import collections
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
+from bson.codec_options import CodecOptions
 from pymongo.bulk import _Bulk, _COMMANDS, _merge_command
 from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure
 from pymongo.helpers import _check_write_command_response
@@ -963,13 +964,15 @@ class Collection(object):
         def on_ok(indexes_info):
             assert indexes_info["cursor"]["id"] == 0
             return indexes_info["cursor"]["firstBatch"]
-        return self._database.command("listIndexes", self.name).addCallback(on_ok)
+        codec = CodecOptions(document_class=SON)
+        return self._database.command("listIndexes", self.name, codec_options=codec)\
+                .addCallback(on_ok)
 
     @timeout
     def index_information(self, **kwargs):
         def on_3_0_fail(failure):
             failure.trap(OperationFailure)
-            return self._database.system.indexes.find({"ns": str(self)}, **kwargs)
+            return self._database.system.indexes.find({"ns": str(self)}, as_class=SON, **kwargs)
 
         def on_ok(raw):
             info = {}

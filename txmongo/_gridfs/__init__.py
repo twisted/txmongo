@@ -61,7 +61,7 @@ class GridFS(object):
         self.__chunks = self.__collection.chunks
         self.__indexes_created_defer = defer.DeferredList([
             self.__files.create_index(
-                filter.sort(ASCENDING("filesname") + ASCENDING("uploadDate"))),
+                filter.sort(ASCENDING("filename") + ASCENDING("uploadDate"))),
             self.__chunks.create_index(
                 filter.sort(ASCENDING("files_id") + ASCENDING("n")), unique=True)
         ])
@@ -194,8 +194,6 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        self.__files.ensure_index(filter.sort(ASCENDING("filename") + DESCENDING("uploadDate")))
-
         def ok(doc):
             if doc is None:
                 raise NoFile("TxMongo: no file in gridfs with filename {0}".format(repr(filename)))
