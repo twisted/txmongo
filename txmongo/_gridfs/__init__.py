@@ -60,11 +60,7 @@ class GridFS(object):
         self.__files = self.__collection.files
         self.__chunks = self.__collection.chunks
         self.__indexes_created_defer = defer.DeferredList([
-            self.__files.create_index(
-                filter.sort(ASCENDING("filesname") + ASCENDING("uploadDate"))),
-            self.__files.create_index(
-                filter.sort(ASCENDING("filesname") + DESCENDING("uploadDate"))),
-
+            self.__files.create_index({'filesname':1, 'uploadDate':1}, name='version_index'),
             self.__chunks.create_index(
                 filter.sort(ASCENDING("files_id") + ASCENDING("n")), unique=True)
         ])
@@ -175,7 +171,7 @@ class GridFS(object):
         cursor = yield self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)
         if cursor:
             defer.returnValue(GridOut(self.__collection, cursor[0]))
-            
+
         raise NoFile("no version %d for filename %r" % (version, filename))        
 
     @defer.inlineCallbacks
