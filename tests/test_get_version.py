@@ -35,27 +35,35 @@ class TestGFS(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.db.dbname.drop()
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_GFSVersion_strip(self):
         docs = yield self.gfs.list()
         self.assertEqual(docs, ['world'])
         index = 9
         while True:
             try:
-            	doc = yield self.gfs.get_last_version('world')
+                doc = yield self.gfs.get_last_version('world')
                 text = yield doc.read()
-        	self.assertEqual(text, 'Hello' + str(index))
+                self.assertEqual(text, 'Hello' + str(index))
                 index -= 1
                 yield self.gfs.delete(doc._id)
             except NoFile:
                 break
-
-        yield self.conn.disconnect()
+        try:
+            doc = yield self.gfs.get_last_version('world')
+            self.assertEqual(doc, None)
+        except NoFile:
+            return
 
     @defer.inlineCallbacks
     def test_GFSVersion_last(self):
         doc = yield self.gfs.get_last_version("world")
         text = yield doc.read()
         self.assertEqual(text, 'Hello9')
- 
+
     @defer.inlineCallbacks
     def test_GFSVersion_get_last(self):
         doc = yield self.gfs.get_version("world",-1)
