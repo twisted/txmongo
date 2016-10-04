@@ -141,7 +141,7 @@ class GridFS(object):
         defer.returnValue(GridOut(self.__collection, doc))
 
     @defer.inlineCallbacks
-    def get_version(self, filename=None, version=-1, **kwargs):
+    def get_version(self, filename=None, version=-1):
         """Get a file from GridFS by ``"filename"``.
         Returns a version of the file in GridFS whose filename matches
         `filename` and whose metadata fields match the supplied keyword
@@ -173,11 +173,10 @@ class GridFS(object):
             myorder = ASCENDING("uploadDate")
 
         cursor = yield self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)
-
-        try:
+        if cursor:
             defer.returnValue(GridOut(self.__collection, cursor[0]))
-        except StopIteration:
-            raise NoFile("no version %d for filename %r" % (version, filename))        
+            
+        raise NoFile("no version %d for filename %r" % (version, filename))        
 
     @defer.inlineCallbacks
     def get_last_version(self, filename):
