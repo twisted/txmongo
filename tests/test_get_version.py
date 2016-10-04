@@ -35,7 +35,7 @@ class TestGFS(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.db.dbname.drop()
+        yield self.conn.drop_database('dbname')
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
