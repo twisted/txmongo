@@ -11,3 +11,5 @@ setuptools
 tox
 check-manifest
 mock
+pyopenssl
+service_identity

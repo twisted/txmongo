@@ -8,6 +8,9 @@ Features
 ^^^^^^^^
 
 - Full-text indexes can be used with new ``filter.TEXT()``
+- Client authentication by X509 certificates. Use your client certificate when connecting
+  to MongoDB and then call ``Database.authenticate`` with certificate subject as username,
+  empty password and ``mechanism="MONGODB-X509"``.
 
 Release 16.2.0 (2016-10-02)
 ---------------------------
