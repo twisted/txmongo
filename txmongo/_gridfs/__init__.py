@@ -170,7 +170,7 @@ class GridFS(object):
             myorder = ASCENDING("uploadDate")
 
         cursor = yield self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)
-        if cursor:
+        if len(cursor):
             defer.returnValue(GridOut(self.__collection, cursor[0]))
 
         raise NoFile("no version %d for filename %r" % (version, filename))        
