@@ -68,7 +68,7 @@ class TestCancelParts(unittest.TestCase):
     @defer.inlineCallbacks
     def test_connection_notifyReady(self):
         uri = parse_uri("mongodb://localhost:27017/")
-        conn = _Connection(None, uri, 0, 10, 10, 10, 10)
+        conn = _Connection(None, uri, 0, 10, 10)
         d1 = conn.notifyReady()
         d2 = conn.notifyReady()
         d1.cancel()

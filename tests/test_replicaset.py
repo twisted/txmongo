@@ -279,8 +279,7 @@ class TestReplicaSet(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_StaleConnection(self):
-        conn = MongoConnection("localhost", self.ports[0],
-                               watchdog_interval=10, watchdog_timeout=5)
+        conn = MongoConnection("localhost", self.ports[0], ping_interval = 5, ping_timeout = 5)
         try:
             yield conn.db.coll.count()
             self.__mongod[0].kill(signal.SIGSTOP)
