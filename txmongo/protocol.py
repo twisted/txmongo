@@ -342,21 +342,31 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
             return defer.succeed(None)
         if not self.__connection_ready:
             self.__connection_ready = []
-        df = defer.Deferred()
+
+        def on_cancel(d):
+            try:
+                self.__connection_ready.remove(d)
+            except ValueError:
+                pass
+
+        df = defer.Deferred(on_cancel)
         self.__connection_ready.append(df)
+        return df
+
+    def __wait_for_reply_to(self, request_id):
+        def on_cancel(_):
+            self.__deferreds.pop(request_id, None)
+        df = defer.Deferred(on_cancel)
+        self.__deferreds[request_id] = df
         return df
 
     def send_GETMORE(self, request):
         request_id = MongoClientProtocol.send_GETMORE(self, request)
-        df = defer.Deferred()
-        self.__deferreds[request_id] = df
-        return df
+        return self.__wait_for_reply_to(request_id)
 
     def send_QUERY(self, request):
         request_id = MongoClientProtocol.send_QUERY(self, request)
-        df = defer.Deferred()
-        self.__deferreds[request_id] = df
-        return df
+        return self.__wait_for_reply_to(request_id)
 
     def handle_REPLY(self, request):
         if request.response_to in self.__deferreds:
@@ -381,38 +391,38 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         log.err(str(reason))
         self.transport.loseConnection()
 
-    @defer.inlineCallbacks
     def get_last_error(self, db, **options):
         command = SON([("getlasterror", 1)])
         db = "%s.$cmd" % db.split('.', 1)[0]
         command.update(options)
 
+        def on_reply(reply):
+            assert len(reply.documents) == 1
+
+            document = reply.documents[0].decode()
+            err = document.get("err", None)
+            code = document.get("code", None)
+
+            if err is not None:
+                if code == 11000:
+                    raise DuplicateKeyError(err, code = code)
+                else:
+                    raise OperationFailure(err, code = code)
+
+            return document
+
         query = Query(collection=db, query=command)
-        reply = yield self.send_QUERY(query)
+        return self.send_QUERY(query).addCallback(on_reply)
 
-        assert len(reply.documents) == 1
-
-        document = reply.documents[0].decode()
-        err = document.get("err", None)
-        code = document.get("code", None)
-
-        if err is not None:
-            if code == 11000:
-                raise DuplicateKeyError(err, code=code)
-            else:
-                raise OperationFailure(err, code=code)
-
-        defer.returnValue(document)
 
     def set_wire_versions(self, min_wire_version, max_wire_version):
         self.min_wire_version = min_wire_version
         self.max_wire_version = max_wire_version
 
-    @defer.inlineCallbacks
     def __run_command(self, database, query):
         cmd_collection = str(database) + ".$cmd"
-        response = yield self.send_QUERY(Query(collection=cmd_collection, query=query))
-        defer.returnValue(response.documents[0].decode())
+        return self.send_QUERY(Query(collection=cmd_collection, query=query))\
+            .addCallback(lambda response: response.documents[0].decode())
 
     @defer.inlineCallbacks
     def authenticate_mongo_cr(self, database_name, username, password):

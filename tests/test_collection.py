@@ -67,17 +67,21 @@ class TestIndexInfo(unittest.TestCase):
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "test.")
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes..t")
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes\x00t")
-        self.assertFailure(self.coll.save("test"), TypeError)
-        self.assertFailure(self.coll.filemd5("test"), ValueError)
-        self.assertFailure(self.db.test.find(spec="test"), TypeError)
-        self.assertFailure(self.db.test.find(fields="test"), TypeError)
-        self.assertFailure(self.db.test.find(skip="test"), TypeError)
-        self.assertFailure(self.db.test.find(limit="test"), TypeError)
-        self.assertFailure(self.db.test.insert([1]), TypeError)
-        self.assertFailure(self.db.test.insert(1), TypeError)
-        self.assertFailure(self.db.test.update(1, 1), TypeError)
-        self.assertFailure(self.db.test.update({}, 1), TypeError)
-        self.assertFailure(self.db.test.update({}, {}, 'a'), TypeError)
+        self.assertRaises(TypeError, self.coll.save, "test")
+        self.assertRaises(ValueError, self.coll.filemd5, "test")
+        #self.assertFailure(self.db.test.find(spec="test"), TypeError)
+        #self.assertFailure(self.db.test.find(fields="test"), TypeError)
+        #self.assertFailure(self.db.test.find(skip="test"), TypeError)
+        #self.assertFailure(self.db.test.find(limit="test"), TypeError)
+        self.assertRaises(TypeError, self.db.test.find, spec="test")
+        self.assertRaises(TypeError, self.db.test.find, fields="test")
+        self.assertRaises(TypeError, self.db.test.find, skip="test")
+        self.assertRaises(TypeError, self.db.test.find, limit="test")
+        self.assertRaises(TypeError, self.db.test.insert, [1])
+        self.assertRaises(TypeError, self.db.test.insert, 1)
+        self.assertRaises(TypeError, self.db.test.update, 1, 1)
+        self.assertRaises(TypeError, self.db.test.update, {}, 1)
+        self.assertRaises(TypeError, self.db.test.update, {}, {}, 'a')
 
         self.assert_(isinstance(self.db.test, Collection))
         self.assertEqual(NotImplemented, self.db.test.__cmp__(7))
@@ -100,8 +104,8 @@ class TestIndexInfo(unittest.TestCase):
         db = self.db
         coll = self.coll
 
-        self.assertFailure(coll.create_index(5), TypeError)
-        self.assertFailure(coll.create_index({"hello": 1}), TypeError)
+        self.assertRaises(TypeError, coll.create_index, 5)
+        self.assertRaises(TypeError, coll.create_index, {"hello": 1})
 
         yield coll.insert({'c': 1})  # make sure collection exists.
 
@@ -285,7 +289,7 @@ class TestIndexInfo(unittest.TestCase):
         res = yield self.coll.drop_index(index)
         self.assertEqual(res["ok"], 1)
 
-        self.assertFailure(self.coll.drop_index(123), TypeError)
+        self.assertRaises(TypeError, self.coll.drop_index, 123)
 
 
 class TestRename(unittest.TestCase):

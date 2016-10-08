@@ -64,11 +64,9 @@ class TestMongoConnection(unittest.TestCase):
         yield self.named_conn.db.coll.insert({'x': 42}, safe=True, timeout=10)
         yield self.named_conn.db.coll.insert({'x': 42}, safe=True, deadline=time()+10)
 
-        d_insert = self.named_conn.db.coll.insert({'x': 42}, safe=True, deadline=time()-10)
-        yield self.assertFailure(d_insert, TimeExceeded)
+        self.assertRaises(TimeExceeded, self.named_conn.db.coll.insert, {'x': 42}, safe=True, deadline=time()-10)
 
-        d_insert = self.named_conn.db.coll.insert({'x': 42}, safe=True, timeout=-10)
-        yield self.assertFailure(d_insert, TimeExceeded)
+        self.assertRaises(TimeExceeded, self.named_conn.db.coll.insert, {'x': 42}, safe=True, timeout=-10)
 
         def patch_deadline(_):
             check_deadline(time()-2)

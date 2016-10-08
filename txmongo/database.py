@@ -4,7 +4,6 @@
 
 from bson.son import SON
 from pymongo.helpers import _check_command_response
-from twisted.internet import defer
 from twisted.python.compat import unicode
 from txmongo.collection import Collection
 from txmongo.utils import timeout
@@ -53,7 +52,6 @@ class Database(object):
         return self.__codec_options or self.__factory.codec_options
 
     @timeout
-    @defer.inlineCallbacks
     def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
         if isinstance(command, (bytes, unicode)):
             command = SON([(command, value)])
@@ -61,17 +59,18 @@ class Database(object):
         options.pop("_deadline", None)
         command.update(options)
 
+        def on_ok(response):
+            if check:
+                msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(repr(command), ns)
+                _check_command_response(response, msg, allowable_errors)
+
+            return response
+
         ns = self["$cmd"]
-        response = yield ns.find_one(command, **kwargs)
+        return ns.find_one(command, **kwargs).addCallback(on_ok)
 
-        if check:
-            msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(repr(command), ns)
-            _check_command_response(response, msg, allowable_errors)
-
-        defer.returnValue(response)
 
     @timeout
-    @defer.inlineCallbacks
     def create_collection(self, name, options=None, **kwargs):
         collection = Collection(self, name)
 
@@ -79,12 +78,12 @@ class Database(object):
             if "size" in options:
                 options["size"] = float(options["size"])
             options.update(kwargs)
-            yield self.command("create", name, **options)
+            return self.command("create", name, **options)\
+                .addCallback(lambda _: collection)
 
-        defer.returnValue(collection)
+        return collection
 
     @timeout
-    @defer.inlineCallbacks
     def drop_collection(self, name_or_collection, **kwargs):
         if isinstance(name_or_collection, Collection):
             name = name_or_collection._collection_name
@@ -93,20 +92,19 @@ class Database(object):
         else:
             raise TypeError("TxMongo: name must be an instance of basestring or txmongo.Collection")
 
-        yield self.command("drop", unicode(name), allowable_errors=["ns not found"], **kwargs)
+        return self.command("drop", unicode(name), allowable_errors=["ns not found"], **kwargs)
 
     @timeout
-    @defer.inlineCallbacks
     def collection_names(self, **kwargs):
-        results = yield self["system.namespaces"].find(**kwargs)
+        def ok(results):
+            names = [r["name"] for r in results]
+            names = [n[len(str(self)) + 1:] for n in names
+                     if n.startswith(str(self) + ".")]
+            names = [n for n in names if "$" not in n]
+            return names
+        return self["system.namespaces"].find(**kwargs).addCallback(ok)
 
-        names = [r["name"] for r in results]
-        names = [n[len(str(self)) + 1:] for n in names
-                 if n.startswith(str(self) + ".")]
-        names = [n for n in names if "$" not in n]
-        defer.returnValue(names)
 
-    @defer.inlineCallbacks
     def authenticate(self, name, password, mechanism="DEFAULT"):
         """
         Send an authentication command for this database.
@@ -120,4 +118,4 @@ class Database(object):
         """
         Authenticating
         """
-        yield self.connection.authenticate(self, name, password, mechanism)
+        return self.connection.authenticate(self, name, password, mechanism)

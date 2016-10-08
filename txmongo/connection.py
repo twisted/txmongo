@@ -173,7 +173,14 @@ class _Connection(ReconnectingClientFactory):
             """
         if self.instance:
             return defer.succeed(self.instance)
-        df = defer.Deferred()
+
+        def on_cancel(d):
+            try:
+                self.__notify_ready.remove(d)
+            except ValueError:
+                pass
+
+        df = defer.Deferred(on_cancel)
         self.__notify_ready.append(df)
         return df
 
@@ -229,9 +236,8 @@ class _Connection(ReconnectingClientFactory):
     def uri(self):
         return self.__uri
 
-    @defer.inlineCallbacks
     def _auth_proto(self, proto):
-        yield defer.DeferredList(
+        return defer.DeferredList(
             [proto.authenticate(database, username, password, mechanism)
              for database, (username, password, mechanism) in self.__auth_creds.items()],
             consumeErrors=True
@@ -339,18 +345,17 @@ class ConnectionPool(object):
         reactor.callLater(0, df.callback, None)
         return df
 
-    @defer.inlineCallbacks
     def authenticate(self, database, username, password, mechanism="DEFAULT"):
-        try:
-            yield defer.gatherResults(
-                [connection.authenticate(database, username, password, mechanism)
-                 for connection in self.__pool],
-                consumeErrors=True
-            )
-        except defer.FirstError as e:
-            raise e.subFailure.value
+        def fail(failure):
+            failure.trap(defer.FirstError)
+            raise failure.value.subFailure.value
 
-    @defer.inlineCallbacks
+        return defer.gatherResults(
+            [connection.authenticate(database, username, password, mechanism)
+             for connection in self.__pool],
+            consumeErrors=True
+        ).addErrback(fail)
+
     def getprotocol(self):
         # Get the next protocol available for communication in the pool.
         connection = self.__pool[self.__index]
@@ -358,12 +363,10 @@ class ConnectionPool(object):
 
         # If the connection is already connected, just return it.
         if connection.instance:
-            defer.returnValue(connection.instance)
+            return defer.succeed(connection.instance)
 
         # Wait for the connection to connection.
-        yield connection.notifyReady()
-
-        defer.returnValue(connection.instance)
+        return connection.notifyReady().addCallback(lambda conn: conn.instance)
 
     @property
     def uri(self):

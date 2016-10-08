@@ -87,7 +87,6 @@ class GridFS(object):
         """
         return GridIn(self.__collection, **kwargs)
 
-    @defer.inlineCallbacks
     def put(self, data, **kwargs):
         """Put data in GridFS as a new file.
 
@@ -112,13 +111,14 @@ class GridFS(object):
         .. versionadded:: 1.6
         """
         grid_file = GridIn(self.__collection, **kwargs)
-        try:
-            yield grid_file.write(data)
-        finally:
-            yield grid_file.close()
-        defer.returnValue(grid_file._id)
 
-    @defer.inlineCallbacks
+        def _finally(result):
+            return grid_file.close().addCallback(lambda _: result)
+
+        return grid_file.write(data)\
+            .addBoth(_finally)\
+            .addCallback(lambda _: grid_file._id)
+
     def get(self, file_id):
         """Get a file from GridFS by ``"_id"``.
 
@@ -130,14 +130,13 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
+        def ok(doc):
+            if doc is None:
+                raise NoFile("TxMongo: no file in gridfs with _id {0}".format(repr(file_id)))
 
-        doc = yield self.__collection.files.find_one({"_id": file_id})
-        if doc is None:
-            raise NoFile("TxMongo: no file in gridfs with _id {0}".format(repr(file_id)))
+            return GridOut(self.__collection, doc)
+        return self.__collection.files.find_one({"_id": file_id}).addCallback(ok)
 
-        defer.returnValue(GridOut(self.__collection, doc))
-
-    @defer.inlineCallbacks
     def get_version(self, filename=None, version=-1):
         """Get a file from GridFS by ``"filename"``.
         Returns a version of the file in GridFS whose filename matches
@@ -159,23 +158,25 @@ class GridFS(object):
         :Parameters:
           - `filename`: ``"filename"`` of the file to get, or `None`
           - `version` (optional): version of the file to get (defaults
-            to -1, the most recent version uploaded)            
+            to -1, the most recent version uploaded)
         """        
         query = {"filename": filename}
-        skip = abs(version) 
+        skip = abs(version)
         if version < 0:
             skip -= 1
             myorder = DESCENDING("uploadDate")
         else:
             myorder = ASCENDING("uploadDate")
 
-        cursor = yield self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)
-        if cursor:
-            defer.returnValue(GridOut(self.__collection, cursor[0]))
+        def ok(cursor):
+            if cursor:
+                return GridOut(self.__collection, cursor[0])
 
-        raise NoFile("no version %d for filename %r" % (version, filename))        
+            raise NoFile("no version %d for filename %r" % (version, filename))
 
-    @defer.inlineCallbacks
+        return self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)\
+            .addCallback(ok)
+
     def get_last_version(self, filename):
         """Get a file from GridFS by ``"filename"``.
 
@@ -195,12 +196,14 @@ class GridFS(object):
         """
         self.__files.ensure_index(filter.sort(ASCENDING("filename") + DESCENDING("uploadDate")))
 
-        doc = yield self.__files.find_one({"filename": filename},
-                                          filter=filter.sort(DESCENDING("uploadDate")))
-        if doc is None:
-            raise NoFile("TxMongo: no file in gridfs with filename {0}".format(repr(filename)))
+        def ok(doc):
+            if doc is None:
+                raise NoFile("TxMongo: no file in gridfs with filename {0}".format(repr(filename)))
 
-        defer.returnValue(GridOut(self.__collection, doc))
+            return GridOut(self.__collection, doc)
+
+        return self.__files.find_one({"filename": filename},
+                                     filter = filter.sort(DESCENDING("uploadDate"))).addCallback(ok)
 
     # TODO add optional safe mode for chunk removal?
     def delete(self, file_id):
@@ -219,10 +222,10 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        dl = []
-        dl.append(self.__files.remove({"_id": file_id}, safe=True))
-        dl.append(self.__chunks.remove({"files_id": file_id}))
-        return defer.DeferredList(dl)
+        return defer.DeferredList([
+            self.__files.remove({"_id": file_id}, safe=True),
+            self.__chunks.remove({"files_id": file_id})
+        ])
 
     def list(self):
         """List the names of all files stored in this instance of

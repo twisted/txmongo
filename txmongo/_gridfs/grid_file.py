@@ -148,54 +148,58 @@ class GridIn(object):
             raise AttributeError("TxMongo: cannot set {0} on a closed file.".format(repr(name)))
         object.__setattr__(self, name, value)
 
-    @defer.inlineCallbacks
     def __flush_data(self, data):
         """Flush `data` to a chunk.
         """
-        if data:
-            assert (len(data) <= self.chunk_size)
-            chunk = {"files_id": self._file["_id"],
-                     "n": self._chunk_number,
-                     "data": Binary(data)}
+        if not data:
+            return defer.succeed(None)
 
-            # Continue writing after the insert completes (non-blocking)
-            yield self._chunks.insert(chunk)
+        assert (len(data) <= self.chunk_size)
+        chunk = {"files_id": self._file["_id"],
+                 "n": self._chunk_number,
+                 "data": Binary(data)}
+
+        def ok(_):
             self._chunk_number += 1
             self._position += len(data)
 
-    @defer.inlineCallbacks
+        # Continue writing after the insert completes (non-blocking)
+        return self._chunks.insert(chunk).addCallback(ok)
+
     def __flush_buffer(self):
         """Flush the buffer contents out to a chunk.
         """
-        yield self.__flush_data(self._buffer.getvalue())
-        self._buffer.close()
-        self._buffer = StringIO()
+        def ok(_):
+            self._buffer.close()
+            self._buffer = StringIO()
+        return self.__flush_data(self._buffer.getvalue()).addCallback(ok)
 
-    @defer.inlineCallbacks
     def __flush(self):
         """Flush the file to the database.
         """
-        yield self.__flush_buffer()
+        def on_md5(md5):
+            self._file["md5"] = md5
+            self._file["length"] = self._position
+            self._file["uploadDate"] = datetime.datetime.utcnow()
+            return self._coll.files.insert(self._file)
 
-        md5 = yield self._coll.filemd5(self._id)
+        return self.__flush_buffer()\
+            .addCallback(lambda _: self._coll.filemd5(self._id))\
+            .addCallback(on_md5)
 
-        self._file["md5"] = md5
-        self._file["length"] = self._position
-        self._file["uploadDate"] = datetime.datetime.utcnow()
-        yield self._coll.files.insert(self._file)
-
-    @defer.inlineCallbacks
     def close(self):
         """Flush the file and close it.
 
         A closed file cannot be written any more. Calling
         :meth:`close` more than once is allowed.
         """
-        if not self._closed:
-            yield self.__flush()
-            self._closed = True
+        if self._closed:
+            return defer.succeed(None)
 
-    @defer.inlineCallbacks
+        def ok(_):
+            self._closed = True
+        return self.__flush().addCallback(ok)
+
     def write(self, data):
         """Write data to the file. There is no return value.
 
@@ -230,6 +234,13 @@ class GridIn(object):
                                     "order to write {0}".format(data))
             read = StringIO(data).read
 
+        def do_write(_=None):
+            to_write = read(self.chunk_size)
+            if to_write and len(to_write) == self.chunk_size:
+                return self.__flush_data(to_write).addCallback(do_write)
+            else:
+                self._buffer.write(to_write)
+
         if self._buffer.tell() > 0:
             # Make sure to flush only when _buffer is complete
             space = self.chunk_size - self._buffer.tell()
@@ -237,22 +248,25 @@ class GridIn(object):
                 to_write = read(space)
                 self._buffer.write(to_write)
                 if len(to_write) < space:
-                    return  # EOF or incomplete
-            yield self.__flush_buffer()
-        to_write = read(self.chunk_size)
-        while to_write and len(to_write) == self.chunk_size:
-            yield self.__flush_data(to_write)
-            to_write = read(self.chunk_size)
-        self._buffer.write(to_write)
+                    return defer.succeed(None)  # EOF or incomplete
+            return self.__flush_buffer().addCallback(do_write)
+        else:
+            return defer.maybeDeferred(do_write)
 
-    @defer.inlineCallbacks
+
     def writelines(self, sequence):
         """Write a sequence of strings to the file.
 
         Does not add separators.
         """
-        for line in sequence:
-            yield self.write(line)
+        iterator = iter(sequence)
+
+        def iterate(_=None):
+            try:
+                return self.write(next(iterator)).addCallback(iterate)
+            except StopIteration:
+                return
+        return defer.maybeDeferred(iterate)
 
     def __enter__(self):
         """Support for the context manager protocol.
@@ -318,7 +332,6 @@ class GridOut(object):
             return self._file[name]
         raise AttributeError("TxMongo: GridOut object has no attribute '{0}'".format(name))
 
-    @defer.inlineCallbacks
     def read(self, size=-1):
         """Read at most `size` bytes from the file (less if there
         isn't enough data).
@@ -329,31 +342,43 @@ class GridOut(object):
         :Parameters:
           - `size` (optional): the number of bytes to read
         """
-        if size:
-            remainder = int(self.length) - self.__position
-            if size < 0 or size > remainder:
-                size = remainder
+        if not size:
+            return defer.succeed(None)
 
-            data = self.__buffer
-            chunk_number = (len(data) + self.__position) / self.chunk_size
+        remainder = int(self.length) - self.__position
+        if size < 0 or size > remainder:
+            size = remainder
 
-            while len(data) < size:
-                chunk = yield self.__chunks.find_one({"files_id": self._id,
-                                                      "n": chunk_number})
-                if not chunk:
-                    raise CorruptGridFile("TxMongo: no chunk #{0}".format(chunk_number))
+        class State(object): pass
+        state = State()
+        state.data = self.__buffer
+        state.chunk_number = (len(state.data) + self.__position) / self.chunk_size
 
-                if not data:
-                    data += chunk["data"][self.__position % self.chunk_size:]
-                else:
-                    data += chunk["data"]
+        def iterate(_=None):
+            if len(state.data) < size:
+                return self.__chunks.find_one({"files_id": self._id, "n": state.chunk_number})\
+                    .addCallback(process).addCallback(iterate)
+            return defer.succeed(None)
 
-                chunk_number += 1
+        def process(chunk):
+            if not chunk:
+                raise CorruptGridFile("TxMongo: no chunk #{0}".format(state.chunk_number))
 
+            if not state.data:
+                state.data += chunk["data"][self.__position % self.chunk_size:]
+            else:
+                state.data += chunk["data"]
+
+            state.chunk_number += 1
+
+        def done(_):
             self.__position += size
-            to_return = data[:size]
-            self.__buffer = data[size:]
-            defer.returnValue(to_return)
+            to_return = state.data[:size]
+            self.__buffer = state.data[size:]
+            return to_return
+
+        return iterate().addCallback(done)
+
 
     def tell(self):
         """Return the current position of this file.
@@ -405,14 +430,19 @@ class GridOutIterator(object):
     def __iter__(self):
         return self
 
-    @defer.inlineCallbacks
     def __next__(self):
         if self.__current_chunk >= self.__max_chunk:
-            raise StopIteration
-        chunk = yield self.__chunks.find_one({"files_id": self.__id,
-                                              "n": self.__current_chunk})
-        if not chunk:
-            raise CorruptGridFile("TxMongo: no chunk #{0}".format(self.__current_chunk))
-        self.__current_chunk += 1
-        defer.returnValue(bytes(chunk["data"]))
+            # This seems wrong, but compatible with old inlineCallbacks-based
+            # implementation :(  Should be raise StopIteration() here.
+            return defer.succeed(None)
+
+        def ok(chunk):
+            if not chunk:
+                raise CorruptGridFile("TxMongo: no chunk #{0}".format(self.__current_chunk))
+            self.__current_chunk += 1
+            return bytes(chunk["data"])
+
+        return self.__chunks.find_one({"files_id": self.__id, "n": self.__current_chunk})\
+            .addCallback(ok)
+
     next = __next__
