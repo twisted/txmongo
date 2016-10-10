@@ -29,7 +29,10 @@ from txmongo._gridfs.errors import NoFile
 from twisted.trial import unittest
 from twisted.internet import defer
 from twisted.python.compat import _PY3
-from twisted import _version
+try:
+    from twisted._version import version as twisted_version
+except ImportError:
+    from twisted._version import __version__ as twisted_version
 
 mongo_host = "127.0.0.1"
 mongo_port = 27017
@@ -198,7 +201,7 @@ class TestGridFsObjects(unittest.TestCase):
                               content_type="text/plain", chunk_size=65536, length=1048576,
                               upload_date="20150101")
         self.assertFalse(grid_in_file.closed)
-        if _version.version.major >= 15:
+        if twisted_version.major >= 15:
             with self.assertRaises(TypeError):
                 yield grid_in_file.write(1)
             with self.assertRaises(TypeError):
@@ -212,7 +215,7 @@ class TestGridFsObjects(unittest.TestCase):
                     "upload_date": "20150101"}
         self.assertRaises(TypeError, GridOut, None, None)
         grid_out_file = GridOut(db.fs, fake_doc)
-        if _version.version.major >= 15:
+        if twisted_version.major >= 15:
             with self.assertRaises(AttributeError):
                 _ = grid_out_file.testing
         self.assertEqual("test", grid_out_file.filename)
@@ -229,15 +232,15 @@ class TestGridFsObjects(unittest.TestCase):
         self.assertTrue("20150101", grid_in_file.upload_date)
         yield grid_in_file.writelines([b"0xDEADBEEF", b"0xDEADBEAF"])
         yield grid_in_file.close()
-        if _version.version.major >= 15:
+        if twisted_version.major >= 15:
             with self.assertRaises(AttributeError):
                 grid_in_file.length = 1
         self.assertEqual(1, grid_in_file.test)
-        if _version.version.major >= 15:
+        if twisted_version.major >= 15:
             with self.assertRaises(AttributeError):
                 _ = grid_in_file.test_none
         self.assertTrue(grid_in_file.closed)
-        if _version.version.major >= 15:
+        if twisted_version.major >= 15:
             with self.assertRaises(ValueError):
                 yield grid_in_file.write(b"0xDEADBEEF")
         yield conn.disconnect()
@@ -295,7 +298,7 @@ class TestGridFsObjects(unittest.TestCase):
                         "chunkSize": 4096, "contentType": "text/plain"}
         grid_bad_out_file = GridOut(db.fs, fake_bad_doc)
         bad_iterator = GridOutIterator(grid_bad_out_file, db.fs.chunks)
-        if _version.version.major >= 15:
+        if twisted_version.major >= 15:
             with self.assertRaises(errors.CorruptGridFile):
                 next_it = yield bad_iterator.next()
 
@@ -323,7 +326,7 @@ class TestGridFsObjects(unittest.TestCase):
         try:
             # Tests writing to a new gridfs file
             gfs = GridFS(db)  # Default collection
-            if _version.version.major >= 15:
+            if twisted_version.major >= 15:
                 with self.assertRaises(NoFile):
                     yield gfs.get_last_version("optest")
 
