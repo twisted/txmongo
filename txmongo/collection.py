@@ -190,9 +190,9 @@ class Collection(object):
             else:
                 return None
 
-        return self._database.command(SON([("listCollections", 1),
-                                     ("filter", {"name": self.name})]))\
-                   .addCallback(on_ok)
+        return self._database.command(
+                SON([("listCollections", 1),
+                     ("filter", {"name": self.name})])).addCallback(on_ok)
 
     @timeout
     def options(self, **kwargs):
