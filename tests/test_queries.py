@@ -109,7 +109,7 @@ class TestMongoQueries(SingleCollectionTest):
         self.assertTrue(all(x in ['a', 'c', "_id"] for x in res[0].keys()))
         res = yield self.coll.find(fields=[])
         self.assertTrue(all(x in ["_id"] for x in res[0].keys()))
-        yield self.assertFailure(self.coll.find({}, fields=[1]), TypeError)
+        self.assertRaises(TypeError, self.coll.find,{}, fields=[1])
 
     @defer.inlineCallbacks
     def test_group(self):
@@ -426,7 +426,7 @@ class TestSave(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Save(self):
-        yield self.assertFailure(self.coll.save(123), TypeError)
+        self.assertRaises(TypeError, self.coll.save, 123)
 
         yield self.coll.save({'x': 1})
         oid = ObjectId()
@@ -468,7 +468,7 @@ class TestRemove(SingleCollectionTest):
         self.assertEqual(remaining, [{'y': 123}])
 
     def test_RemoveInvalid(self):
-        self.assertFailure(self.coll.remove(123), TypeError)
+        self.assertRaises(TypeError, self.coll.remove, 123)
 
 
 class TestDistinct(SingleCollectionTest):
@@ -568,9 +568,8 @@ class TestInsertMany(SingleCollectionTest):
         self.more_than_1k = [{"_id": i} for i in range(2016)]
         return super(TestInsertMany, self).setUp()
 
-    @defer.inlineCallbacks
     def test_InvalidArg(self):
-        yield self.assertFailure(self.coll.insert_many({'x': 42}), TypeError)
+        self.assertRaises(TypeError, self.coll.insert_many, {'x': 42})
 
     @defer.inlineCallbacks
     def test_Acknowledged(self):
@@ -706,10 +705,9 @@ class TestUpdateOne(SingleCollectionTest):
         cnt = yield self.coll.count()
         self.assertEqual(cnt, 3)
 
-    @defer.inlineCallbacks
     def test_InvalidUpdate(self):
         # update_one/update_many only allow $-operators, not whole document replace)
-        yield self.assertFailure(self.coll.update_one({'x': 1}, {'y': 123}), ValueError)
+        self.assertRaises(ValueError, self.coll.update_one, {'x': 1}, {'y': 123})
 
     @defer.inlineCallbacks
     def test_Failures(self):
@@ -762,11 +760,9 @@ class TestReplaceOne(SingleCollectionTest):
         doc = yield self.coll.find_one({"y": {"$exists": True}}, fields={"_id": 0})
         self.assertEqual(doc, {'y': 123})
 
-    @defer.inlineCallbacks
     def test_InvalidReplace(self):
         # replace_one does not allow $-operators, only whole document replace
-        yield self.assertFailure(self.coll.replace_one({'x': 1}, {"$set": {'y': 123}}),
-                                 ValueError)
+        self.assertRaises(ValueError, self.coll.replace_one, {'x': 1}, {"$set": {'y': 123}})
 
     @defer.inlineCallbacks
     def test_Failures(self):
@@ -825,10 +821,9 @@ class TestUpdateMany(SingleCollectionTest):
         cnt = yield self.coll.count()
         self.assertEqual(cnt, 3)
 
-    @defer.inlineCallbacks
     def test_InvalidUpdate(self):
         # update_one/update_many only allow $-operators, not whole document replace)
-        yield self.assertFailure(self.coll.update_many({'x': 1}, {'y': 123}), ValueError)
+        self.assertRaises(ValueError, self.coll.update_many, {'x': 1}, {'y': 123})
 
     @defer.inlineCallbacks
     def test_Failures(self):
@@ -957,9 +952,8 @@ class TestFindOneAndReplace(SingleCollectionTest):
         ys = yield self.coll.distinct('y')
         self.assertEqual(set(ys), {5, 20, 40})
 
-    @defer.inlineCallbacks
     def test_InvalidReplace(self):
-        yield self.assertFailure(self.coll.find_one_and_replace({}, {"$set": {'z': 1}}), ValueError)
+        self.assertRaises(ValueError, self.coll.find_one_and_replace, {}, {"$set": {'z': 1}})
 
     @defer.inlineCallbacks
     def test_Upsert(self):
@@ -979,10 +973,8 @@ class TestFindOneAndReplace(SingleCollectionTest):
                                                    return_document=ReturnDocument.AFTER)
         self.assertEqual(doc['x'], 25)
 
-    @defer.inlineCallbacks
     def test_InvalidReturnDocument(self):
-        yield self.assertFailure(self.coll.find_one_and_replace({}, {}, return_document=1),
-                                 ValueError)
+        self.assertRaises(ValueError, self.coll.find_one_and_replace, {}, {}, return_document=1)
 
 
 class TestFindOneAndUpdate(SingleCollectionTest):
@@ -1010,7 +1002,7 @@ class TestFindOneAndUpdate(SingleCollectionTest):
         self.assertEqual(set(ys), {5, 20, 35})
 
     def test_InvalidUpdate(self):
-        self.assertFailure(self.coll.find_one_and_update({}, {'x': 123}), ValueError)
+        self.assertRaises(ValueError, self.coll.find_one_and_update, {}, {'x': 123})
 
     @defer.inlineCallbacks
     def test_Upsert(self):

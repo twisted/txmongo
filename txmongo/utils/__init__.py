@@ -8,7 +8,6 @@ def timeout(func):
     """Decorator to add timeout to Deferred calls"""
 
     @wraps(func)
-    @defer.inlineCallbacks
     def _timeout(*args, **kwargs):
         now = time()
         deadline = kwargs.pop("deadline", None)
@@ -24,8 +23,7 @@ def timeout(func):
         raw_d = func(*args, **kwargs)
 
         if deadline is None:
-            raw_result = yield raw_d
-            defer.returnValue(raw_result)
+            return raw_d
 
         if seconds is None and deadline is not None and deadline - now > 0:
             seconds = deadline - now
@@ -33,23 +31,26 @@ def timeout(func):
         timeout_d = defer.Deferred()
         times_up = reactor.callLater(seconds, timeout_d.callback, None)
 
-        try:
-            raw_result, timeout_result = yield defer.DeferredList(
-                [raw_d, timeout_d], fireOnOneCallback=True, fireOnOneErrback=True,
-                consumeErrors=True)
-        except defer.FirstError as e:  # Only raw_d should raise an exception
-            assert e.index == 0
-            times_up.cancel()
-            e.subFailure.raiseException()
-        else:  # timeout
+        def on_ok(result):
             if timeout_d.called:
                 raw_d.cancel()
                 raise TimeExceeded("TxMongo: run time of {0}s exceeded.".format(seconds))
+            else:
+                times_up.cancel()
+                return result[0]
 
-        # no timeout
-        times_up.cancel()
-        defer.returnValue(raw_result)
+        def on_fail(failure):
+            failure.trap(defer.FirstError)
+            assert failure.value.index == 0
+            times_up.cancel()
+            failure.value.subFailure.raiseException()
+
+
+        return defer.DeferredList([raw_d, timeout_d], fireOnOneCallback=True,
+                                  fireOnOneErrback=True, consumeErrors=True).addCallbacks(on_ok, on_fail)
+
     return _timeout
+
 
 
 def check_deadline(_deadline):

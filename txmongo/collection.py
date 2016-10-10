@@ -181,19 +181,20 @@ class Collection(object):
     def _gen_index_name(keys):
         return u'_'.join([u"%s_%s" % item for item in keys])
 
-    @defer.inlineCallbacks
     def _list_collections_3_0(self):
-        response = yield self._database.command(SON([("listCollections", 1),
-                                                     ("filter", {"name": self.name})]))
-        assert response["cursor"]["id"] == 0
-        first_batch = response["cursor"]["firstBatch"]
-        if first_batch:
-            defer.returnValue(first_batch[0])
-        else:
-            defer.returnValue(None)
+        def on_ok(response):
+            assert response["cursor"]["id"] == 0
+            first_batch = response["cursor"]["firstBatch"]
+            if first_batch:
+                return first_batch[0]
+            else:
+                return None
+
+        return self._database.command(
+                SON([("listCollections", 1),
+                     ("filter", {"name": self.name})])).addCallback(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def options(self, **kwargs):
         """Get the options set on this collection.
 
@@ -201,19 +202,23 @@ class Collection(object):
             :class:`Deferred` that called back with dictionary of options
             and their values.
         """
-        try:
-            result = yield self._list_collections_3_0()
-        except OperationFailure:
-            result = yield self._database.system.namespaces.find_one({"name": str(self)}, **kwargs)
-        if not result:
-            result = {}
-        options = result.get("options", {})
-        if "create" in options:
-            del options["create"]
-        defer.returnValue(options)
+        def on_3_0_fail(failure):
+            failure.trap(OperationFailure)
+            return self._database.system.namespaces.find_one({"name": str(self)}, **kwargs)
+
+        def on_ok(result):
+            if not result:
+                result = {}
+            options = result.get("options", {})
+            if "create" in options:
+                del options["create"]
+            return options
+
+        return self._list_collections_3_0()\
+                   .addErrback(on_3_0_fail)\
+                   .addCallbacks(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
         """Find documents in a collection.
 
@@ -262,18 +267,22 @@ class Collection(object):
                               do_something(doc)
                           docs, dfr = yield dfr
         """
-        docs, dfr = yield self.find_with_cursor(spec=spec, skip=skip, limit=limit,
-                                                fields=fields, filter=filter, **kwargs)
+        rows = []
 
-        if cursor:
-            defer.returnValue((docs, dfr))
+        def on_ok(result, this_func):
+            docs, dfr = result
 
-        result = []
-        while docs:
-            result.extend(docs)
-            docs, dfr = yield dfr
+            if cursor:
+                return docs, dfr
 
-        defer.returnValue(result)
+            if docs:
+                rows.extend(docs)
+                return dfr.addCallback(this_func, this_func)
+            else:
+                return rows
+
+        return self.find_with_cursor(spec=spec, skip=skip, limit=limit, fields=fields,
+                                     filter=filter, **kwargs).addCallback(on_ok, on_ok)
 
     @staticmethod
     def __apply_find_filter(spec, c_filter):
@@ -373,7 +382,6 @@ class Collection(object):
         return proto
 
     @timeout
-    @defer.inlineCallbacks
     def find_one(self, spec=None, fields=None, **kwargs):
         """Get a single document from the collection.
 
@@ -388,12 +396,10 @@ class Collection(object):
             spec = {"_id": spec}
 
         kwargs.pop("limit", None)   # do not conflict hard limit
-        result = yield self.find(
-            spec=spec, limit=1, fields=fields, **kwargs)
-        defer.returnValue(result[0] if result else None)
+        return self.find(spec=spec, limit=1, fields=fields, **kwargs)\
+                   .addCallback(lambda result: result[0] if result else None)
 
     @timeout
-    @defer.inlineCallbacks
     def count(self, spec=None, **kwargs):
         """Get the number of documents in this collection.
 
@@ -407,12 +413,11 @@ class Collection(object):
         :returns: a :class:`Deferred` that called back with a number of
                   documents matching the criteria.
         """
-        result = yield self._database.command("count", self._collection_name,
-                                              query=spec or SON(), **kwargs)
-        defer.returnValue(int(result["n"]))
+        return self._database.command("count", self._collection_name,
+                                      query=spec or SON(), **kwargs)\
+                   .addCallback(lambda result: int(result['n']))
 
     @timeout
-    @defer.inlineCallbacks
     def group(self, keys, initial, reduce, condition=None, finalize=None, **kwargs):
         body = {
             "ns": self._collection_name,
@@ -430,17 +435,15 @@ class Collection(object):
         if finalize:
             body["finalize"] = Code(finalize)
 
-        result = yield self._database.command("group", body, **kwargs)
-        defer.returnValue(result)
+        return self._database.command("group", body, **kwargs)
 
     @timeout
-    @defer.inlineCallbacks
     def filemd5(self, spec, **kwargs):
         if not isinstance(spec, ObjectId):
             raise ValueError("TxMongo: filemd5 expected an objectid for its non-keyword argument.")
 
-        result = yield self._database.command("filemd5", spec, root=self._collection_name, **kwargs)
-        defer.returnValue(result.get("md5"))
+        return self._database.command("filemd5", spec, root=self._collection_name, **kwargs)\
+                   .addCallback(lambda result: result.get("md5"))
 
     def _get_write_concern(self, safe=None, **options):
         from_opts = WriteConcern(options.get("w"),
@@ -464,7 +467,6 @@ class Collection(object):
         return WriteConcern(w=0)
 
     @timeout
-    @defer.inlineCallbacks
     def insert(self, docs, safe=None, flags=0, **kwargs):
         """Insert a document(s) into this collection.
 
@@ -514,17 +516,19 @@ class Collection(object):
         docs = [BSON.encode(d) for d in docs]
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
-        proto = yield self._database.connection.getprotocol()
-        check_deadline(kwargs.pop("_deadline", None))
-        proto.send_INSERT(insert)
+        def on_proto(proto):
+            check_deadline(kwargs.pop("_deadline", None))
+            proto.send_INSERT(insert)
 
-        write_concern = self._get_write_concern(safe, **kwargs)
-        if write_concern.acknowledged:
-            yield proto.get_last_error(str(self._database), **write_concern.document)
+            write_concern = self._get_write_concern(safe, **kwargs)
+            if write_concern.acknowledged:
+                return proto.get_last_error(str(self._database), **write_concern.document)\
+                        .addCallback(lambda _: ids)
 
-        defer.returnValue(ids)
+            return ids
 
-    @defer.inlineCallbacks
+        return self._database.connection.getprotocol().addCallback(on_proto)
+
     def _insert_one_or_many(self, documents, ordered=True, **kwargs):
         if self.write_concern.acknowledged:
             inserted_ids = []
@@ -537,17 +541,15 @@ class Collection(object):
                            ("documents", documents),
                            ("ordered", ordered),
                            ("writeConcern", self.write_concern.document)])
-            response = yield self._database.command(command, **kwargs)
+            return self._database.command(command, **kwargs)\
+                    .addCallback(lambda response: (inserted_ids, response))
         else:
             # falling back to OP_INSERT in case of unacknowledged op
             flags = INSERT_CONTINUE_ON_ERROR if not ordered else 0
-            inserted_ids = yield self.insert(documents, flags=flags, **kwargs)
-            response = None
-
-        defer.returnValue((inserted_ids, response))
+            return self.insert(documents, flags=flags, **kwargs)\
+                    .addCallback(lambda inserted_ids: (inserted_ids, None))
 
     @timeout
-    @defer.inlineCallbacks
     def insert_one(self, document, **kwargs):
         """Insert a single document into collection
 
@@ -556,10 +558,12 @@ class Collection(object):
             :class:`Deferred` that called back with
             :class:`pymongo.results.InsertOneResult`
         """
-        inserted_ids, response = yield self._insert_one_or_many([document], **kwargs)
-        if response:
-            _check_write_command_response([[0, response]])
-        defer.returnValue(InsertOneResult(inserted_ids[0], self.write_concern.acknowledged))
+        def on_ok(result):
+            inserted_ids, response = result
+            if response:
+                _check_write_command_response([[0, response]])
+            return InsertOneResult(inserted_ids[0], self.write_concern.acknowledged)
+        return self._insert_one_or_many([document], **kwargs).addCallback(on_ok)
 
     @staticmethod
     def _generate_batch_commands(collname, command, docs_field, documents, ordered,
@@ -622,7 +626,6 @@ class Collection(object):
         yield idx_offset, prepare_command()
 
     @timeout
-    @defer.inlineCallbacks
     def insert_many(self, documents, ordered=True, **kwargs):
         """Insert an iterable of documents into collection
 
@@ -650,11 +653,10 @@ class Collection(object):
 
         bulk = _Bulk(self, ordered, bypass_document_validation=False)
         bulk.ops = [(_INSERT, doc) for doc in documents]
-        yield self._execute_bulk(bulk)
-        defer.returnValue(InsertManyResult(inserted_ids, self.write_concern.acknowledged))
+        result = InsertManyResult(inserted_ids, self.write_concern.acknowledged)
+        return self._execute_bulk(bulk).addCallback(lambda _: result)
 
     @timeout
-    @defer.inlineCallbacks
     def update(self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs):
         """Update document(s) in this collection
 
@@ -708,16 +710,16 @@ class Collection(object):
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
 
-        proto = yield self._database.connection.getprotocol()
-        check_deadline(kwargs.pop("_deadline", None))
-        proto.send_UPDATE(update)
+        def on_proto(proto):
+            check_deadline(kwargs.pop("_deadline", None))
+            proto.send_UPDATE(update)
 
-        write_concern = self._get_write_concern(safe, **kwargs)
-        if write_concern.acknowledged:
-            ret = yield proto.get_last_error(str(self._database), **write_concern.document)
-            defer.returnValue(ret)
+            write_concern = self._get_write_concern(safe, **kwargs)
+            if write_concern.acknowledged:
+                return proto.get_last_error(str(self._database), **write_concern.document)
 
-    @defer.inlineCallbacks
+        return self._database.connection.getprotocol().addCallback(on_proto)
+
     def _update(self, filter, update, upsert, multi, **kwargs):
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
@@ -729,21 +731,22 @@ class Collection(object):
             command = SON([("update", self._collection_name),
                            ("updates", updates),
                            ("writeConcern", self.write_concern.document)])
-            raw_response = yield self._database.command(command, **kwargs)
-            _check_write_command_response([[0, raw_response]])
 
-            # Extract upserted_id from returned array
-            if raw_response.get("upserted"):
-                raw_response["upserted"] = raw_response["upserted"][0]["_id"]
+            def on_ok(raw_response):
+                _check_write_command_response([[0, raw_response]])
+
+                # Extract upserted_id from returned array
+                if raw_response.get("upserted"):
+                    raw_response["upserted"] = raw_response["upserted"][0]["_id"]
+                return raw_response
+
+            return self._database.command(command, **kwargs).addCallback(on_ok)
 
         else:
-            yield self.update(filter, update, upsert=upsert, multi=multi, **kwargs)
-            raw_response = None
-
-        defer.returnValue(raw_response)
+            return self.update(filter, update, upsert=upsert, multi=multi, **kwargs)\
+                    .addCallback(lambda _: None)
 
     @timeout
-    @defer.inlineCallbacks
     def update_one(self, filter, update, upsert=False, **kwargs):
         """Update a single document matching the filter.
 
@@ -772,11 +775,11 @@ class Collection(object):
         """
         validate_ok_for_update(update)
 
-        raw_response = yield self._update(filter, update, upsert, multi=False, **kwargs)
-        defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
+        def on_ok(raw_response):
+            return UpdateResult(raw_response, self.write_concern.acknowledged)
+        return self._update(filter, update, upsert, multi=False, **kwargs).addCallback(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def update_many(self, filter, update, upsert=False, **kwargs):
         """Update one or more documents that match the filter.
 
@@ -805,11 +808,11 @@ class Collection(object):
         """
         validate_ok_for_update(update)
 
-        raw_response = yield self._update(filter, update, upsert, multi=True, **kwargs)
-        defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
+        def on_ok(raw_response):
+            return UpdateResult(raw_response, self.write_concern.acknowledged)
+        return self._update(filter, update, upsert, multi=True, **kwargs).addCallback(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def replace_one(self, filter, replacement, upsert=False, **kwargs):
         """Replace a single document matching the filter.
 
@@ -835,25 +838,21 @@ class Collection(object):
         """
         validate_ok_for_replace(replacement)
 
-        raw_response = yield self._update(filter, replacement, upsert, multi=False, **kwargs)
-        defer.returnValue(UpdateResult(raw_response, self.write_concern.acknowledged))
+        def on_ok(raw_response):
+            return UpdateResult(raw_response, self.write_concern.acknowledged)
+        return self._update(filter, replacement, upsert, multi=False, **kwargs).addCallback(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def save(self, doc, safe=None, **kwargs):
         if not isinstance(doc, dict):
             raise TypeError("TxMongo: cannot save objects of type {0}".format(type(doc)))
         oid = doc.get("_id")
         if oid:
-            result = yield self.update(
-                {"_id": oid}, doc, safe=safe, upsert=True, **kwargs)
+            return self.update({"_id": oid}, doc, safe=safe, upsert=True, **kwargs)
         else:
-            result = yield self.insert(doc, safe=safe, **kwargs)
-
-        defer.returnValue(result)
+            return self.insert(doc, safe=safe, **kwargs)
 
     @timeout
-    @defer.inlineCallbacks
     def remove(self, spec, safe=None, single=False, flags=0, **kwargs):
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
@@ -865,16 +864,17 @@ class Collection(object):
 
         spec = BSON.encode(spec)
         delete = Delete(flags=flags, collection=str(self), selector=spec)
-        proto = yield self._database.connection.getprotocol()
-        check_deadline(kwargs.pop("_deadline", None))
-        proto.send_DELETE(delete)
 
-        write_concern = self._get_write_concern(safe, **kwargs)
-        if write_concern.acknowledged:
-            ret = yield proto.get_last_error(str(self._database), **write_concern.document)
-            defer.returnValue(ret)
+        def on_proto(proto):
+            check_deadline(kwargs.pop("_deadline", None))
+            proto.send_DELETE(delete)
 
-    @defer.inlineCallbacks
+            write_concern = self._get_write_concern(safe, **kwargs)
+            if write_concern.acknowledged:
+                return proto.get_last_error(str(self._database), **write_concern.document)
+
+        return self._database.connection.getprotocol().addCallback(on_proto)
+
     def _delete(self, filter, multi, **kwargs):
         validate_is_mapping("filter", filter)
 
@@ -884,34 +884,30 @@ class Collection(object):
                            ("deletes", deletes),
                            ("writeConcern", self.write_concern.document)])
 
-            raw_response = yield self._database.command(command, **kwargs)
-            _check_write_command_response([[0, raw_response]])
+            def on_ok(raw_response):
+                _check_write_command_response([[0, raw_response]])
+                return raw_response
+            return self._database.command(command, **kwargs).addCallback(on_ok)
 
         else:
-            yield self.remove(filter, single=not multi, **kwargs)
-            raw_response = None
-
-        defer.returnValue(raw_response)
+            return self.remove(filter, single=not multi, **kwargs).addCallback(lambda _: None)
 
     @timeout
-    @defer.inlineCallbacks
     def delete_one(self, filter, **kwargs):
-        raw_response = yield self._delete(filter, multi=False, **kwargs)
-        defer.returnValue(DeleteResult(raw_response, self.write_concern.acknowledged))
+        def on_ok(raw_response):
+            return DeleteResult(raw_response, self.write_concern.acknowledged)
+        return self._delete(filter, multi=False, **kwargs).addCallback(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def delete_many(self, filter, **kwargs):
-        raw_response = yield self._delete(filter, multi=True, **kwargs)
-        defer.returnValue(DeleteResult(raw_response, self.write_concern.acknowledged))
+        def on_ok(raw_response):
+            return DeleteResult(raw_response, self.write_concern.acknowledged)
+        return self._delete(filter, multi=True, **kwargs).addCallback(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def drop(self, **kwargs):
-        result = yield self._database.drop_collection(self._collection_name, **kwargs)
-        defer.returnValue(result)
+        return self._database.drop_collection(self._collection_name, **kwargs)
 
-    @defer.inlineCallbacks
     def create_index(self, sort_fields, **kwargs):
         if not isinstance(sort_fields, qf.sort):
             raise TypeError("TxMongo: sort_fields must be an instance of filter.sort")
@@ -938,18 +934,15 @@ class Collection(object):
             kwargs["bucketSize"] = kwargs.pop("bucket_size")
 
         index.update(kwargs)
-        yield self._database.system.indexes.insert(index, safe=True, **kwargs)
-        defer.returnValue(name)
+        return self._database.system.indexes.insert(index, safe=True, **kwargs)\
+                .addCallback(lambda _: name)
 
     @timeout
-    @defer.inlineCallbacks
     def ensure_index(self, sort_fields, **kwargs):
         # ensure_index is an alias of create_index since we are not
         # keeping an index cache same way pymongo does
-        result = yield self.create_index(sort_fields, **kwargs)
-        defer.returnValue(result)
+        return self.create_index(sort_fields, **kwargs)
 
-    @defer.inlineCallbacks
     def drop_index(self, index_identifier, **kwargs):
         if isinstance(index_identifier, (bytes, unicode)):
             name = index_identifier
@@ -958,76 +951,71 @@ class Collection(object):
         else:
             raise TypeError("TxMongo: index_identifier must be a name or instance of filter.sort")
 
-        result = yield self._database.command("deleteIndexes", self._collection_name,
-                                              index=name, allowable_errors=["ns not found"],
-                                              **kwargs)
-        defer.returnValue(result)
+        return self._database.command("deleteIndexes", self._collection_name,
+                                      index=name, allowable_errors=["ns not found"],
+                                      **kwargs)
 
     @timeout
-    @defer.inlineCallbacks
     def drop_indexes(self, **kwargs):
-        result = yield self.drop_index("*", **kwargs)
-        defer.returnValue(result)
+        return self.drop_index("*", **kwargs)
 
-    @defer.inlineCallbacks
     def __index_information_3_0(self):
-        indexes_info = yield self._database.command("listIndexes", self.name)
-        assert indexes_info["cursor"]["id"] == 0
-        defer.returnValue(indexes_info["cursor"]["firstBatch"])
+        def on_ok(indexes_info):
+            assert indexes_info["cursor"]["id"] == 0
+            return indexes_info["cursor"]["firstBatch"]
+        return self._database.command("listIndexes", self.name).addCallback(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def index_information(self, **kwargs):
-        try:
-            raw = yield self.__index_information_3_0()
-        except OperationFailure:
-            raw = yield self._database.system.indexes.find({"ns": str(self)}, **kwargs)
+        def on_3_0_fail(failure):
+            failure.trap(OperationFailure)
+            return self._database.system.indexes.find({"ns": str(self)}, **kwargs)
 
-        info = {}
-        for idx in raw:
-            info[idx["name"]] = idx
-        defer.returnValue(info)
+        def on_ok(raw):
+            info = {}
+            for idx in raw:
+                info[idx["name"]] = idx
+            return info
+
+        return self.__index_information_3_0().addErrback(on_3_0_fail).addCallback(on_ok)
+
 
     @timeout
-    @defer.inlineCallbacks
     def rename(self, new_name, **kwargs):
         to = "%s.%s" % (str(self._database), new_name)
-        result = yield self._database("admin").command(
-            "renameCollection", str(self), to=to, **kwargs)
-        defer.returnValue(result)
+        return self._database("admin").command("renameCollection", str(self), to=to, **kwargs)
 
     @timeout
-    @defer.inlineCallbacks
     def distinct(self, key, spec=None, **kwargs):
         params = {"key": key}
         if spec:
             params["query"] = spec
         params.update(kwargs)
 
-        result = yield self._database.command("distinct", self._collection_name, **params)
-        defer.returnValue(result.get("values"))
+        return self._database.command("distinct", self._collection_name, **params)\
+                .addCallback(lambda result: result.get("values"))
 
     @timeout
-    @defer.inlineCallbacks
     def aggregate(self, pipeline, full_response=False, **kwargs):
-        raw = yield self._database.command(
-            "aggregate", self._collection_name, pipeline=pipeline, **kwargs)
-        if full_response:
-            defer.returnValue(raw)
-        defer.returnValue(raw.get("result"))
+        def on_ok(raw):
+            if full_response:
+                return raw
+            return raw.get("result")
+        return self._database.command("aggregate", self._collection_name,
+                                      pipeline=pipeline, **kwargs).addCallback(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def map_reduce(self, map, reduce, full_response=False, **kwargs):
         params = {"map": map, "reduce": reduce}
         params.update(**kwargs)
-        raw = yield self._database.command("mapreduce", self._collection_name, **params)
-        if full_response:
-            defer.returnValue(raw)
-        defer.returnValue(raw.get("results"))
+        def on_ok(raw):
+            if full_response:
+                return raw
+            return raw.get("results")
+        return self._database.command("mapreduce", self._collection_name, **params)\
+                .addCallback(on_ok)
 
     @timeout
-    @defer.inlineCallbacks
     def find_and_modify(self, query=None, update=None, upsert=False, **kwargs):
         no_obj_error = "No matching object found"
 
@@ -1046,22 +1034,23 @@ class Collection(object):
         if upsert:
             params["upsert"] = upsert
 
-        result = yield self._database.command("findAndModify", self._collection_name,
-                                              allowable_errors=[no_obj_error],
-                                              **params)
-        if not result["ok"]:
-            if result["errmsg"] == no_obj_error:
-                defer.returnValue(None)
-            else:
-                # Should never get here because of allowable_errors
-                raise ValueError("TxMongo: unexpected error '{0}'".format(result))
-        defer.returnValue(result.get("value"))
+        def on_ok(result):
+            if not result["ok"]:
+                if result["errmsg"] == no_obj_error:
+                    return None
+                else:
+                    # Should never get here because of allowable_errors
+                    raise ValueError("TxMongo: unexpected error '{0}'".format(result))
+            return result.get("value")
+
+        return self._database.command("findAndModify", self._collection_name,
+                                      allowable_errors=[no_obj_error],
+                                      **params).addCallback(on_ok)
 
     # Distinct findAndModify utility method is needed because traditional
     # find_and_modify() accepts `sort` kwarg as dict and passes it to
     # MongoDB command without conversion. But in find_one_and_*
     # methods we want to take `filter.sort` instances
-    @defer.inlineCallbacks
     def _new_find_and_modify(self, filter, projection, sort, upsert=None,
                              return_document=ReturnDocument.BEFORE, **kwargs):
         validate_is_mapping("filter", filter)
@@ -1085,32 +1074,26 @@ class Collection(object):
 
         no_obj_error = "No matching object found"
 
-        result = yield self._database.command(cmd, allowable_errors=[no_obj_error], **kwargs)
-        defer.returnValue(result.get("value"))
+        return self._database.command(cmd, allowable_errors=[no_obj_error], **kwargs)\
+                .addCallback(lambda result: result.get("value"))
 
     @timeout
-    @defer.inlineCallbacks
     def find_one_and_delete(self, filter, projection=None, sort=None, **kwargs):
-        result = yield self._new_find_and_modify(filter, projection, sort, remove=True, **kwargs)
-        defer.returnValue(result)
+        return self._new_find_and_modify(filter, projection, sort, remove=True, **kwargs)
 
     @timeout
-    @defer.inlineCallbacks
     def find_one_and_replace(self, filter, replacement, projection=None, sort=None,
                              upsert=False, return_document=ReturnDocument.BEFORE, **kwargs):
         validate_ok_for_replace(replacement)
-        result = yield self._new_find_and_modify(filter, projection, sort, upsert, return_document,
-                                                 update=replacement, **kwargs)
-        defer.returnValue(result)
+        return self._new_find_and_modify(filter, projection, sort, upsert, return_document,
+                                         update=replacement, **kwargs)
 
     @timeout
-    @defer.inlineCallbacks
     def find_one_and_update(self, filter, update, projection=None, sort=None,
                             upsert=False, return_document=ReturnDocument.BEFORE, **kwargs):
         validate_ok_for_update(update)
-        result = yield self._new_find_and_modify(filter, projection, sort, upsert, return_document,
-                                                 update=update, **kwargs)
-        defer.returnValue(result)
+        return self._new_find_and_modify(filter, projection, sort, upsert, return_document,
+                                         update=update, **kwargs)
 
     def bulk_write(self, requests, ordered=True):
         if not isinstance(requests, collections.Iterable):
@@ -1126,7 +1109,6 @@ class Collection(object):
 
         return self._execute_bulk(blk)
 
-    @defer.inlineCallbacks
     def _execute_bulk(self, bulk):
         if not bulk.ops:
             raise InvalidOperation("No operations to execute")
@@ -1151,72 +1133,102 @@ class Collection(object):
             "upserted": [],
         }
 
-        for run in generator:
-            result = yield self._execute_batch_command(run.op_type, run.ops, bulk.ordered)
+        def iterate():
+            try:
+                run = next(generator)
+            except StopIteration:
+                return defer.succeed(None)
+
+            return self._execute_batch_command(run.op_type, run.ops, bulk.ordered)\
+                .addCallback(on_cmd_result, run)
+
+        def on_cmd_result(result, run):
             _merge_command(run, full_result, result)
 
             if bulk.ordered and full_result["writeErrors"]:
-                break
+                return
 
-        if self.write_concern.acknowledged:
-            if full_result["writeErrors"] or full_result["writeConcernErrors"]:
-                if full_result["writeErrors"]:
-                    full_result["writeErrors"].sort(key=lambda error: error["index"])
-                raise BulkWriteError(full_result)
+            return iterate()
 
-        defer.returnValue(BulkWriteResult(full_result, self.write_concern.acknowledged))
+        def on_all_done(_):
+            if self.write_concern.acknowledged:
+                if full_result["writeErrors"] or full_result["writeConcernErrors"]:
+                    if full_result["writeErrors"]:
+                        full_result["writeErrors"].sort(key=lambda error: error["index"])
+                    raise BulkWriteError(full_result)
 
-    @defer.inlineCallbacks
+            return BulkWriteResult(full_result, self.write_concern.acknowledged)
+
+        return iterate().addCallback(on_all_done)
+
+
     def _execute_batch_command(self, command_type, documents, ordered):
         assert command_type in _OP_MAP
 
         cmd_collname = str(self._database["$cmd"])
-        proto = yield self._database.connection.getprotocol()
 
-        results = []
+        def on_proto(proto):
+            results = []
 
-        def accumulate_result(reply, idx_offset):
-            result = reply.documents[0].decode()
-            results.append((idx_offset, result))
-            return result
+            def accumulate_result(reply, idx_offset):
+                result = reply.documents[0].decode()
+                results.append((idx_offset, result))
+                return result
 
-        # There are four major cases with different behavior of insert_many:
-        #   * Unack, Unordered:  sending all batches and not handling responses at all
-        #                        so ignoring any errors
-        #
-        #   * Ack, Unordered:    sending all batches, accumulating all responses and
-        #                        returning aggregated response
-        #
-        #   * Unack, Ordered:    handling DB responses despite unacknowledged write_concern
-        #                        because we must stop on first error (not raising it though)
-        #
-        #   * Ack, Ordered:      stopping on first error and raising BulkWriteError
+            # There are four major cases with different behavior of insert_many:
+            #   * Unack, Unordered:  sending all batches and not handling responses at all
+            #                        so ignoring any errors
+            #
+            #   * Ack, Unordered:    sending all batches, accumulating all responses and
+            #                        returning aggregated response
+            #
+            #   * Unack, Ordered:    handling DB responses despite unacknowledged write_concern
+            #                        because we must stop on first error (not raising it though)
+            #
+            #   * Ack, Ordered:      stopping on first error and raising BulkWriteError
 
-        actual_write_concern = self.write_concern
-        if ordered and self.write_concern.acknowledged is False:
-            actual_write_concern = WriteConcern(w=1)
+            actual_write_concern = self.write_concern
+            if ordered and self.write_concern.acknowledged is False:
+                actual_write_concern = WriteConcern(w = 1)
 
-        batches = self._generate_batch_commands(self._collection_name, _COMMANDS[command_type],
-                                                _OP_MAP[command_type], documents, ordered,
-                                                actual_write_concern, proto.max_bson_size,
-                                                proto.max_write_batch_size)
+            batches = self._generate_batch_commands(self._collection_name, _COMMANDS[command_type],
+                                                    _OP_MAP[command_type], documents, ordered,
+                                                    actual_write_concern, proto.max_bson_size,
+                                                    proto.max_write_batch_size)
 
-        all_responses = []
-        for idx_offset, batch in batches:
-            batch_result = proto.send_QUERY(Query(collection=cmd_collname, query=batch))
-            if self.write_concern.acknowledged or ordered:
-                batch_result.addCallback(accumulate_result, idx_offset)
-                if ordered:
-                    result = yield batch_result
-                    if "writeErrors" in result:
-                        break
+            all_responses = []
+
+            def iterate():
+                try:
+                    idx_offset, batch = next(batches)
+                except StopIteration:
+                    return defer.succeed(None)
+
+                batch_result = proto.send_QUERY(Query(collection=cmd_collname, query=batch))
+                if self.write_concern.acknowledged or ordered:
+                    batch_result.addCallback(accumulate_result, idx_offset)
+                    if ordered:
+                        def on_batch_result(result):
+                            if "writeErrors" in result:
+                                return defer.succeed(None)
+                            else:
+                                return iterate()
+                        return batch_result.addCallback(on_batch_result)
+                    else:
+                        all_responses.append(batch_result)
+                        return iterate()
                 else:
-                    all_responses.append(batch_result)
+                    return iterate()
 
-        if self.write_concern.acknowledged and not ordered:
-            try:
-                yield defer.gatherResults(all_responses, consumeErrors=True)
-            except defer.FirstError as e:
-                e.subFailure.raiseException()
+            def done(_):
+                def on_fail(failure):
+                    failure.trap(defer.FirstError)
+                    failure.value.subFailure.raiseException()
+                    
+                if self.write_concern.acknowledged and not ordered:
+                    return defer.gatherResults(all_responses, consumeErrors=True)\
+                        .addErrback(on_fail)
 
-        defer.returnValue(results)
+            return iterate().addCallback(done).addCallback(lambda _: results)
+
+        return self._database.connection.getprotocol().addCallback(on_proto)

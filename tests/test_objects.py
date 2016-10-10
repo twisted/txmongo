@@ -58,7 +58,7 @@ class TestMongoObjects(unittest.TestCase):
         self.assertEqual(isinstance(mycol3, collection.Collection), True)
         yield mydb.drop_collection("mycol3")
         yield mydb.drop_collection(mycol3)
-        yield self.assertFailure(mydb.drop_collection(None), TypeError)
+        self.assertRaises(TypeError, mydb.drop_collection, None)
         yield conn.disconnect()
 
     @defer.inlineCallbacks
@@ -211,6 +211,36 @@ class TestGridFsObjects(unittest.TestCase):
         grid_in_file.test = 1
         yield grid_in_file.write(b"0xDEADBEEF")
         yield grid_in_file.write(b"0xDEADBEEF"*1048576)
+        self.assertTrue("20150101", grid_in_file.upload_date)
+        yield grid_in_file.writelines([b"0xDEADBEEF", b"0xDEADBEEF"])
+        yield grid_in_file.close()
+        if twisted_version.major >= 15:
+            with self.assertRaises(AttributeError):
+                grid_in_file.length = 1
+        self.assertEqual(1, grid_in_file.test)
+        if twisted_version.major >= 15:
+            with self.assertRaises(AttributeError):
+                _ = grid_in_file.test_none
+        self.assertTrue(grid_in_file.closed)
+        if twisted_version.major >= 15:
+            with self.assertRaises(ValueError):
+                yield grid_in_file.write(b"0xDEADBEEF")
+
+        doc = yield db.fs.files.find_one({"_id": grid_in_file._id})
+        grid_out_file = GridOut(db.fs, doc)
+        grid_out_file.seek(0, os.SEEK_END)
+        self.assertEqual(10 * (1 + 1048576 + 2), grid_out_file.tell())
+        yield grid_out_file.close()
+        data = b''
+        for block_dfr in GridOutIterator(grid_out_file, db.fs.chunks):
+            block = yield block_dfr
+            if block:
+                data += block
+            else:
+                break
+        self.assertEqual(data, b"0xDEADBEEF" * (1 + 1048576 + 2))
+
+
         fake_doc = {"_id": "test_id", "length": 1048576, "filename": "test",
                     "upload_date": "20150101"}
         self.assertRaises(TypeError, GridOut, None, None)
@@ -229,20 +259,6 @@ class TestGridFsObjects(unittest.TestCase):
         self.assertRaises(IOError, grid_out_file.seek, 0, 4)
         self.assertRaises(IOError, grid_out_file.seek, -1)
         self.assertTrue("'_id': 'test_id'" in repr(grid_out_file))
-        self.assertTrue("20150101", grid_in_file.upload_date)
-        yield grid_in_file.writelines([b"0xDEADBEEF", b"0xDEADBEAF"])
-        yield grid_in_file.close()
-        if twisted_version.major >= 15:
-            with self.assertRaises(AttributeError):
-                grid_in_file.length = 1
-        self.assertEqual(1, grid_in_file.test)
-        if twisted_version.major >= 15:
-            with self.assertRaises(AttributeError):
-                _ = grid_in_file.test_none
-        self.assertTrue(grid_in_file.closed)
-        if twisted_version.major >= 15:
-            with self.assertRaises(ValueError):
-                yield grid_in_file.write(b"0xDEADBEEF")
         yield conn.disconnect()
 
     @defer.inlineCallbacks
