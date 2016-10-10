@@ -344,10 +344,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
             self.__connection_ready = []
 
         def on_cancel(d):
-            try:
-                self.__connection_ready.remove(d)
-            except ValueError:
-                pass
+            self.__connection_ready.remove(d)
 
         df = defer.Deferred(on_cancel)
         self.__connection_ready.append(df)
@@ -355,7 +352,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
     def __wait_for_reply_to(self, request_id):
         def on_cancel(_):
-            self.__deferreds.pop(request_id, None)
+            del self.__deferreds[request_id]
         df = defer.Deferred(on_cancel)
         self.__deferreds[request_id] = df
         return df

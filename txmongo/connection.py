@@ -175,10 +175,7 @@ class _Connection(ReconnectingClientFactory):
             return defer.succeed(self.instance)
 
         def on_cancel(d):
-            try:
-                self.__notify_ready.remove(d)
-            except ValueError:
-                pass
+            self.__notify_ready.remove(d)
 
         df = defer.Deferred(on_cancel)
         self.__notify_ready.append(df)
