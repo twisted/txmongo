@@ -29,7 +29,10 @@ from txmongo._gridfs.errors import NoFile
 from twisted.trial import unittest
 from twisted.internet import defer
 from twisted.python.compat import _PY3
-from twisted._version import __version__ as twisted_version
+try:
+    from twisted._version import version as twisted_version
+except ImportError:
+    from twisted._version import __version__ as twisted_version
 
 mongo_host = "127.0.0.1"
 mongo_port = 27017
