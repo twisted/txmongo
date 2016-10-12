@@ -20,7 +20,7 @@ import time
 from io import BytesIO as StringIO
 
 import os
-from bson import objectid, timestamp
+from bson import objectid, timestamp, SON
 from pymongo.write_concern import WriteConcern
 import txmongo
 from txmongo import database, collection, filter as qf
@@ -389,5 +389,13 @@ class TestGridFsObjects(unittest.TestCase):
         self.assertNotEqual(gfs.indexes_created(), gfs.indexes_created())
 
         yield gfs.indexes_created()
+
+        indexes = yield db.fs.files.index_information()
+        self.assertTrue(any(key["key"] == SON([("filename", 1), ("uploadDate", 1)])
+                            for key in indexes.values()))
+
+        indexes = yield db.fs.chunks.index_information()
+        self.assertTrue(any(key["key"] == SON([("files_id", 1), ("n", 1)])
+                            for key in indexes.values()))
 
         yield conn.disconnect()

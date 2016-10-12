@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 from bson.son import SON
+from bson.codec_options import DEFAULT_CODEC_OPTIONS
 from pymongo.helpers import _check_command_response
 from twisted.python.compat import unicode
 from txmongo.collection import Collection
@@ -52,7 +53,8 @@ class Database(object):
         return self.__codec_options or self.__factory.codec_options
 
     @timeout
-    def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
+    def command(self, command, value=1, check=True, allowable_errors=None,
+                codec_options=DEFAULT_CODEC_OPTIONS, **kwargs):
         if isinstance(command, (bytes, unicode)):
             command = SON([(command, value)])
         options = kwargs.copy()
@@ -66,7 +68,7 @@ class Database(object):
 
             return response
 
-        ns = self["$cmd"]
+        ns = self["$cmd"].with_options(codec_options=codec_options)
         return ns.find_one(command, **kwargs).addCallback(on_ok)
 
 

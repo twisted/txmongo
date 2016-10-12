@@ -16,6 +16,16 @@ Features
   as it may create *very* variable conditions in terms of loading and timing. An additional index is		
   also added to facilitate bi-directional movement between versions. Additional Unit test for GFS also added.
 
+API Changes
+^^^^^^^^^^^
+
+- ``Database.command()`` now takes ``codec_options`` argument.
+
+Bugfixes
+^^^^^^^^
+
+- ``GridFS.get_last_version()`` was creating redundant index
+
 Release 16.2.0 (2016-10-02)
 ---------------------------
 
