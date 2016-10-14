@@ -328,6 +328,17 @@ class ConnectionPool(object):
         else:
             return None
 
+    def drop_database(self, name_or_database):
+        if isinstance(name_or_database, (bytes, StringType)):
+            db = self[name_or_database]
+        elif isinstance(name_or_database, Database):
+            db = name_or_database
+        else:
+            raise TypeError("argument to drop_database() should be database name "
+                            "or database object")
+
+        return db.command("dropDatabase")
+
     def disconnect(self):
         for factory in self.__pool:
             factory.stopTrying()
