@@ -20,6 +20,9 @@ API Changes
 ^^^^^^^^^^^
 
 - ``Database.command()`` now takes ``codec_options`` argument.
+- ``watchdog_interval`` and ``watchdog_timeout`` arguments of ``ConnectionPool`` renamed
+  to ``ping_interval`` and ``ping_timeout`` correspondingly along with internal change of
+  connection aliveness checking mechanism.
 
 Bugfixes
 ^^^^^^^^
