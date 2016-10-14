@@ -6,6 +6,7 @@ from __future__ import absolute_import, division
 import io
 import struct
 import collections
+import warnings
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
@@ -219,8 +220,34 @@ class Collection(object):
                    .addErrback(on_3_0_fail)\
                    .addCallbacks(on_ok)
 
+    @staticmethod
+    def _find_args_compat(*args, **kwargs):
+        """
+        signature of find() was changed from
+        (spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs)
+        to
+        (spec=None, projection=None, skip=0, limit=0, filter=None, **kwargs)
+
+        This function makes it compatible with both
+        """
+        def old(spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
+            warnings.warn("find(), find_with_cursor() and find_one() signatures have"
+                          "changed. Please refer to documentation.", DeprecationWarning)
+            return new(spec, fields, skip, limit, filter, cursor=cursor, **kwargs)
+
+        def new(spec=None, projection=None, skip=0, limit=0, filter=None, **kwargs):
+            args = {"spec": spec, "projection": projection, "skip": skip, "limit": limit,
+                    "filter": filter}
+            args.update(kwargs)
+            return args
+
+        if len(args) >= 2 and isinstance(args[1], int) or "fields" in kwargs:
+            return old(*args, **kwargs)
+        else:
+            return new(*args, **kwargs)
+
     @timeout
-    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
+    def find(self, *args, **kwargs):
         """Find documents in a collection.
 
         The `spec` argument is a MongoDB query document. To return all documents
@@ -232,19 +259,19 @@ class Collection(object):
         Ordering, indexing hints and other query parameters can be set with
         `filter` argument. See :mod:`txmongo.filter` for details.
 
+        :param projection:
+            a list of field names that should be returned for each document
+            in the result set or a dict specifying field names to include or
+            exclude. If `projection` is a list ``_id`` fields will always be
+            returned. Use a dict form to exclude fields:
+            ``projection={"_id": False}``.
+
         :param skip:
             the number of documents to omit from the start of the result set.
 
         :param limit:
             the maximum number of documents to return. All documents are
             returned when `limit` is zero.
-
-        :param fields:
-            a list of field names that should be returned for each document
-            in the result set or a dict specifying field names to include or
-            exclude. If `fields` is a list ``_id`` fields will always be
-            returned. Use a dict form to exclude fields:
-            ``fields={"_id": False}``.
 
         :param as_class: *(keyword only)*
             if not ``None``, returned documents will be converted to type
@@ -268,12 +295,20 @@ class Collection(object):
                               do_something(doc)
                           docs, dfr = yield dfr
         """
+        new_kwargs = self._find_args_compat(*args, **kwargs)
+        return self.__real_find(**new_kwargs)
+
+    def __real_find(self, spec=None, projection=None, skip=0, limit=0, filter=None, **kwargs):
+        cursor = kwargs.pop("cursor", False)
+
         rows = []
 
         def on_ok(result, this_func):
             docs, dfr = result
 
             if cursor:
+                warnings.warn("find() with cursor=True is deprecated. Please use"
+                              "find_with_cursor() instead.", DeprecationWarning)
                 return docs, dfr
 
             if docs:
@@ -282,8 +317,8 @@ class Collection(object):
             else:
                 return rows
 
-        return self.find_with_cursor(spec=spec, skip=skip, limit=limit, fields=fields,
-                                     filter=filter, **kwargs).addCallback(on_ok, on_ok)
+        return self.__real_find_with_cursor(spec, projection, skip, limit, filter,
+                                            **kwargs).addCallback(on_ok, on_ok)
 
     @staticmethod
     def __apply_find_filter(spec, c_filter):
@@ -300,25 +335,29 @@ class Collection(object):
         return spec
 
     @timeout
-    def find_with_cursor(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
+    def find_with_cursor(self, *args, **kwargs):
         """Find documents in a collection and return them in one batch at a time
 
         This methid is equivalent of :meth:`find()` with `cursor=True`.
         See :meth:`find()` for description of parameters and return value.
         """
+        new_kwargs = self._find_args_compat(*args, **kwargs)
+        return self.__real_find_with_cursor(**new_kwargs)
+
+    def __real_find_with_cursor(self, spec=None, projection=None, skip=0, limit=0, filter=None, **kwargs):
         if spec is None:
             spec = SON()
 
         if not isinstance(spec, dict):
             raise TypeError("TxMongo: spec must be an instance of dict.")
-        if not isinstance(fields, (dict, list)) and fields is not None:
-            raise TypeError("TxMongo: fields must be an instance of dict or list.")
+        if not isinstance(projection, (dict, list)) and projection is not None:
+            raise TypeError("TxMongo: projection must be an instance of dict or list.")
         if not isinstance(skip, int):
             raise TypeError("TxMongo: skip must be an instance of int.")
         if not isinstance(limit, int):
             raise TypeError("TxMongo: limit must be an instance of int.")
 
-        fields = self._normalize_fields_projection(fields)
+        projection = self._normalize_fields_projection(projection)
 
         spec = self.__apply_find_filter(spec, filter)
 
@@ -332,7 +371,7 @@ class Collection(object):
 
             query = Query(flags=flags, collection=str(self),
                           n_to_skip=skip, n_to_return=limit,
-                          query=spec, fields=fields)
+                          query=spec, fields=projection)
 
             deferred_query = protocol.send_QUERY(query)
             deferred_query.addCallback(after_reply, protocol, after_reply)
@@ -383,7 +422,7 @@ class Collection(object):
         return proto
 
     @timeout
-    def find_one(self, spec=None, fields=None, **kwargs):
+    def find_one(self, spec=None, **kwargs):
         """Get a single document from the collection.
 
         All arguments to :meth:`find()` are also valid for :meth:`find_one()`,
@@ -396,8 +435,13 @@ class Collection(object):
         if isinstance(spec, ObjectId):
             spec = {"_id": spec}
 
+        if "fields" in kwargs:
+            warnings.warn("find_one() signature is changed. Please refer"
+                          "to documentation", DeprecationWarning)
+        projection = kwargs.pop("projection", kwargs.pop("fields", None))
+
         kwargs.pop("limit", None)   # do not conflict hard limit
-        return self.find(spec=spec, limit=1, fields=fields, **kwargs)\
+        return self.__real_find(spec, projection, limit=1, **kwargs)\
                    .addCallback(lambda result: result[0] if result else None)
 
     @timeout
