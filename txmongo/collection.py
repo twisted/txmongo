@@ -227,7 +227,7 @@ class Collection(object):
         signature of find() was changed from
         (spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs)
         to
-        (spec=None, projection=None, skip=0, limit=0, filter=None, **kwargs)
+        (filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)
 
         This function makes it compatible with both
         """
@@ -257,16 +257,19 @@ class Collection(object):
 
     @timeout
     def find(self, *args, **kwargs):
-        """Find documents in a collection.
+        """find(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)
 
-        The `spec` argument is a MongoDB query document. To return all documents
-        in a collection, omit this parameter or pass an empty document (``{}``).
-        You can pass ``{"key": "value"}`` to select documents having ``key``
-        field equal to ``"value"`` or use any of `MongoDB's query selectors
-        <https://docs.mongodb.org/manual/reference/operator/query/#query-selectors>`_.
+        Find documents in a collection.
 
         Ordering, indexing hints and other query parameters can be set with
-        `filter` argument. See :mod:`txmongo.filter` for details.
+        `sort` argument. See :mod:`txmongo.filter` for details.
+
+        :param filter:
+            MongoDB query document. To return all documents in a collection,
+            omit this parameter or pass an empty document (``{}``). You can pass
+            ``{"key": "value"}`` to select documents having ``key`` field
+            equal to ``"value"`` or use any of `MongoDB's query selectors
+            <https://docs.mongodb.org/manual/reference/operator/query/#query-selectors>`_.
 
         :param projection:
             a list of field names that should be returned for each document
@@ -282,27 +285,12 @@ class Collection(object):
             the maximum number of documents to return. All documents are
             returned when `limit` is zero.
 
-        :param as_class: *(keyword only)*
-            if not ``None``, returned documents will be converted to type
-            specified. For example, you can use ``as_class=collections.OrderedDict``
-            or ``as_class=bson.SON`` when field ordering in documents is important.
+        :param sort:
+            query filter. You can specify ordering, indexing hints and other query
+            parameters with this argument. See :mod:`txmongo.filter` for details.
 
-        :returns: an instance of :class:`Deferred` that called back with one of:
-
-            - if `cursor` is ``False`` (the default) --- all documents found
-            - if `cursor` is ``True`` --- tuple of ``(docs, dfr)``, where
-              ``docs`` is a partial result, returned by MongoDB in a first
-              batch and ``dfr`` is a :class:`Deferred` that fires with next
-              ``(docs, dfr)``. Last result will be ``([], None)``. Using this
-              mode you can iterate over the result set with code like that:
-              ::
-                  @defer.inlineCallbacks
-                  def query():
-                      docs, dfr = yield coll.find(query, cursor=True)
-                      while docs:
-                          for doc in docs:
-                              do_something(doc)
-                          docs, dfr = yield dfr
+        :returns: an instance of :class:`Deferred` that called back with a list with
+            all documents found.
         """
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find(**new_kwargs)
@@ -345,10 +333,24 @@ class Collection(object):
 
     @timeout
     def find_with_cursor(self, *args, **kwargs):
-        """Find documents in a collection and return them in one batch at a time
+        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)
 
-        This methid is equivalent of :meth:`find()` with `cursor=True`.
-        See :meth:`find()` for description of parameters and return value.
+        Find documents in a collection and return them in one batch at a time.
+
+        Arguments are the same as for :meth:`find()`.
+
+        :returns: an instance of :class:`Deferred` that fires with tuple of ``(docs, dfr)``,
+            where ``docs`` is a partial result, returned by MongoDB in a first batch and
+            ``dfr`` is a :class:`Deferred` that fires with next ``(docs, dfr)``. Last result
+            will be ``([], None)``. You can iterate over the result set with code like that:
+            ::
+                @defer.inlineCallbacks
+                def query():
+                    docs, dfr = yield coll.find(query, cursor=True)
+                    while docs:
+                        for doc in docs:
+                            do_something(doc)
+                        docs, dfr = yield dfr
         """
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find_with_cursor(**new_kwargs)
@@ -358,7 +360,7 @@ class Collection(object):
             filter = SON()
 
         if not isinstance(filter, dict):
-            raise TypeError("TxMongo: spec must be an instance of dict.")
+            raise TypeError("TxMongo: filter must be an instance of dict.")
         if not isinstance(projection, (dict, list)) and projection is not None:
             raise TypeError("TxMongo: projection must be an instance of dict or list.")
         if not isinstance(skip, int):
@@ -432,7 +434,9 @@ class Collection(object):
 
     @timeout
     def find_one(self, *args, **kwargs):
-        """Get a single document from the collection.
+        """find_one(filter=None, projection=None, **kwargs)
+
+        Get a single document from the collection.
 
         All arguments to :meth:`find()` are also valid for :meth:`find_one()`,
         although `limit` will be ignored.
