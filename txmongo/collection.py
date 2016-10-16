@@ -22,6 +22,7 @@ from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
     validate_is_mapping, validate_boolean
 from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
+from txmongo.filter import _QueryFilter
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
     Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
 from txmongo.utils import check_deadline, timeout
@@ -231,17 +232,25 @@ class Collection(object):
         This function makes it compatible with both
         """
         def old(spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
-            warnings.warn("find(), find_with_cursor() and find_one() signatures have"
+            warnings.warn("find(), find_with_cursor() and find_one() signatures have "
                           "changed. Please refer to documentation.", DeprecationWarning)
             return new(spec, fields, skip, limit, filter, cursor=cursor, **kwargs)
 
-        def new(spec=None, projection=None, skip=0, limit=0, filter=None, **kwargs):
-            args = {"spec": spec, "projection": projection, "skip": skip, "limit": limit,
-                    "filter": filter}
+        def new(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs):
+            args = {"filter": filter, "projection": projection, "skip": skip, "limit": limit,
+                    "sort": sort}
             args.update(kwargs)
             return args
 
-        if len(args) >= 2 and isinstance(args[1], int) or "fields" in kwargs:
+        old_if = (
+            "fields" in kwargs,
+            "spec" in kwargs,
+            len(args) == 0 and isinstance(kwargs.get("filter"), _QueryFilter),
+            len(args) >= 1 and "filter" in kwargs,
+            len(args) >= 2 and isinstance(args[1], int),
+        )
+
+        if any(old_if):
             return old(*args, **kwargs)
         else:
             return new(*args, **kwargs)
@@ -298,7 +307,7 @@ class Collection(object):
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find(**new_kwargs)
 
-    def __real_find(self, spec=None, projection=None, skip=0, limit=0, filter=None, **kwargs):
+    def __real_find(self, filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs):
         cursor = kwargs.pop("cursor", False)
 
         rows = []
@@ -317,7 +326,7 @@ class Collection(object):
             else:
                 return rows
 
-        return self.__real_find_with_cursor(spec, projection, skip, limit, filter,
+        return self.__real_find_with_cursor(filter, projection, skip, limit, sort,
                                             **kwargs).addCallback(on_ok, on_ok)
 
     @staticmethod
@@ -344,11 +353,11 @@ class Collection(object):
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find_with_cursor(**new_kwargs)
 
-    def __real_find_with_cursor(self, spec=None, projection=None, skip=0, limit=0, filter=None, **kwargs):
-        if spec is None:
-            spec = SON()
+    def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs):
+        if filter is None:
+            filter = SON()
 
-        if not isinstance(spec, dict):
+        if not isinstance(filter, dict):
             raise TypeError("TxMongo: spec must be an instance of dict.")
         if not isinstance(projection, (dict, list)) and projection is not None:
             raise TypeError("TxMongo: projection must be an instance of dict or list.")
@@ -359,7 +368,7 @@ class Collection(object):
 
         projection = self._normalize_fields_projection(projection)
 
-        spec = self.__apply_find_filter(spec, filter)
+        filter = self.__apply_find_filter(filter, sort)
 
         as_class = kwargs.get("as_class")
         proto = self._database.connection.getprotocol()
@@ -371,7 +380,7 @@ class Collection(object):
 
             query = Query(flags=flags, collection=str(self),
                           n_to_skip=skip, n_to_return=limit,
-                          query=spec, fields=projection)
+                          query=filter, fields=projection)
 
             deferred_query = protocol.send_QUERY(query)
             deferred_query.addCallback(after_reply, protocol, after_reply)
@@ -422,7 +431,7 @@ class Collection(object):
         return proto
 
     @timeout
-    def find_one(self, spec=None, **kwargs):
+    def find_one(self, *args, **kwargs):
         """Get a single document from the collection.
 
         All arguments to :meth:`find()` are also valid for :meth:`find_one()`,
@@ -432,17 +441,13 @@ class Collection(object):
             a :class:`Deferred` that called back with single document
             or ``None`` if no matching documents is found.
         """
-        if isinstance(spec, ObjectId):
-            spec = {"_id": spec}
+        new_kwargs = self._find_args_compat(*args, **kwargs)
+        if isinstance(new_kwargs["filter"], ObjectId):
+            new_kwargs["filter"] = {"_id": new_kwargs["filter"]}
 
-        if "fields" in kwargs:
-            warnings.warn("find_one() signature is changed. Please refer"
-                          "to documentation", DeprecationWarning)
-        projection = kwargs.pop("projection", kwargs.pop("fields", None))
-
-        kwargs.pop("limit", None)   # do not conflict hard limit
-        return self.__real_find(spec, projection, limit=1, **kwargs)\
-                   .addCallback(lambda result: result[0] if result else None)
+        new_kwargs["limit"] = 1
+        return self.__real_find(**new_kwargs)\
+            .addCallback(lambda result: result[0] if result else None)
 
     @timeout
     def count(self, spec=None, **kwargs):
