@@ -1045,10 +1045,11 @@ class Collection(object):
         return self._database("admin").command("renameCollection", str(self), to=to, **kwargs)
 
     @timeout
-    def distinct(self, key, spec=None, **kwargs):
+    def distinct(self, key, filter=None, **kwargs):
         params = {"key": key}
-        if spec:
-            params["query"] = spec
+        filter = kwargs.pop("spec", filter)
+        if filter:
+            params["query"] = filter
         params.update(kwargs)
 
         return self._database.command("distinct", self._collection_name, **params)\
