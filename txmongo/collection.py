@@ -138,7 +138,9 @@ class Collection(object):
         return self.__write_concern or self._database.write_concern
 
     def with_options(self, **kwargs):
-        """Get a clone of collection changing the specified settings.
+        """with_options(*, write_concern=None, codec_options=None)
+
+        Get a clone of collection changing the specified settings.
 
         :param write_concern: *(keyword only)*
             new :class:`~pymongo.write_concern.WriteConcern` to use.
@@ -198,16 +200,18 @@ class Collection(object):
                      ("filter", {"name": self.name})])).addCallback(on_ok)
 
     @timeout
-    def options(self, **kwargs):
-        """Get the options set on this collection.
+    def options(self, _deadline=None):
+        """options()
+
+        Get the options set on this collection.
 
         :returns:
             :class:`Deferred` that called back with dictionary of options
-            and their values.
+            and their values or with empty dict if collection doesn't exist.
         """
         def on_3_0_fail(failure):
             failure.trap(OperationFailure)
-            return self._database.system.namespaces.find_one({"name": str(self)}, **kwargs)
+            return self._database.system.namespaces.find_one({"name": str(self)}, _deadline=_deadline)
 
         def on_ok(result):
             if not result:
@@ -598,41 +602,40 @@ class Collection(object):
 
         return self._database.connection.getprotocol().addCallback(on_proto)
 
-    def _insert_one_or_many(self, documents, ordered=True, **kwargs):
+    def _insert_one(self, document, _deadline):
         if self.write_concern.acknowledged:
-            inserted_ids = []
-            for doc in documents:
-                if "_id" not in doc:
-                    doc["_id"] = ObjectId()
-                inserted_ids.append(doc["_id"])
-
             command = SON([("insert", self._collection_name),
-                           ("documents", documents),
-                           ("ordered", ordered),
+                           ("documents", [document]),
+                           ("ordered", True),
                            ("writeConcern", self.write_concern.document)])
-            return self._database.command(command, **kwargs)\
-                    .addCallback(lambda response: (inserted_ids, response))
+            return self._database.command(command, _deadline=_deadline)
         else:
             # falling back to OP_INSERT in case of unacknowledged op
-            flags = INSERT_CONTINUE_ON_ERROR if not ordered else 0
-            return self.insert(documents, flags=flags, **kwargs)\
-                    .addCallback(lambda inserted_ids: (inserted_ids, None))
+            return self.insert([document], _deadline=_deadline)\
+                .addCallback(lambda _: None)
 
     @timeout
-    def insert_one(self, document, **kwargs):
-        """Insert a single document into collection
+    def insert_one(self, document, _deadline=None):
+        """insert_one(document)
+
+        Insert a single document into collection
 
         :param document: Document to insert
+
         :returns:
             :class:`Deferred` that called back with
             :class:`pymongo.results.InsertOneResult`
         """
+        if "_id" not in document:
+            document["_id"] = ObjectId()
+        inserted_id = document["_id"]
+
         def on_ok(result):
-            inserted_ids, response = result
+            response = result
             if response:
                 _check_write_command_response([[0, response]])
-            return InsertOneResult(inserted_ids[0], self.write_concern.acknowledged)
-        return self._insert_one_or_many([document], **kwargs).addCallback(on_ok)
+            return InsertOneResult(inserted_id, self.write_concern.acknowledged)
+        return self._insert_one(document, _deadline).addCallback(on_ok)
 
     @staticmethod
     def _generate_batch_commands(collname, command, docs_field, documents, ordered,
@@ -695,8 +698,10 @@ class Collection(object):
         yield idx_offset, prepare_command()
 
     @timeout
-    def insert_many(self, documents, ordered=True, **kwargs):
-        """Insert an iterable of documents into collection
+    def insert_many(self, documents, ordered=True, _deadline=None):
+        """insert_many(documents, ordered=True)
+
+        Insert an iterable of documents into collection
 
         :param documents:
             An iterable of documents to insert (``list``,
@@ -789,7 +794,7 @@ class Collection(object):
 
         return self._database.connection.getprotocol().addCallback(on_proto)
 
-    def _update(self, filter, update, upsert, multi, **kwargs):
+    def _update(self, filter, update, upsert, multi, _deadline):
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
 
@@ -809,15 +814,17 @@ class Collection(object):
                     raw_response["upserted"] = raw_response["upserted"][0]["_id"]
                 return raw_response
 
-            return self._database.command(command, **kwargs).addCallback(on_ok)
+            return self._database.command(command, _deadline=_deadline).addCallback(on_ok)
 
         else:
-            return self.update(filter, update, upsert=upsert, multi=multi, **kwargs)\
-                    .addCallback(lambda _: None)
+            return self.update(filter, update, upsert=upsert, multi=multi,
+                               _deadline=_deadline).addCallback(lambda _: None)
 
     @timeout
-    def update_one(self, filter, update, upsert=False, **kwargs):
-        """Update a single document matching the filter.
+    def update_one(self, filter, update, upsert=False, _deadline=None):
+        """update_one(filter, update, upsert=False)
+
+        Update a single document matching the filter.
 
         :raises ValueError:
             if `update` document is empty.
@@ -846,11 +853,13 @@ class Collection(object):
 
         def on_ok(raw_response):
             return UpdateResult(raw_response, self.write_concern.acknowledged)
-        return self._update(filter, update, upsert, multi=False, **kwargs).addCallback(on_ok)
+        return self._update(filter, update, upsert, False, _deadline).addCallback(on_ok)
 
     @timeout
-    def update_many(self, filter, update, upsert=False, **kwargs):
-        """Update one or more documents that match the filter.
+    def update_many(self, filter, update, upsert=False, _deadline=None):
+        """update_many(filter, update, upsert=False)
+
+        Update one or more documents that match the filter.
 
         :raises ValueError:
             if `update` document is empty.
@@ -879,11 +888,13 @@ class Collection(object):
 
         def on_ok(raw_response):
             return UpdateResult(raw_response, self.write_concern.acknowledged)
-        return self._update(filter, update, upsert, multi=True, **kwargs).addCallback(on_ok)
+        return self._update(filter, update, upsert, True, _deadline).addCallback(on_ok)
 
     @timeout
-    def replace_one(self, filter, replacement, upsert=False, **kwargs):
-        """Replace a single document matching the filter.
+    def replace_one(self, filter, replacement, upsert=False, _deadline=None):
+        """replace_one(filter, replacement, upsert=False)
+
+        Replace a single document matching the filter.
 
         :raises ValueError:
             if `update` document is empty
@@ -909,7 +920,7 @@ class Collection(object):
 
         def on_ok(raw_response):
             return UpdateResult(raw_response, self.write_concern.acknowledged)
-        return self._update(filter, replacement, upsert, multi=False, **kwargs).addCallback(on_ok)
+        return self._update(filter, replacement, upsert, False, _deadline).addCallback(on_ok)
 
     @timeout
     def save(self, doc, safe=None, **kwargs):
@@ -944,7 +955,7 @@ class Collection(object):
 
         return self._database.connection.getprotocol().addCallback(on_proto)
 
-    def _delete(self, filter, multi, **kwargs):
+    def _delete(self, filter, multi, _deadline):
         validate_is_mapping("filter", filter)
 
         if self.write_concern.acknowledged:
@@ -956,26 +967,30 @@ class Collection(object):
             def on_ok(raw_response):
                 _check_write_command_response([[0, raw_response]])
                 return raw_response
-            return self._database.command(command, **kwargs).addCallback(on_ok)
+            return self._database.command(command, _deadline=_deadline).addCallback(on_ok)
 
         else:
-            return self.remove(filter, single=not multi, **kwargs).addCallback(lambda _: None)
+            return self.remove(filter, single=not multi, _deadline=_deadline)\
+                .addCallback(lambda _: None)
 
     @timeout
-    def delete_one(self, filter, **kwargs):
+    def delete_one(self, filter, _deadline=None):
+        """delete_one(filter)"""
         def on_ok(raw_response):
             return DeleteResult(raw_response, self.write_concern.acknowledged)
-        return self._delete(filter, multi=False, **kwargs).addCallback(on_ok)
+        return self._delete(filter, False, _deadline).addCallback(on_ok)
 
     @timeout
-    def delete_many(self, filter, **kwargs):
+    def delete_many(self, filter, _deadline=None):
+        """delete_many(filter)"""
         def on_ok(raw_response):
             return DeleteResult(raw_response, self.write_concern.acknowledged)
-        return self._delete(filter, multi=True, **kwargs).addCallback(on_ok)
+        return self._delete(filter, True, _deadline).addCallback(on_ok)
 
     @timeout
-    def drop(self, **kwargs):
-        return self._database.drop_collection(self._collection_name, **kwargs)
+    def drop(self, _deadline=None):
+        """drop()"""
+        return self._database.drop_collection(self._collection_name, _deadline=_deadline)
 
     def create_index(self, sort_fields, **kwargs):
         if not isinstance(sort_fields, qf.sort):
@@ -1003,7 +1018,7 @@ class Collection(object):
             kwargs["bucketSize"] = kwargs.pop("bucket_size")
 
         index.update(kwargs)
-        return self._database.system.indexes.insert(index, safe=True, **kwargs)\
+        return self._database.system.indexes.insert(index, safe=True)\
                 .addCallback(lambda _: name)
 
     @timeout
@@ -1012,7 +1027,9 @@ class Collection(object):
         # keeping an index cache same way pymongo does
         return self.create_index(sort_fields, **kwargs)
 
-    def drop_index(self, index_identifier, **kwargs):
+    @timeout
+    def drop_index(self, index_identifier, _deadline=None):
+        """drop_index(index_identifier)"""
         if isinstance(index_identifier, (bytes, unicode)):
             name = index_identifier
         elif isinstance(index_identifier, qf.sort):
@@ -1022,11 +1039,12 @@ class Collection(object):
 
         return self._database.command("deleteIndexes", self._collection_name,
                                       index=name, allowable_errors=["ns not found"],
-                                      **kwargs)
+                                      _deadline=_deadline)
 
     @timeout
-    def drop_indexes(self, **kwargs):
-        return self.drop_index("*", **kwargs)
+    def drop_indexes(self, _deadline=None):
+        """drop_indexes()"""
+        return self.drop_index("*", _deadline=_deadline)
 
     def __index_information_3_0(self):
         def on_ok(indexes_info):
@@ -1037,10 +1055,12 @@ class Collection(object):
                 .addCallback(on_ok)
 
     @timeout
-    def index_information(self, **kwargs):
+    def index_information(self, _deadline=None):
+        """index_information()"""
         def on_3_0_fail(failure):
             failure.trap(OperationFailure)
-            return self._database.system.indexes.find({"ns": str(self)}, as_class=SON, **kwargs)
+            return self._database.system.indexes.find({"ns": str(self)}, as_class=SON,
+                                                      _deadline=_deadline)
 
         def on_ok(raw):
             info = {}
@@ -1052,29 +1072,32 @@ class Collection(object):
 
 
     @timeout
-    def rename(self, new_name, **kwargs):
+    def rename(self, new_name, _deadline=None):
+        """rename(new_name)"""
         to = "%s.%s" % (str(self._database), new_name)
-        return self._database("admin").command("renameCollection", str(self), to=to, **kwargs)
+        return self._database("admin").command("renameCollection", str(self), to=to,
+                                               _deadline=_deadline)
 
     @timeout
-    def distinct(self, key, filter=None, **kwargs):
+    def distinct(self, key, filter=None, _deadline=None, **kwargs):
+        """distinct(key, filter=None)"""
         params = {"key": key}
         filter = kwargs.pop("spec", filter)
         if filter:
             params["query"] = filter
-        params.update(kwargs)
 
-        return self._database.command("distinct", self._collection_name, **params)\
-                .addCallback(lambda result: result.get("values"))
+        return self._database.command("distinct", self._collection_name, _deadline=_deadline,
+                                      **params).addCallback(lambda result: result.get("values"))
 
     @timeout
-    def aggregate(self, pipeline, full_response=False, **kwargs):
+    def aggregate(self, pipeline, full_response=False, _deadline=None):
+        """aggregate(pipeline, full_response=False)"""
         def on_ok(raw):
             if full_response:
                 return raw
             return raw.get("result")
-        return self._database.command("aggregate", self._collection_name,
-                                      pipeline=pipeline, **kwargs).addCallback(on_ok)
+        return self._database.command("aggregate", self._collection_name, pipeline = pipeline,
+                                      _deadline = _deadline).addCallback(on_ok)
 
     @timeout
     def map_reduce(self, map, reduce, full_response=False, **kwargs):
@@ -1124,7 +1147,8 @@ class Collection(object):
     # MongoDB command without conversion. But in find_one_and_*
     # methods we want to take `filter.sort` instances
     def _new_find_and_modify(self, filter, projection, sort, upsert=None,
-                             return_document=ReturnDocument.BEFORE, **kwargs):
+                             return_document=ReturnDocument.BEFORE, _deadline=None,
+                             **kwargs):
         validate_is_mapping("filter", filter)
         if not isinstance(return_document, bool):
             raise ValueError("TxMongo: return_document must be ReturnDocument.BEFORE "
@@ -1139,33 +1163,38 @@ class Collection(object):
             cmd["fields"] = self._normalize_fields_projection(projection)
 
         if sort is not None:
-            cmd["sort"] = dict(sort["orderby"])
+            cmd["sort"] = SON(sort["orderby"])
         if upsert is not None:
             validate_boolean("upsert", upsert)
             cmd["upsert"] = upsert
 
         no_obj_error = "No matching object found"
 
-        return self._database.command(cmd, allowable_errors=[no_obj_error], **kwargs)\
+        return self._database.command(cmd, allowable_errors=[no_obj_error], _deadline=_deadline)\
                 .addCallback(lambda result: result.get("value"))
 
     @timeout
-    def find_one_and_delete(self, filter, projection=None, sort=None, **kwargs):
-        return self._new_find_and_modify(filter, projection, sort, remove=True, **kwargs)
+    def find_one_and_delete(self, filter, projection=None, sort=None, _deadline=None):
+        """find_one_and_delete(filter, projection=None, sort=None, **kwargs)"""
+        return self._new_find_and_modify(filter, projection, sort, remove=True,
+                                         _deadline=_deadline)
 
     @timeout
     def find_one_and_replace(self, filter, replacement, projection=None, sort=None,
-                             upsert=False, return_document=ReturnDocument.BEFORE, **kwargs):
+                             upsert=False, return_document=ReturnDocument.BEFORE,
+                             _deadline=None):
+        """find_one_and_replace(filter, replacement, projection=None, sort=None, upsert=False, return_document=ReturnDocument.BEFORE)"""
         validate_ok_for_replace(replacement)
         return self._new_find_and_modify(filter, projection, sort, upsert, return_document,
-                                         update=replacement, **kwargs)
+                                         update=replacement, _deadline=_deadline)
 
     @timeout
     def find_one_and_update(self, filter, update, projection=None, sort=None,
-                            upsert=False, return_document=ReturnDocument.BEFORE, **kwargs):
+                            upsert=False, return_document=ReturnDocument.BEFORE, _deadline=None):
+        """find_one_and_update(filter, update, projection=None, sort=None, upsert=False, return_document=ReturnDocument.BEFORE)"""
         validate_ok_for_update(update)
         return self._new_find_and_modify(filter, projection, sort, upsert, return_document,
-                                         update=update, **kwargs)
+                                         update=update, _deadline=_deadline)
 
     def bulk_write(self, requests, ordered=True):
         if not isinstance(requests, collections.Iterable):
