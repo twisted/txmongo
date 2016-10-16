@@ -34,6 +34,9 @@ API Changes
 - ``cursor`` argument to ``find()`` is deprecated. Please use ``find_with_cursor()`` directly
   if you need to iterate over results by batches. ``cursor`` will be supported in this and
   one subsequent releases.
+- ``as_class`` argument to ``find()``, ``find_with_cursor()`` and ``find_one()`` is deprecated.
+  Please use ``collection.with_options(codec_options=CodecOptions(document_class=...)).find()`
+  instead. It is lengthty, but it is more generic and this is how you do it with current PyMongo.
 - ``Database.command()`` now takes ``codec_options`` argument.
 - ``watchdog_interval`` and ``watchdog_timeout`` arguments of ``ConnectionPool`` renamed
   to ``ping_interval`` and ``ping_timeout`` correspondingly along with internal change of
