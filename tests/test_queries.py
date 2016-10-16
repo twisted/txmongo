@@ -1038,3 +1038,24 @@ class TestCount(SingleCollectionTest):
         self.assertEqual((yield self.coll.count({'x': {"$gt": 15}})), 2)
 
         self.assertEqual((yield self.db.non_existing.count()), 0)
+
+    @defer.inlineCallbacks
+    def test_hint(self):
+        yield self.coll.create_index(qf.sort(qf.ASCENDING('x')))
+
+        cnt = yield self.coll.count(hint=qf.hint(qf.ASCENDING('x')))
+        self.assertEqual(cnt, 3)
+
+        yield self.assertFailure(self.coll.count(hint=qf.hint(qf.ASCENDING('y'))),
+                                 OperationFailure)
+
+        self.assertRaises(TypeError, self.coll.count, hint={'x': 1})
+        self.assertRaises(TypeError, self.coll.count, hint=[('x', 1)])
+
+    @defer.inlineCallbacks
+    def test_skip_limit(self):
+        cnt = yield self.coll.count(limit = 2)
+        self.assertEqual(cnt, 2)
+
+        cnt = yield self.coll.count(skip = 1)
+        self.assertEqual(cnt, 2)

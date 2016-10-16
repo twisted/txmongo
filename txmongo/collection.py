@@ -464,11 +464,23 @@ class Collection(object):
         :param hint: *(keyword only)*
             :class:`~txmongo.filter.hint` instance specifying index to use.
 
+        :param int limit: *(keyword only)*
+            The maximum number of documents to count.
+
+        :param int skip: *(keyword only)*
+            The number of matching documents to skip before returning results.
+
         :returns: a :class:`Deferred` that called back with a number of
                   documents matching the criteria.
         """
         if "spec" in kwargs:
             filter = kwargs["spec"]
+
+        if "hint" in kwargs:
+            hint = kwargs["hint"]
+            if not isinstance(hint, qf.hint):
+                raise TypeError("hint must be an instance of txmongo.filter.hint")
+            kwargs["hint"] = SON(kwargs["hint"]["hint"])
 
         return self._database.command("count", self._collection_name,
                                       query=filter or SON(), **kwargs)\
