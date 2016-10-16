@@ -454,10 +454,10 @@ class Collection(object):
             .addCallback(lambda result: result[0] if result else None)
 
     @timeout
-    def count(self, spec=None, **kwargs):
+    def count(self, filter=None, **kwargs):
         """Get the number of documents in this collection.
 
-        :param spec:
+        :param filter:
             argument is a query document that selects which documents to
             count in the collection.
 
@@ -467,8 +467,11 @@ class Collection(object):
         :returns: a :class:`Deferred` that called back with a number of
                   documents matching the criteria.
         """
+        if "spec" in kwargs:
+            filter = kwargs["spec"]
+
         return self._database.command("count", self._collection_name,
-                                      query=spec or SON(), **kwargs)\
+                                      query=filter or SON(), **kwargs)\
                    .addCallback(lambda result: int(result['n']))
 
     @timeout
