@@ -20,6 +20,20 @@ Features
 API Changes
 ^^^^^^^^^^^
 
+- ``find()``, ``find_one()``, ``find_with_cursor()``, ``count()`` and ``distinct()`` signatures
+  changed to more closely match PyMongo's counterparts. New signatures are:
+  
+  - ``find(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)``
+  - ``find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)``
+  - ``find_one(filter=None, projection=None, **kwargs)``
+  - ``count(filter=None, **kwargs)``
+  - ``distinct(key, filter=None, **kwargs)``
+  
+  Old signatures are now deprecated and will be supported in this and one subsequent releases. 
+  After that only new signatures will be valid.
+- ``cursor`` argument to ``find()`` is deprecated. Please use ``find_with_cursor()`` directly
+  if you need to iterate over results by batches. ``cursor`` will be supported in this and
+  one subsequent releases.
 - ``Database.command()`` now takes ``codec_options`` argument.
 - ``watchdog_interval`` and ``watchdog_timeout`` arguments of ``ConnectionPool`` renamed
   to ``ping_interval`` and ``ping_timeout`` correspondingly along with internal change of
