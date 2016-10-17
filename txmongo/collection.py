@@ -24,7 +24,7 @@ from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
 from txmongo.filter import _QueryFilter
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
-    Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
+    Query, Getmore, Insert, Update, Delete, KillCursors
 from txmongo.utils import check_deadline, timeout
 from txmongo import filter as qf
 from twisted.internet import defer
