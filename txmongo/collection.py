@@ -6,6 +6,7 @@ from __future__ import absolute_import, division
 import io
 import struct
 import collections
+import warnings
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
@@ -21,6 +22,7 @@ from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
     validate_is_mapping, validate_boolean
 from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
+from txmongo.filter import _QueryFilter
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
     Query, Getmore, Insert, Update, Delete, KillCursors, INSERT_CONTINUE_ON_ERROR
 from txmongo.utils import check_deadline, timeout
@@ -219,18 +221,62 @@ class Collection(object):
                    .addErrback(on_3_0_fail)\
                    .addCallbacks(on_ok)
 
-    @timeout
-    def find(self, spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
-        """Find documents in a collection.
+    @staticmethod
+    def _find_args_compat(*args, **kwargs):
+        """
+        signature of find() was changed from
+        (spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs)
+        to
+        (filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)
 
-        The `spec` argument is a MongoDB query document. To return all documents
-        in a collection, omit this parameter or pass an empty document (``{}``).
-        You can pass ``{"key": "value"}`` to select documents having ``key``
-        field equal to ``"value"`` or use any of `MongoDB's query selectors
-        <https://docs.mongodb.org/manual/reference/operator/query/#query-selectors>`_.
+        This function makes it compatible with both
+        """
+        def old(spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
+            warnings.warn("find(), find_with_cursor() and find_one() signatures have "
+                          "changed. Please refer to documentation.", DeprecationWarning)
+            return new(spec, fields, skip, limit, filter, cursor=cursor, **kwargs)
+
+        def new(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs):
+            args = {"filter": filter, "projection": projection, "skip": skip, "limit": limit,
+                    "sort": sort}
+            args.update(kwargs)
+            return args
+
+        old_if = (
+            "fields" in kwargs,
+            "spec" in kwargs,
+            len(args) == 0 and isinstance(kwargs.get("filter"), _QueryFilter),
+            len(args) >= 1 and "filter" in kwargs,
+            len(args) >= 2 and isinstance(args[1], int),
+        )
+
+        if any(old_if):
+            return old(*args, **kwargs)
+        else:
+            return new(*args, **kwargs)
+
+    @timeout
+    def find(self, *args, **kwargs):
+        """find(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)
+
+        Find documents in a collection.
 
         Ordering, indexing hints and other query parameters can be set with
-        `filter` argument. See :mod:`txmongo.filter` for details.
+        `sort` argument. See :mod:`txmongo.filter` for details.
+
+        :param filter:
+            MongoDB query document. To return all documents in a collection,
+            omit this parameter or pass an empty document (``{}``). You can pass
+            ``{"key": "value"}`` to select documents having ``key`` field
+            equal to ``"value"`` or use any of `MongoDB's query selectors
+            <https://docs.mongodb.org/manual/reference/operator/query/#query-selectors>`_.
+
+        :param projection:
+            a list of field names that should be returned for each document
+            in the result set or a dict specifying field names to include or
+            exclude. If `projection` is a list ``_id`` fields will always be
+            returned. Use a dict form to exclude fields:
+            ``projection={"_id": False}``.
 
         :param skip:
             the number of documents to omit from the start of the result set.
@@ -239,41 +285,27 @@ class Collection(object):
             the maximum number of documents to return. All documents are
             returned when `limit` is zero.
 
-        :param fields:
-            a list of field names that should be returned for each document
-            in the result set or a dict specifying field names to include or
-            exclude. If `fields` is a list ``_id`` fields will always be
-            returned. Use a dict form to exclude fields:
-            ``fields={"_id": False}``.
+        :param sort:
+            query filter. You can specify ordering, indexing hints and other query
+            parameters with this argument. See :mod:`txmongo.filter` for details.
 
-        :param as_class: *(keyword only)*
-            if not ``None``, returned documents will be converted to type
-            specified. For example, you can use ``as_class=collections.OrderedDict``
-            or ``as_class=bson.SON`` when field ordering in documents is important.
-
-        :returns: an instance of :class:`Deferred` that called back with one of:
-
-            - if `cursor` is ``False`` (the default) --- all documents found
-            - if `cursor` is ``True`` --- tuple of ``(docs, dfr)``, where
-              ``docs`` is a partial result, returned by MongoDB in a first
-              batch and ``dfr`` is a :class:`Deferred` that fires with next
-              ``(docs, dfr)``. Last result will be ``([], None)``. Using this
-              mode you can iterate over the result set with code like that:
-              ::
-                  @defer.inlineCallbacks
-                  def query():
-                      docs, dfr = yield coll.find(query, cursor=True)
-                      while docs:
-                          for doc in docs:
-                              do_something(doc)
-                          docs, dfr = yield dfr
+        :returns: an instance of :class:`Deferred` that called back with a list with
+            all documents found.
         """
+        new_kwargs = self._find_args_compat(*args, **kwargs)
+        return self.__real_find(**new_kwargs)
+
+    def __real_find(self, filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs):
+        cursor = kwargs.pop("cursor", False)
+
         rows = []
 
         def on_ok(result, this_func):
             docs, dfr = result
 
             if cursor:
+                warnings.warn("find() with cursor=True is deprecated. Please use"
+                              "find_with_cursor() instead.", DeprecationWarning)
                 return docs, dfr
 
             if docs:
@@ -282,8 +314,8 @@ class Collection(object):
             else:
                 return rows
 
-        return self.find_with_cursor(spec=spec, skip=skip, limit=limit, fields=fields,
-                                     filter=filter, **kwargs).addCallback(on_ok, on_ok)
+        return self.__real_find_with_cursor(filter, projection, skip, limit, sort,
+                                            **kwargs).addCallback(on_ok, on_ok)
 
     @staticmethod
     def __apply_find_filter(spec, c_filter):
@@ -300,27 +332,45 @@ class Collection(object):
         return spec
 
     @timeout
-    def find_with_cursor(self, spec=None, skip=0, limit=0, fields=None, filter=None, **kwargs):
-        """Find documents in a collection and return them in one batch at a time
+    def find_with_cursor(self, *args, **kwargs):
+        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)
 
-        This methid is equivalent of :meth:`find()` with `cursor=True`.
-        See :meth:`find()` for description of parameters and return value.
+        Find documents in a collection and return them in one batch at a time.
+
+        Arguments are the same as for :meth:`find()`.
+
+        :returns: an instance of :class:`Deferred` that fires with tuple of ``(docs, dfr)``,
+            where ``docs`` is a partial result, returned by MongoDB in a first batch and
+            ``dfr`` is a :class:`Deferred` that fires with next ``(docs, dfr)``. Last result
+            will be ``([], None)``. You can iterate over the result set with code like that:
+            ::
+                @defer.inlineCallbacks
+                def query():
+                    docs, dfr = yield coll.find(query, cursor=True)
+                    while docs:
+                        for doc in docs:
+                            do_something(doc)
+                        docs, dfr = yield dfr
         """
-        if spec is None:
-            spec = SON()
+        new_kwargs = self._find_args_compat(*args, **kwargs)
+        return self.__real_find_with_cursor(**new_kwargs)
 
-        if not isinstance(spec, dict):
-            raise TypeError("TxMongo: spec must be an instance of dict.")
-        if not isinstance(fields, (dict, list)) and fields is not None:
-            raise TypeError("TxMongo: fields must be an instance of dict or list.")
+    def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs):
+        if filter is None:
+            filter = SON()
+
+        if not isinstance(filter, dict):
+            raise TypeError("TxMongo: filter must be an instance of dict.")
+        if not isinstance(projection, (dict, list)) and projection is not None:
+            raise TypeError("TxMongo: projection must be an instance of dict or list.")
         if not isinstance(skip, int):
             raise TypeError("TxMongo: skip must be an instance of int.")
         if not isinstance(limit, int):
             raise TypeError("TxMongo: limit must be an instance of int.")
 
-        fields = self._normalize_fields_projection(fields)
+        projection = self._normalize_fields_projection(projection)
 
-        spec = self.__apply_find_filter(spec, filter)
+        filter = self.__apply_find_filter(filter, sort)
 
         as_class = kwargs.get("as_class")
         proto = self._database.connection.getprotocol()
@@ -332,7 +382,7 @@ class Collection(object):
 
             query = Query(flags=flags, collection=str(self),
                           n_to_skip=skip, n_to_return=limit,
-                          query=spec, fields=fields)
+                          query=filter, fields=projection)
 
             deferred_query = protocol.send_QUERY(query)
             deferred_query.addCallback(after_reply, protocol, after_reply)
@@ -383,8 +433,10 @@ class Collection(object):
         return proto
 
     @timeout
-    def find_one(self, spec=None, fields=None, **kwargs):
-        """Get a single document from the collection.
+    def find_one(self, *args, **kwargs):
+        """find_one(filter=None, projection=None, **kwargs)
+
+        Get a single document from the collection.
 
         All arguments to :meth:`find()` are also valid for :meth:`find_one()`,
         although `limit` will be ignored.
@@ -393,29 +445,45 @@ class Collection(object):
             a :class:`Deferred` that called back with single document
             or ``None`` if no matching documents is found.
         """
-        if isinstance(spec, ObjectId):
-            spec = {"_id": spec}
+        new_kwargs = self._find_args_compat(*args, **kwargs)
+        if isinstance(new_kwargs["filter"], ObjectId):
+            new_kwargs["filter"] = {"_id": new_kwargs["filter"]}
 
-        kwargs.pop("limit", None)   # do not conflict hard limit
-        return self.find(spec=spec, limit=1, fields=fields, **kwargs)\
-                   .addCallback(lambda result: result[0] if result else None)
+        new_kwargs["limit"] = 1
+        return self.__real_find(**new_kwargs)\
+            .addCallback(lambda result: result[0] if result else None)
 
     @timeout
-    def count(self, spec=None, **kwargs):
+    def count(self, filter=None, **kwargs):
         """Get the number of documents in this collection.
 
-        :param spec:
+        :param filter:
             argument is a query document that selects which documents to
             count in the collection.
 
         :param hint: *(keyword only)*
             :class:`~txmongo.filter.hint` instance specifying index to use.
 
+        :param int limit: *(keyword only)*
+            The maximum number of documents to count.
+
+        :param int skip: *(keyword only)*
+            The number of matching documents to skip before returning results.
+
         :returns: a :class:`Deferred` that called back with a number of
                   documents matching the criteria.
         """
+        if "spec" in kwargs:
+            filter = kwargs["spec"]
+
+        if "hint" in kwargs:
+            hint = kwargs["hint"]
+            if not isinstance(hint, qf.hint):
+                raise TypeError("hint must be an instance of txmongo.filter.hint")
+            kwargs["hint"] = SON(kwargs["hint"]["hint"])
+
         return self._database.command("count", self._collection_name,
-                                      query=spec or SON(), **kwargs)\
+                                      query=filter or SON(), **kwargs)\
                    .addCallback(lambda result: int(result['n']))
 
     @timeout
@@ -989,10 +1057,11 @@ class Collection(object):
         return self._database("admin").command("renameCollection", str(self), to=to, **kwargs)
 
     @timeout
-    def distinct(self, key, spec=None, **kwargs):
+    def distinct(self, key, filter=None, **kwargs):
         params = {"key": key}
-        if spec:
-            params["query"] = spec
+        filter = kwargs.pop("spec", filter)
+        if filter:
+            params["query"] = filter
         params.update(kwargs)
 
         return self._database.command("distinct", self._collection_name, **params)\

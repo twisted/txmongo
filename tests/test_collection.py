@@ -369,3 +369,93 @@ class TestCreateCollection(unittest.TestCase):
         else:
             self.fail()
     test_Fail.timeout = 10
+
+
+class TestFindSignatureCompat(unittest.TestCase):
+    def test_convert(self):
+        self.assertEqual(
+            Collection._find_args_compat(spec={'x': 42}),
+            {"filter": {'x': 42}, "projection": None, "skip": 0, "limit": 0, "sort": None,
+             "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(filter={'x': 42}),
+            {"filter": {'x': 42}, "projection": None, "skip": 0, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(filter=qf.sort(qf.ASCENDING('x'))),
+            {"filter": None, "projection": None, "skip": 0, "limit": 0,
+             "sort": qf.sort(qf.ASCENDING('x')), "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(sort=qf.sort(qf.ASCENDING('x'))),
+            {"filter": None, "projection": None, "skip": 0, "limit": 0,
+             "sort": qf.sort(qf.ASCENDING('x'))}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}),
+            {"filter": {'x': 42}, "projection": None, "skip": 0, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, unknown_arg=123),
+            {"filter": {'x': 42}, "projection": None, "skip": 0, "limit": 0, "sort": None,
+             "unknown_arg": 123}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, {'a': 1}),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 0, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, projection={'a': 1}),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 0, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, fields={'a': 1}),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 0, "limit": 0, "sort": None,
+             "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, 5),
+            {"filter": {'x': 42}, "projection": None, "skip": 5, "limit": 0, "sort": None,
+             "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, {'a': 1}, 5),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, {'a': 1}, 5, 6),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, 5, 6, {'a': 1}),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6, "sort": None,
+             "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, {'a': 1}, 5, 6, qf.sort([('s', 1)])),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)])}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, 5, 6, {'a': 1}, qf.sort([('s', 1)])),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)]), "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, 5, 6, {'a': 1}, qf.sort([('s', 1)]), True),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)]), "cursor": True}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(spec={'x': 42}, filter=qf.sort([('s', 1)]), limit=6,
+                                         fields={'a': 1}, skip=5),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)]), "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(filter={'x': 42}, sort=qf.sort([('s', 1)]), limit=6,
+                                         projection={'a': 1}, skip=5),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)])}
+        )

@@ -1032,9 +1032,37 @@ class TestCount(SingleCollectionTest):
         yield self.coll.insert_many([{'x': 10}, {'x': 20}, {'x': 30}])
 
     @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.db.system.profile.drop()
+        yield super(TestCount, self).tearDown()
+
+    @defer.inlineCallbacks
     def test_count(self):
         self.assertEqual((yield self.coll.count()), 3)
         self.assertEqual((yield self.coll.count({'x': 20})), 1)
         self.assertEqual((yield self.coll.count({'x': {"$gt": 15}})), 2)
 
         self.assertEqual((yield self.db.non_existing.count()), 0)
+
+    @defer.inlineCallbacks
+    def test_hint(self):
+        yield self.coll.create_index(qf.sort(qf.ASCENDING('x')))
+
+        yield self.db.command("profile", 2)
+        cnt = yield self.coll.count(hint=qf.hint(qf.ASCENDING('x')))
+        self.assertEqual(cnt, 3)
+        yield self.db.command("profile", 0)
+
+        cmds = yield self.db.system.profile.count({"command.hint": {"x": 1}})
+        self.assertEqual(cmds, 1)
+
+        self.assertRaises(TypeError, self.coll.count, hint={'x': 1})
+        self.assertRaises(TypeError, self.coll.count, hint=[('x', 1)])
+
+    @defer.inlineCallbacks
+    def test_skip_limit(self):
+        cnt = yield self.coll.count(limit = 2)
+        self.assertEqual(cnt, 2)
+
+        cnt = yield self.coll.count(skip = 1)
+        self.assertEqual(cnt, 2)
