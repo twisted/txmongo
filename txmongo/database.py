@@ -54,11 +54,11 @@ class Database(object):
 
     @timeout
     def command(self, command, value=1, check=True, allowable_errors=None,
-                codec_options=DEFAULT_CODEC_OPTIONS, **kwargs):
+                codec_options=DEFAULT_CODEC_OPTIONS, _deadline=None, **kwargs):
+        """command(command, value=1, check=True, allowable_errors=None, codec_options=DEFAULT_CODEC_OPTIONS)"""
         if isinstance(command, (bytes, unicode)):
             command = SON([(command, value)])
         options = kwargs.copy()
-        options.pop("_deadline", None)
         command.update(options)
 
         def on_ok(response):
@@ -69,12 +69,14 @@ class Database(object):
             return response
 
         ns = self["$cmd"].with_options(codec_options=codec_options)
-        return ns.find_one(command, **kwargs).addCallback(on_ok)
+        return ns.find_one(command, _deadline=_deadline).addCallback(on_ok)
 
 
     @timeout
-    def create_collection(self, name, options=None, **kwargs):
-        collection = Collection(self, name)
+    def create_collection(self, name, options=None, write_concern=None,
+                          codec_options=None, **kwargs):
+        collection = Collection(self, name, write_concern=write_concern,
+                                codec_options=codec_options)
 
         if options:
             if "size" in options:
@@ -86,7 +88,8 @@ class Database(object):
         return collection
 
     @timeout
-    def drop_collection(self, name_or_collection, **kwargs):
+    def drop_collection(self, name_or_collection, _deadline=None):
+        """drop_collection(name_or_collection)"""
         if isinstance(name_or_collection, Collection):
             name = name_or_collection._collection_name
         elif isinstance(name_or_collection, (bytes, unicode)):
@@ -94,17 +97,19 @@ class Database(object):
         else:
             raise TypeError("TxMongo: name must be an instance of basestring or txmongo.Collection")
 
-        return self.command("drop", unicode(name), allowable_errors=["ns not found"], **kwargs)
+        return self.command("drop", unicode(name), allowable_errors=["ns not found"],
+                            _deadline=_deadline)
 
     @timeout
-    def collection_names(self, **kwargs):
+    def collection_names(self, _deadline=None):
+        """collection_names()"""
         def ok(results):
             names = [r["name"] for r in results]
             names = [n[len(str(self)) + 1:] for n in names
                      if n.startswith(str(self) + ".")]
             names = [n for n in names if "$" not in n]
             return names
-        return self["system.namespaces"].find(**kwargs).addCallback(ok)
+        return self["system.namespaces"].find(_deadline=_deadline).addCallback(ok)
 
 
     def authenticate(self, name, password, mechanism="DEFAULT"):

@@ -46,7 +46,7 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.coll.drop()
+        yield self.conn.drop_database(self.db)
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
@@ -97,7 +97,6 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_create_index(self):
-        db = self.db
         coll = self.coll
 
         self.assertRaises(TypeError, coll.create_index, 5)
@@ -142,7 +141,6 @@ class TestIndexInfo(unittest.TestCase):
     def test_create_index_nodup(self):
         coll = self.coll
 
-        yield coll.drop()
         yield coll.insert({'b': 1})
         yield coll.insert({'b': 1})
 
@@ -156,31 +154,24 @@ class TestIndexInfo(unittest.TestCase):
         if ismaster["maxWireVersion"] >= 3:
             raise unittest.SkipTest("dropDups was removed from MongoDB 3")
 
-        yield self.coll.drop()
         yield self.coll.insert([{'b': 1}, {'b': 1}])
 
-        ix = yield self.coll.create_index(qf.sort(qf.ASCENDING('b')),
+        yield self.coll.create_index(qf.sort(qf.ASCENDING('b')),
                                           unique=True, drop_dups=True)
         docs = yield self.coll.find(fields={"_id": 0})
         self.assertEqual(docs, [{'b': 1}])
 
     @defer.inlineCallbacks
     def test_ensure_index(self):
-        db = self.db
         coll = self.coll
 
         yield coll.ensure_index(qf.sort(qf.ASCENDING("hello")))
         indices = yield coll.index_information()
         self.assert_(u"hello_1" in indices)
 
-        yield coll.drop_indexes()
-
     @defer.inlineCallbacks
     def test_index_info(self):
         db = self.db
-
-        yield db.test.drop_indexes()
-        yield db.test.remove({})
 
         db.test.save({})  # create collection
         ix_info = yield db.test.index_information()
@@ -202,13 +193,9 @@ class TestIndexInfo(unittest.TestCase):
         self.assertEqual(True, ix_info["hello_-1_world_1"]["unique"])
         self.assertEqual(True, ix_info["hello_-1_world_1"]["sparse"])
 
-        yield db.test.drop_indexes()
-        yield db.test.remove({})
-
     @defer.inlineCallbacks
     def test_index_geo2d(self):
         coll = self.coll
-        yield coll.drop_indexes()
         geo_ix = yield coll.create_index(qf.sort(qf.GEO2D("loc")))
 
         self.assertEqual("loc_2d", geo_ix)
@@ -219,7 +206,6 @@ class TestIndexInfo(unittest.TestCase):
     @defer.inlineCallbacks
     def test_index_geo2dsphere(self):
         coll = self.coll
-        yield coll.drop_indexes()
         geo_ix = yield coll.create_index(qf.sort(qf.GEO2DSPHERE("loc")))
 
         self.assertEqual("loc_2dsphere", geo_ix)
@@ -229,7 +215,6 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_index_text(self):
-        yield self.coll.drop_indexes()
         ix = yield self.coll.create_index(qf.sort(qf.TEXT("title") + qf.TEXT("summary")),
                                           weights={"title": 100, "summary": 20})
         self.assertEqual("title_text_summary_text", ix)
@@ -242,7 +227,6 @@ class TestIndexInfo(unittest.TestCase):
     def test_index_haystack(self):
         db = self.db
         coll = self.coll
-        yield coll.drop_indexes()
 
         _id = yield coll.insert({
             "pos": {"long": 34.2, "lat": 33.3},
@@ -273,8 +257,6 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_drop_index(self):
-        yield self.coll.drop_indexes()
-
         index = qf.sort(qf.ASCENDING("hello") + qf.DESCENDING("world"))
 
         yield self.coll.create_index(index, name="myindex")
@@ -296,6 +278,7 @@ class TestRename(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.conn.drop_database(self.db)
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
@@ -308,8 +291,6 @@ class TestRename(unittest.TestCase):
         doc = yield self.db.coll2.find_one(fields={"_id": 0})
         self.assertEqual(doc, {'x': 42})
 
-        yield self.db.coll2.drop()
-
 
 class TestOptions(unittest.TestCase):
 
@@ -319,6 +300,7 @@ class TestOptions(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.conn.drop_database(self.db)
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
@@ -329,8 +311,6 @@ class TestOptions(unittest.TestCase):
         opts = yield coll.options()
         self.assertEqual(opts["capped"], True)
         self.assertEqual(opts["size"], 4096)
-
-        yield coll.drop()
 
     @defer.inlineCallbacks
     def test_NonExistingCollection(self):
@@ -343,8 +323,6 @@ class TestOptions(unittest.TestCase):
         opts = yield coll.options()
         self.assertEqual(opts, {})
 
-        yield coll.drop()
-
 
 class TestCreateCollection(unittest.TestCase):
 
@@ -354,6 +332,7 @@ class TestCreateCollection(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.conn.drop_database(self.db)
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
@@ -364,7 +343,7 @@ class TestCreateCollection(unittest.TestCase):
         try:
             # Negative size
             yield self.db.create_collection("opttest", {"size": -100})
-        except errors.OperationFailure as e:
+        except errors.OperationFailure:
             pass
         else:
             self.fail()
