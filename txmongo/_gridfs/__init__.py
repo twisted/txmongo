@@ -183,7 +183,7 @@ class GridFS(object):
         Returns an integer number of versions of the file in GridFS whose filename matches
         `filename`, or raises NoFile if the file doesn't exist.
         :Parameters:
-          - `filename`: ``"filename"`` of the file to get
+          - `filename`: ``"filename"`` of the file to get version count of
         """
         cursor = yield self.__files.find({"filename": filename})
         if cursor:
