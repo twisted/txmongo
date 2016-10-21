@@ -177,7 +177,6 @@ class GridFS(object):
         return self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)\
             .addCallback(ok)
 
-<<<<<<< HEAD
     @defer.inlineCallbacks
     def get_version(self, filename=None, version=-1):
         """Get a file from GridFS by ``"filename"``.
@@ -217,8 +216,18 @@ class GridFS(object):
         raise NoFile("no version %d for filename %r" % (version, filename))        
 
     @defer.inlineCallbacks
-=======
->>>>>>> upstream/master
+    def count(self, filename=None):
+        """Count the number of versions of a given file.
+        Returns an integer number of versions of the file in GridFS whose filename matches
+        `filename`, or raises NoFile if the file doesn't exist.
+        :Parameters:
+          - `filename`: ``"filename"`` of the file to get
+        """
+        cursor = yield self.__files.find({"filename": filename})
+        if cursor:
+            defer.returnValue(len(cursor))
+        raise NoFile("no versions for filename %r" % (filename))
+
     def get_last_version(self, filename):
         """Get a file from GridFS by ``"filename"``.
 
