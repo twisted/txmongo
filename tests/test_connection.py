@@ -34,6 +34,7 @@ class TestMongoConnection(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.named_conn.drop_database("db")
         yield self.named_conn.disconnect()
         yield self.unnamed_conn.disconnect()
 
@@ -64,11 +65,9 @@ class TestMongoConnection(unittest.TestCase):
         yield self.named_conn.db.coll.insert({'x': 42}, safe=True, timeout=10)
         yield self.named_conn.db.coll.insert({'x': 42}, safe=True, deadline=time()+10)
 
-        d_insert = self.named_conn.db.coll.insert({'x': 42}, safe=True, deadline=time()-10)
-        yield self.assertFailure(d_insert, TimeExceeded)
+        self.assertRaises(TimeExceeded, self.named_conn.db.coll.insert, {'x': 42}, safe=True, deadline=time()-10)
 
-        d_insert = self.named_conn.db.coll.insert({'x': 42}, safe=True, timeout=-10)
-        yield self.assertFailure(d_insert, TimeExceeded)
+        self.assertRaises(TimeExceeded, self.named_conn.db.coll.insert, {'x': 42}, safe=True, timeout=-10)
 
         def patch_deadline(_):
             check_deadline(time()-2)
@@ -77,3 +76,38 @@ class TestMongoConnection(unittest.TestCase):
             d_insert = self.named_conn.db.coll.find_one(
                 {'x': 42}, deadline=time()+2)
             yield self.assertFailure(d_insert, TimeExceeded)
+
+
+class TestDropDatabase(unittest.TestCase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        self.conn = connection.ConnectionPool()
+        self.db = self.conn.db
+        self.coll = self.db.coll
+        yield self.coll.insert({'x': 42})
+        yield self.assert_coll_count(1)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.conn.drop_database(self.db)
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def assert_coll_count(self, n):
+        self.assertEqual((yield self.coll.count()), n)
+
+    @defer.inlineCallbacks
+    def test_by_name(self):
+        yield self.conn.drop_database("db")
+        yield self.assert_coll_count(0)
+
+    def test_invalid_args(self):
+        self.assertRaises(TypeError, self.conn.drop_database, 42)
+        self.assertRaises(TypeError, self.conn.drop_database, self.conn)
+        self.assertRaises(TypeError, self.conn.drop_database, self.coll)
+
+    @defer.inlineCallbacks
+    def test_by_object(self):
+        yield self.conn.drop_database(self.db)
+        yield self.assert_coll_count(0)

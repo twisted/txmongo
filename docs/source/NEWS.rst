@@ -15,6 +15,37 @@ Features
   is the omission of searching by random (unindexed) meta-data which should be considered a bad idea		
   as it may create *very* variable conditions in terms of loading and timing. An additional index is		
   also added to facilitate bi-directional movement between versions. Additional Unit test for GFS also added.
+- New ``ConnectionPool.drop_database()`` method for easy and convenient destruction of all your precious data.
+
+API Changes
+^^^^^^^^^^^
+
+- ``find()``, ``find_one()``, ``find_with_cursor()``, ``count()`` and ``distinct()`` signatures
+  changed to more closely match PyMongo's counterparts. New signatures are:
+  
+  - ``find(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)``
+  - ``find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)``
+  - ``find_one(filter=None, projection=None, **kwargs)``
+  - ``count(filter=None, **kwargs)``
+  - ``distinct(key, filter=None, **kwargs)``
+  
+  Old signatures are now deprecated and will be supported in this and one subsequent releases. 
+  After that only new signatures will be valid.
+- ``cursor`` argument to ``find()`` is deprecated. Please use ``find_with_cursor()`` directly
+  if you need to iterate over results by batches. ``cursor`` will be supported in this and
+  one subsequent releases.
+- ``as_class`` argument to ``find()``, ``find_with_cursor()`` and ``find_one()`` is deprecated.
+  Please use ``collection.with_options(codec_options=CodecOptions(document_class=...)).find()`
+  instead. It is lengthty, but it is more generic and this is how you do it with current PyMongo.
+- ``Database.command()`` now takes ``codec_options`` argument.
+- ``watchdog_interval`` and ``watchdog_timeout`` arguments of ``ConnectionPool`` renamed
+  to ``ping_interval`` and ``ping_timeout`` correspondingly along with internal change of
+  connection aliveness checking mechanism.
+
+Bugfixes
+^^^^^^^^
+
+- ``GridFS.get_last_version()`` was creating redundant index
 
 Release 16.2.0 (2016-10-02)
 ---------------------------

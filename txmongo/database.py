@@ -3,8 +3,8 @@
 # found in the LICENSE file.
 
 from bson.son import SON
+from bson.codec_options import DEFAULT_CODEC_OPTIONS
 from pymongo.helpers import _check_command_response
-from twisted.internet import defer
 from twisted.python.compat import unicode
 from txmongo.collection import Collection
 from txmongo.utils import timeout
@@ -53,39 +53,43 @@ class Database(object):
         return self.__codec_options or self.__factory.codec_options
 
     @timeout
-    @defer.inlineCallbacks
-    def command(self, command, value=1, check=True, allowable_errors=None, **kwargs):
+    def command(self, command, value=1, check=True, allowable_errors=None,
+                codec_options=DEFAULT_CODEC_OPTIONS, _deadline=None, **kwargs):
+        """command(command, value=1, check=True, allowable_errors=None, codec_options=DEFAULT_CODEC_OPTIONS)"""
         if isinstance(command, (bytes, unicode)):
             command = SON([(command, value)])
         options = kwargs.copy()
-        options.pop("_deadline", None)
         command.update(options)
 
-        ns = self["$cmd"]
-        response = yield ns.find_one(command, **kwargs)
+        def on_ok(response):
+            if check:
+                msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(repr(command), ns)
+                _check_command_response(response, msg, allowable_errors)
 
-        if check:
-            msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(repr(command), ns)
-            _check_command_response(response, msg, allowable_errors)
+            return response
 
-        defer.returnValue(response)
+        ns = self["$cmd"].with_options(codec_options=codec_options)
+        return ns.find_one(command, _deadline=_deadline).addCallback(on_ok)
+
 
     @timeout
-    @defer.inlineCallbacks
-    def create_collection(self, name, options=None, **kwargs):
-        collection = Collection(self, name)
+    def create_collection(self, name, options=None, write_concern=None,
+                          codec_options=None, **kwargs):
+        collection = Collection(self, name, write_concern=write_concern,
+                                codec_options=codec_options)
 
         if options:
             if "size" in options:
                 options["size"] = float(options["size"])
             options.update(kwargs)
-            yield self.command("create", name, **options)
+            return self.command("create", name, **options)\
+                .addCallback(lambda _: collection)
 
-        defer.returnValue(collection)
+        return collection
 
     @timeout
-    @defer.inlineCallbacks
-    def drop_collection(self, name_or_collection, **kwargs):
+    def drop_collection(self, name_or_collection, _deadline=None):
+        """drop_collection(name_or_collection)"""
         if isinstance(name_or_collection, Collection):
             name = name_or_collection._collection_name
         elif isinstance(name_or_collection, (bytes, unicode)):
@@ -93,20 +97,21 @@ class Database(object):
         else:
             raise TypeError("TxMongo: name must be an instance of basestring or txmongo.Collection")
 
-        yield self.command("drop", unicode(name), allowable_errors=["ns not found"], **kwargs)
+        return self.command("drop", unicode(name), allowable_errors=["ns not found"],
+                            _deadline=_deadline)
 
     @timeout
-    @defer.inlineCallbacks
-    def collection_names(self, **kwargs):
-        results = yield self["system.namespaces"].find(**kwargs)
+    def collection_names(self, _deadline=None):
+        """collection_names()"""
+        def ok(results):
+            names = [r["name"] for r in results]
+            names = [n[len(str(self)) + 1:] for n in names
+                     if n.startswith(str(self) + ".")]
+            names = [n for n in names if "$" not in n]
+            return names
+        return self["system.namespaces"].find(_deadline=_deadline).addCallback(ok)
 
-        names = [r["name"] for r in results]
-        names = [n[len(str(self)) + 1:] for n in names
-                 if n.startswith(str(self) + ".")]
-        names = [n for n in names if "$" not in n]
-        defer.returnValue(names)
 
-    @defer.inlineCallbacks
     def authenticate(self, name, password, mechanism="DEFAULT"):
         """
         Send an authentication command for this database.
@@ -120,4 +125,4 @@ class Database(object):
         """
         Authenticating
         """
-        yield self.connection.authenticate(self, name, password, mechanism)
+        return self.connection.authenticate(self, name, password, mechanism)

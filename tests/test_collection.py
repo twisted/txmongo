@@ -46,7 +46,7 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.coll.drop()
+        yield self.conn.drop_database(self.db)
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
@@ -67,17 +67,17 @@ class TestIndexInfo(unittest.TestCase):
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "test.")
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes..t")
         self.assertRaises(errors.InvalidName, make_col, self.db.test, "tes\x00t")
-        self.assertFailure(self.coll.save("test"), TypeError)
-        self.assertFailure(self.coll.filemd5("test"), ValueError)
-        self.assertFailure(self.db.test.find(spec="test"), TypeError)
-        self.assertFailure(self.db.test.find(fields="test"), TypeError)
-        self.assertFailure(self.db.test.find(skip="test"), TypeError)
-        self.assertFailure(self.db.test.find(limit="test"), TypeError)
-        self.assertFailure(self.db.test.insert([1]), TypeError)
-        self.assertFailure(self.db.test.insert(1), TypeError)
-        self.assertFailure(self.db.test.update(1, 1), TypeError)
-        self.assertFailure(self.db.test.update({}, 1), TypeError)
-        self.assertFailure(self.db.test.update({}, {}, 'a'), TypeError)
+        self.assertRaises(TypeError, self.coll.save, "test")
+        self.assertRaises(ValueError, self.coll.filemd5, "test")
+        self.assertRaises(TypeError, self.db.test.find, spec="test")
+        self.assertRaises(TypeError, self.db.test.find, fields="test")
+        self.assertRaises(TypeError, self.db.test.find, skip="test")
+        self.assertRaises(TypeError, self.db.test.find, limit="test")
+        self.assertRaises(TypeError, self.db.test.insert, [1])
+        self.assertRaises(TypeError, self.db.test.insert, 1)
+        self.assertRaises(TypeError, self.db.test.update, 1, 1)
+        self.assertRaises(TypeError, self.db.test.update, {}, 1)
+        self.assertRaises(TypeError, self.db.test.update, {}, {}, 'a')
 
         self.assert_(isinstance(self.db.test, Collection))
         self.assertEqual(NotImplemented, self.db.test.__cmp__(7))
@@ -97,11 +97,10 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_create_index(self):
-        db = self.db
         coll = self.coll
 
-        self.assertFailure(coll.create_index(5), TypeError)
-        self.assertFailure(coll.create_index({"hello": 1}), TypeError)
+        self.assertRaises(TypeError, coll.create_index, 5)
+        self.assertRaises(TypeError, coll.create_index, {"hello": 1})
 
         yield coll.insert({'c': 1})  # make sure collection exists.
 
@@ -142,7 +141,6 @@ class TestIndexInfo(unittest.TestCase):
     def test_create_index_nodup(self):
         coll = self.coll
 
-        yield coll.drop()
         yield coll.insert({'b': 1})
         yield coll.insert({'b': 1})
 
@@ -156,31 +154,24 @@ class TestIndexInfo(unittest.TestCase):
         if ismaster["maxWireVersion"] >= 3:
             raise unittest.SkipTest("dropDups was removed from MongoDB 3")
 
-        yield self.coll.drop()
         yield self.coll.insert([{'b': 1}, {'b': 1}])
 
-        ix = yield self.coll.create_index(qf.sort(qf.ASCENDING('b')),
+        yield self.coll.create_index(qf.sort(qf.ASCENDING('b')),
                                           unique=True, drop_dups=True)
         docs = yield self.coll.find(fields={"_id": 0})
         self.assertEqual(docs, [{'b': 1}])
 
     @defer.inlineCallbacks
     def test_ensure_index(self):
-        db = self.db
         coll = self.coll
 
         yield coll.ensure_index(qf.sort(qf.ASCENDING("hello")))
         indices = yield coll.index_information()
         self.assert_(u"hello_1" in indices)
 
-        yield coll.drop_indexes()
-
     @defer.inlineCallbacks
     def test_index_info(self):
         db = self.db
-
-        yield db.test.drop_indexes()
-        yield db.test.remove({})
 
         db.test.save({})  # create collection
         ix_info = yield db.test.index_information()
@@ -202,13 +193,9 @@ class TestIndexInfo(unittest.TestCase):
         self.assertEqual(True, ix_info["hello_-1_world_1"]["unique"])
         self.assertEqual(True, ix_info["hello_-1_world_1"]["sparse"])
 
-        yield db.test.drop_indexes()
-        yield db.test.remove({})
-
     @defer.inlineCallbacks
     def test_index_geo2d(self):
         coll = self.coll
-        yield coll.drop_indexes()
         geo_ix = yield coll.create_index(qf.sort(qf.GEO2D("loc")))
 
         self.assertEqual("loc_2d", geo_ix)
@@ -219,7 +206,6 @@ class TestIndexInfo(unittest.TestCase):
     @defer.inlineCallbacks
     def test_index_geo2dsphere(self):
         coll = self.coll
-        yield coll.drop_indexes()
         geo_ix = yield coll.create_index(qf.sort(qf.GEO2DSPHERE("loc")))
 
         self.assertEqual("loc_2dsphere", geo_ix)
@@ -229,7 +215,6 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_index_text(self):
-        yield self.coll.drop_indexes()
         ix = yield self.coll.create_index(qf.sort(qf.TEXT("title") + qf.TEXT("summary")),
                                           weights={"title": 100, "summary": 20})
         self.assertEqual("title_text_summary_text", ix)
@@ -242,7 +227,6 @@ class TestIndexInfo(unittest.TestCase):
     def test_index_haystack(self):
         db = self.db
         coll = self.coll
-        yield coll.drop_indexes()
 
         _id = yield coll.insert({
             "pos": {"long": 34.2, "lat": 33.3},
@@ -273,8 +257,6 @@ class TestIndexInfo(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_drop_index(self):
-        yield self.coll.drop_indexes()
-
         index = qf.sort(qf.ASCENDING("hello") + qf.DESCENDING("world"))
 
         yield self.coll.create_index(index, name="myindex")
@@ -285,7 +267,7 @@ class TestIndexInfo(unittest.TestCase):
         res = yield self.coll.drop_index(index)
         self.assertEqual(res["ok"], 1)
 
-        self.assertFailure(self.coll.drop_index(123), TypeError)
+        self.assertRaises(TypeError, self.coll.drop_index, 123)
 
 
 class TestRename(unittest.TestCase):
@@ -296,6 +278,7 @@ class TestRename(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.conn.drop_database(self.db)
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
@@ -308,8 +291,6 @@ class TestRename(unittest.TestCase):
         doc = yield self.db.coll2.find_one(fields={"_id": 0})
         self.assertEqual(doc, {'x': 42})
 
-        yield self.db.coll2.drop()
-
 
 class TestOptions(unittest.TestCase):
 
@@ -319,6 +300,7 @@ class TestOptions(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.conn.drop_database(self.db)
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
@@ -329,8 +311,6 @@ class TestOptions(unittest.TestCase):
         opts = yield coll.options()
         self.assertEqual(opts["capped"], True)
         self.assertEqual(opts["size"], 4096)
-
-        yield coll.drop()
 
     @defer.inlineCallbacks
     def test_NonExistingCollection(self):
@@ -343,8 +323,6 @@ class TestOptions(unittest.TestCase):
         opts = yield coll.options()
         self.assertEqual(opts, {})
 
-        yield coll.drop()
-
 
 class TestCreateCollection(unittest.TestCase):
 
@@ -354,6 +332,7 @@ class TestCreateCollection(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.conn.drop_database(self.db)
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
@@ -364,8 +343,98 @@ class TestCreateCollection(unittest.TestCase):
         try:
             # Negative size
             yield self.db.create_collection("opttest", {"size": -100})
-        except errors.OperationFailure as e:
+        except errors.OperationFailure:
             pass
         else:
             self.fail()
     test_Fail.timeout = 10
+
+
+class TestFindSignatureCompat(unittest.TestCase):
+    def test_convert(self):
+        self.assertEqual(
+            Collection._find_args_compat(spec={'x': 42}),
+            {"filter": {'x': 42}, "projection": None, "skip": 0, "limit": 0, "sort": None,
+             "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(filter={'x': 42}),
+            {"filter": {'x': 42}, "projection": None, "skip": 0, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(filter=qf.sort(qf.ASCENDING('x'))),
+            {"filter": None, "projection": None, "skip": 0, "limit": 0,
+             "sort": qf.sort(qf.ASCENDING('x')), "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(sort=qf.sort(qf.ASCENDING('x'))),
+            {"filter": None, "projection": None, "skip": 0, "limit": 0,
+             "sort": qf.sort(qf.ASCENDING('x'))}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}),
+            {"filter": {'x': 42}, "projection": None, "skip": 0, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, unknown_arg=123),
+            {"filter": {'x': 42}, "projection": None, "skip": 0, "limit": 0, "sort": None,
+             "unknown_arg": 123}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, {'a': 1}),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 0, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, projection={'a': 1}),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 0, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, fields={'a': 1}),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 0, "limit": 0, "sort": None,
+             "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, 5),
+            {"filter": {'x': 42}, "projection": None, "skip": 5, "limit": 0, "sort": None,
+             "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, {'a': 1}, 5),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 0, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, {'a': 1}, 5, 6),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6, "sort": None}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, 5, 6, {'a': 1}),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6, "sort": None,
+             "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, {'a': 1}, 5, 6, qf.sort([('s', 1)])),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)])}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, 5, 6, {'a': 1}, qf.sort([('s', 1)])),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)]), "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat({'x': 42}, 5, 6, {'a': 1}, qf.sort([('s', 1)]), True),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)]), "cursor": True}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(spec={'x': 42}, filter=qf.sort([('s', 1)]), limit=6,
+                                         fields={'a': 1}, skip=5),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)]), "cursor": False}
+        )
+        self.assertEqual(
+            Collection._find_args_compat(filter={'x': 42}, sort=qf.sort([('s', 1)]), limit=6,
+                                         projection={'a': 1}, skip=5),
+            {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
+             "sort": qf.sort([('s', 1)])}
+        )

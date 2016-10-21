@@ -61,7 +61,7 @@ class GridFS(object):
         self.__chunks = self.__collection.chunks
         self.__indexes_created_defer = defer.DeferredList([
             self.__files.create_index(
-                filter.sort(ASCENDING("filesname") + ASCENDING("uploadDate"))),
+                filter.sort(ASCENDING("filename") + ASCENDING("uploadDate"))),
             self.__chunks.create_index(
                 filter.sort(ASCENDING("files_id") + ASCENDING("n")), unique=True)
         ])
@@ -87,7 +87,6 @@ class GridFS(object):
         """
         return GridIn(self.__collection, **kwargs)
 
-    @defer.inlineCallbacks
     def put(self, data, **kwargs):
         """Put data in GridFS as a new file.
 
@@ -112,13 +111,14 @@ class GridFS(object):
         .. versionadded:: 1.6
         """
         grid_file = GridIn(self.__collection, **kwargs)
-        try:
-            yield grid_file.write(data)
-        finally:
-            yield grid_file.close()
-        defer.returnValue(grid_file._id)
 
-    @defer.inlineCallbacks
+        def _finally(result):
+            return grid_file.close().addCallback(lambda _: result)
+
+        return grid_file.write(data)\
+            .addBoth(_finally)\
+            .addCallback(lambda _: grid_file._id)
+
     def get(self, file_id):
         """Get a file from GridFS by ``"_id"``.
 
@@ -130,13 +130,54 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
+        def ok(doc):
+            if doc is None:
+                raise NoFile("TxMongo: no file in gridfs with _id {0}".format(repr(file_id)))
 
-        doc = yield self.__collection.files.find_one({"_id": file_id})
-        if doc is None:
-            raise NoFile("TxMongo: no file in gridfs with _id {0}".format(repr(file_id)))
+            return GridOut(self.__collection, doc)
+        return self.__collection.files.find_one({"_id": file_id}).addCallback(ok)
 
-        defer.returnValue(GridOut(self.__collection, doc))
+    def get_version(self, filename=None, version=-1):
+        """Get a file from GridFS by ``"filename"``.
+        Returns a version of the file in GridFS whose filename matches
+        `filename` and whose metadata fields match the supplied keyword
+        arguments, as an instance of :class:`~gridfs.grid_file.GridOut`.
+        Version numbering is a convenience atop the GridFS API provided
+        by MongoDB. If more than one file matches the query (either by
+        `filename` alone, by metadata fields, or by a combination of
+        both), then version ``-1`` will be the most recently uploaded
+        matching file, ``-2`` the second most recently
+        uploaded, etc. Version ``0`` will be the first version
+        uploaded, ``1`` the second version, etc. So if three versions
+        have been uploaded, then version ``0`` is the same as version
+        ``-3``, version ``1`` is the same as version ``-2``, and
+        version ``2`` is the same as version ``-1``. Note that searching by
+        random (unindexed) meta data is not supported here.
+        Raises :class:`~gridfs.errors.NoFile` if no such version of
+        that file exists.
+        :Parameters:
+          - `filename`: ``"filename"`` of the file to get, or `None`
+          - `version` (optional): version of the file to get (defaults
+            to -1, the most recent version uploaded)
+        """        
+        query = {"filename": filename}
+        skip = abs(version)
+        if version < 0:
+            skip -= 1
+            myorder = DESCENDING("uploadDate")
+        else:
+            myorder = ASCENDING("uploadDate")
 
+        def ok(cursor):
+            if cursor:
+                return GridOut(self.__collection, cursor[0])
+
+            raise NoFile("no version %d for filename %r" % (version, filename))
+
+        return self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)\
+            .addCallback(ok)
+
+<<<<<<< HEAD
     @defer.inlineCallbacks
     def get_version(self, filename=None, version=-1):
         """Get a file from GridFS by ``"filename"``.
@@ -176,6 +217,8 @@ class GridFS(object):
         raise NoFile("no version %d for filename %r" % (version, filename))        
 
     @defer.inlineCallbacks
+=======
+>>>>>>> upstream/master
     def get_last_version(self, filename):
         """Get a file from GridFS by ``"filename"``.
 
@@ -193,14 +236,14 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        self.__files.ensure_index(filter.sort(ASCENDING("filename") + DESCENDING("uploadDate")))
+        def ok(doc):
+            if doc is None:
+                raise NoFile("TxMongo: no file in gridfs with filename {0}".format(repr(filename)))
 
-        doc = yield self.__files.find_one({"filename": filename},
-                                          filter=filter.sort(DESCENDING("uploadDate")))
-        if doc is None:
-            raise NoFile("TxMongo: no file in gridfs with filename {0}".format(repr(filename)))
+            return GridOut(self.__collection, doc)
 
-        defer.returnValue(GridOut(self.__collection, doc))
+        return self.__files.find_one({"filename": filename},
+                                     filter = filter.sort(DESCENDING("uploadDate"))).addCallback(ok)
 
     # TODO add optional safe mode for chunk removal?
     def delete(self, file_id):
@@ -219,10 +262,10 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        dl = []
-        dl.append(self.__files.remove({"_id": file_id}, safe=True))
-        dl.append(self.__chunks.remove({"files_id": file_id}))
-        return defer.DeferredList(dl)
+        return defer.DeferredList([
+            self.__files.remove({"_id": file_id}, safe=True),
+            self.__chunks.remove({"files_id": file_id})
+        ])
 
     def list(self):
         """List the names of all files stored in this instance of

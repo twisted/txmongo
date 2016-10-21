@@ -250,8 +250,8 @@ class TestMongoAuth(unittest.TestCase):
     def test_InvalidArgs(self):
         conn = self.__get_connection()
         try:
-            yield self.assertFailure(conn[self.db1].authenticate(self.login1, 123), TypeError)
-            yield self.assertFailure(conn[self.db1].authenticate(123, self.password1), TypeError)
+            yield self.assertRaises(TypeError, conn[self.db1].authenticate, self.login1, 123)
+            yield self.assertRaises(TypeError, conn[self.db1].authenticate, 123, self.password1)
         finally:
             yield conn.disconnect()
 

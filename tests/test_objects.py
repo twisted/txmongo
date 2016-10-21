@@ -20,7 +20,7 @@ import time
 from io import BytesIO as StringIO
 
 import os
-from bson import objectid, timestamp
+from bson import objectid, timestamp, SON
 from pymongo.write_concern import WriteConcern
 import txmongo
 from txmongo import database, collection, filter as qf
@@ -29,7 +29,10 @@ from txmongo._gridfs.errors import NoFile
 from twisted.trial import unittest
 from twisted.internet import defer
 from twisted.python.compat import _PY3
-from twisted import _version
+try:
+    from twisted._version import version as twisted_version
+except ImportError:
+    from twisted._version import __version__ as twisted_version
 
 mongo_host = "127.0.0.1"
 mongo_port = 27017
@@ -55,7 +58,7 @@ class TestMongoObjects(unittest.TestCase):
         self.assertEqual(isinstance(mycol3, collection.Collection), True)
         yield mydb.drop_collection("mycol3")
         yield mydb.drop_collection(mycol3)
-        yield self.assertFailure(mydb.drop_collection(None), TypeError)
+        self.assertRaises(TypeError, mydb.drop_collection, None)
         yield conn.disconnect()
 
     @defer.inlineCallbacks
@@ -198,7 +201,7 @@ class TestGridFsObjects(unittest.TestCase):
                               content_type="text/plain", chunk_size=65536, length=1048576,
                               upload_date="20150101")
         self.assertFalse(grid_in_file.closed)
-        if _version.version.major >= 15:
+        if twisted_version.major >= 15:
             with self.assertRaises(TypeError):
                 yield grid_in_file.write(1)
             with self.assertRaises(TypeError):
@@ -208,11 +211,41 @@ class TestGridFsObjects(unittest.TestCase):
         grid_in_file.test = 1
         yield grid_in_file.write(b"0xDEADBEEF")
         yield grid_in_file.write(b"0xDEADBEEF"*1048576)
+        self.assertTrue("20150101", grid_in_file.upload_date)
+        yield grid_in_file.writelines([b"0xDEADBEEF", b"0xDEADBEEF"])
+        yield grid_in_file.close()
+        if twisted_version.major >= 15:
+            with self.assertRaises(AttributeError):
+                grid_in_file.length = 1
+        self.assertEqual(1, grid_in_file.test)
+        if twisted_version.major >= 15:
+            with self.assertRaises(AttributeError):
+                _ = grid_in_file.test_none
+        self.assertTrue(grid_in_file.closed)
+        if twisted_version.major >= 15:
+            with self.assertRaises(ValueError):
+                yield grid_in_file.write(b"0xDEADBEEF")
+
+        doc = yield db.fs.files.find_one({"_id": grid_in_file._id})
+        grid_out_file = GridOut(db.fs, doc)
+        grid_out_file.seek(0, os.SEEK_END)
+        self.assertEqual(10 * (1 + 1048576 + 2), grid_out_file.tell())
+        yield grid_out_file.close()
+        data = b''
+        for block_dfr in GridOutIterator(grid_out_file, db.fs.chunks):
+            block = yield block_dfr
+            if block:
+                data += block
+            else:
+                break
+        self.assertEqual(data, b"0xDEADBEEF" * (1 + 1048576 + 2))
+
+
         fake_doc = {"_id": "test_id", "length": 1048576, "filename": "test",
                     "upload_date": "20150101"}
         self.assertRaises(TypeError, GridOut, None, None)
         grid_out_file = GridOut(db.fs, fake_doc)
-        if _version.version.major >= 15:
+        if twisted_version.major >= 15:
             with self.assertRaises(AttributeError):
                 _ = grid_out_file.testing
         self.assertEqual("test", grid_out_file.filename)
@@ -226,20 +259,6 @@ class TestGridFsObjects(unittest.TestCase):
         self.assertRaises(IOError, grid_out_file.seek, 0, 4)
         self.assertRaises(IOError, grid_out_file.seek, -1)
         self.assertTrue("'_id': 'test_id'" in repr(grid_out_file))
-        self.assertTrue("20150101", grid_in_file.upload_date)
-        yield grid_in_file.writelines([b"0xDEADBEEF", b"0xDEADBEAF"])
-        yield grid_in_file.close()
-        if _version.version.major >= 15:
-            with self.assertRaises(AttributeError):
-                grid_in_file.length = 1
-        self.assertEqual(1, grid_in_file.test)
-        if _version.version.major >= 15:
-            with self.assertRaises(AttributeError):
-                _ = grid_in_file.test_none
-        self.assertTrue(grid_in_file.closed)
-        if _version.version.major >= 15:
-            with self.assertRaises(ValueError):
-                yield grid_in_file.write(b"0xDEADBEEF")
         yield conn.disconnect()
 
     @defer.inlineCallbacks
@@ -295,7 +314,7 @@ class TestGridFsObjects(unittest.TestCase):
                         "chunkSize": 4096, "contentType": "text/plain"}
         grid_bad_out_file = GridOut(db.fs, fake_bad_doc)
         bad_iterator = GridOutIterator(grid_bad_out_file, db.fs.chunks)
-        if _version.version.major >= 15:
+        if twisted_version.major >= 15:
             with self.assertRaises(errors.CorruptGridFile):
                 next_it = yield bad_iterator.next()
 
@@ -323,7 +342,7 @@ class TestGridFsObjects(unittest.TestCase):
         try:
             # Tests writing to a new gridfs file
             gfs = GridFS(db)  # Default collection
-            if _version.version.major >= 15:
+            if twisted_version.major >= 15:
                 with self.assertRaises(NoFile):
                     yield gfs.get_last_version("optest")
 
@@ -370,5 +389,13 @@ class TestGridFsObjects(unittest.TestCase):
         self.assertNotEqual(gfs.indexes_created(), gfs.indexes_created())
 
         yield gfs.indexes_created()
+
+        indexes = yield db.fs.files.index_information()
+        self.assertTrue(any(key["key"] == SON([("filename", 1), ("uploadDate", 1)])
+                            for key in indexes.values()))
+
+        indexes = yield db.fs.chunks.index_information()
+        self.assertTrue(any(key["key"] == SON([("files_id", 1), ("n", 1)])
+                            for key in indexes.values()))
 
         yield conn.disconnect()
