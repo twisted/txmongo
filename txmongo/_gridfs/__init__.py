@@ -178,44 +178,6 @@ class GridFS(object):
             .addCallback(ok)
 
     @defer.inlineCallbacks
-    def get_version(self, filename=None, version=-1):
-        """Get a file from GridFS by ``"filename"``.
-        Returns a version of the file in GridFS whose filename matches
-        `filename` and whose metadata fields match the supplied keyword
-        arguments, as an instance of :class:`~gridfs.grid_file.GridOut`.
-        Version numbering is a convenience atop the GridFS API provided
-        by MongoDB. If more than one file matches the query (either by
-        `filename` alone, by metadata fields, or by a combination of
-        both), then version ``-1`` will be the most recently uploaded
-        matching file, ``-2`` the second most recently
-        uploaded, etc. Version ``0`` will be the first version
-        uploaded, ``1`` the second version, etc. So if three versions
-        have been uploaded, then version ``0`` is the same as version
-        ``-3``, version ``1`` is the same as version ``-2``, and
-        version ``2`` is the same as version ``-1``. Note that searching by
-        random (unindexed) meta data is not supported here.
-        Raises :class:`~gridfs.errors.NoFile` if no such version of
-        that file exists.
-        :Parameters:
-          - `filename`: ``"filename"`` of the file to get, or `None`
-          - `version` (optional): version of the file to get (defaults
-            to -1, the most recent version uploaded)            
-        """        
-        query = {"filename": filename}
-        skip = abs(version) 
-        if version < 0:
-            skip -= 1
-            myorder = DESCENDING("uploadDate")
-        else:
-            myorder = ASCENDING("uploadDate")
-
-        cursor = yield self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)
-        if len(cursor):
-            defer.returnValue(GridOut(self.__collection, cursor[0]))
-
-        raise NoFile("no version %d for filename %r" % (version, filename))        
-
-    @defer.inlineCallbacks
     def count(self, filename=None):
         """Count the number of versions of a given file.
         Returns an integer number of versions of the file in GridFS whose filename matches
