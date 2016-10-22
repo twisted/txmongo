@@ -177,6 +177,15 @@ class GridFS(object):
         return self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)\
             .addCallback(ok)
 
+    def count(self, filename):
+        """Count the number of versions of a given file.
+        Returns an integer number of versions of the file in GridFS whose filename matches
+        `filename`, or raises NoFile if the file doesn't exist.
+        :Parameters:
+          - `filename`: ``"filename"`` of the file to get version count of
+        """
+        return self.__files.count({"filename": filename})
+
     def get_last_version(self, filename):
         """Get a file from GridFS by ``"filename"``.
 
