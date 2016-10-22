@@ -48,10 +48,12 @@ class TestGFS(unittest.TestCase):
     def test_GFSNoCount(self):
         try:
             count = yield self.gfs.count('worldx')
+            self.assertEqual(count, 0)
+            return
         except NoFile:
             self.assertEqual(1, 1)
             return
         except Exception:
             raise
 
-        self.assertEqual("exception", "missing")
+        self.fail("should not come here")
