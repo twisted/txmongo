@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name="txmongo",
-    version="16.2.0",
+    version="16.3.0",
     description="Asynchronous Python driver for MongoDB <http://www.mongodb.org>",
     author="Alexandre Fiori, Bret Curtis",
     author_email="fiorix@gmail.com, psi29a@gmail.com",

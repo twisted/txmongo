@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 16.3.0 (UNRELEASED)
+Release 16.3.0 (2016-11-25)
 ---------------------------
 
 Features
