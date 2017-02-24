@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Release 17.1.0 (UNRELEASED)
+---------------------------
+
+Bugfixes
+^^^^^^^^
+
+- Memory leak fixed in `Collection.bulk_write()`
+
 Release 16.3.0 (2016-11-25)
 ---------------------------
 

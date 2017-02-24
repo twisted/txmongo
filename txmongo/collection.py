@@ -1234,22 +1234,26 @@ class Collection(object):
             "upserted": [],
         }
 
-        def iterate():
+        # iterate_func and on_cmd_result_func are just pointers to corresponding functions
+        # Direct passing of function's self-reference as callback to a deferred creates
+        # circular reference between a function object and a closure which can't be freed
+        # without garbage collector
+        def iterate(iterate_func, on_cmd_result_func):
             try:
                 run = next(generator)
             except StopIteration:
                 return defer.succeed(None)
 
             return self._execute_batch_command(run.op_type, run.ops, bulk.ordered)\
-                .addCallback(on_cmd_result, run)
+                .addCallback(on_cmd_result_func, run, iterate_func, on_cmd_result_func)
 
-        def on_cmd_result(result, run):
+        def on_cmd_result(result, run, iterate_func, on_cmd_result_func):
             _merge_command(run, full_result, result)
 
             if bulk.ordered and full_result["writeErrors"]:
                 return
 
-            return iterate()
+            return iterate_func(iterate_func, on_cmd_result_func)
 
         def on_all_done(_):
             if self.write_concern.acknowledged:
@@ -1260,7 +1264,7 @@ class Collection(object):
 
             return BulkWriteResult(full_result, self.write_concern.acknowledged)
 
-        return iterate().addCallback(on_all_done)
+        return iterate(iterate, on_cmd_result).addCallback(on_all_done)
 
 
     def _execute_batch_command(self, command_type, documents, ordered):
@@ -1299,7 +1303,8 @@ class Collection(object):
 
             all_responses = []
 
-            def iterate():
+            # for the meaning of iterate_func see the comment in _execute_bulk()
+            def iterate(iterate_func):
                 try:
                     idx_offset, batch = next(batches)
                 except StopIteration:
@@ -1313,13 +1318,13 @@ class Collection(object):
                             if "writeErrors" in result:
                                 return defer.succeed(None)
                             else:
-                                return iterate()
+                                return iterate_func(iterate_func)
                         return batch_result.addCallback(on_batch_result)
                     else:
                         all_responses.append(batch_result)
-                        return iterate()
+                        return iterate_func(iterate_func)
                 else:
-                    return iterate()
+                    return iterate_func(iterate_func)
 
             def done(_):
                 def on_fail(failure):
@@ -1330,6 +1335,6 @@ class Collection(object):
                     return defer.gatherResults(all_responses, consumeErrors=True)\
                         .addErrback(on_fail)
 
-            return iterate().addCallback(done).addCallback(lambda _: results)
+            return iterate(iterate).addCallback(done).addCallback(lambda _: results)
 
         return self._database.connection.getprotocol().addCallback(on_proto)
