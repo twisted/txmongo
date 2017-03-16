@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 # run:
-#  twistd -ny twistwedweb_server.tac
+#  twistd -ny twistedweb_server.tac
 
 import _local_path
 import txmongo
