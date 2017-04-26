@@ -272,7 +272,8 @@ class ConnectionPool(object):
         ]
 
         if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
-            self.authenticate(self.__uri['database'], self.__uri['username'],
+            auth_db = self.__uri['options'].get('authsource') or self.__uri['database']
+            self.authenticate(auth_db, self.__uri['username'],
                               self.__uri['password'],
                               self.__uri['options'].get('authmechanism', 'DEFAULT'))
 

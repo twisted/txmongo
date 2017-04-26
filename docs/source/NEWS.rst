@@ -8,6 +8,7 @@ Bugfixes
 ^^^^^^^^
 
 - Memory leak fixed in `Collection.bulk_write()`
+- Use authSource as auth database if specify in connect uri
 
 Release 16.3.0 (2016-11-25)
 ---------------------------
