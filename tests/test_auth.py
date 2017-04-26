@@ -14,6 +14,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import, division
+from mock import patch
 from pymongo.errors import OperationFailure
 import os
 import shutil
@@ -162,6 +163,18 @@ class TestMongoAuth(unittest.TestCase):
             cnt = yield coll.count()
             self.assertEqual(cnt, n)
         finally:
+            yield conn.disconnect()
+    
+    @defer.inlineCallbacks
+    def test_AuthConnectionPoolUriAuthSource(self):
+        def authenticate(database, username, password, mechanism):
+            self.assertEqual(database, self.db2)
+
+        with patch('txmongo.connection.ConnectionPool.authenticate', side_effect=authenticate):
+            conn = connection.ConnectionPool(
+                "mongodb://{0}:{1}@{2}:{3}/{4}?authSource={5}".format(self.login1, self.password1, mongo_host,
+                                                                      mongo_port, self.db1, self.db2)
+            )
             yield conn.disconnect()
 
     @defer.inlineCallbacks
