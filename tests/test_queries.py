@@ -298,12 +298,6 @@ class TestLimit(SingleCollectionTest):
         res = yield self.coll.find(limit=-150)
         self.assertEqual(len(res), 150)
 
-    @defer.inlineCallbacks
-    def test_HardLimitAboveMessageSizeThreshold(self):
-        yield self.coll.insert([{'v': ' '*(2**20)} for _ in range(8)], safe=True)
-        res = yield self.coll.find(limit=-6)
-        self.assertEqual(len(res), 4)
-
 
 class TestSkip(SingleCollectionTest):
 
@@ -381,8 +375,13 @@ class TestCommand(SingleCollectionTest):
         result = yield self.db.command("delete", "mycol", check=False)
         self.assertFalse(result["ok"])
 
-        result = yield self.db.command("delete", "mycol", check=True,
-                                       allowable_errors=["missing deletes field"])
+        result = yield self.db.command(
+            "delete", "mycol", check=True,
+            allowable_errors=[
+                "missing deletes field",
+                "The deletes option is required to the delete command."
+            ]
+        )
         self.assertFalse(result["ok"])
 
 
