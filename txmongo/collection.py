@@ -14,7 +14,6 @@ from bson.codec_options import CodecOptions
 from pymongo.bulk import _Bulk, _COMMANDS, _merge_command
 from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure
 from pymongo.helpers import _check_write_command_response
-from pymongo.operations import _WriteOp
 from pymongo.message import _OP_MAP, _INSERT
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult, BulkWriteResult
@@ -1204,9 +1203,10 @@ class Collection(object):
 
         blk = _Bulk(self, ordered, bypass_document_validation=False)
         for request in requests:
-            if not isinstance(request, _WriteOp):
-                raise TypeError("{} is not a valid request".format(request))
-            request._add_to_bulk(blk)
+            try:
+                request._add_to_bulk(blk)
+            except AttributeError:
+                raise TypeError("{} is not valid request".format(request))
 
         return self._execute_bulk(blk)
 
