@@ -1021,7 +1021,7 @@ class Collection(object):
                 .addCallback(lambda _: name)
 
     @timeout
-    def ensure_index(self, sort_fields, **kwargs):
+    def ensure_index(self, sort_fields, _deadline=None, **kwargs):
         # ensure_index is an alias of create_index since we are not
         # keeping an index cache same way pymongo does
         return self.create_index(sort_fields, **kwargs)
