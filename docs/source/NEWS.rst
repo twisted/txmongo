@@ -1,14 +1,15 @@
 Changelog
 =========
 
-Release 17.1.0 (UNRELEASED)
+Release 17.1.0 (2017-08-11)
 ---------------------------
 
 Bugfixes
 ^^^^^^^^
 
 - Memory leak fixed in `Collection.bulk_write()`
-- Use authSource as auth database if specify in connect uri
+- Use `authSource` as auth database if specified in connect uri
+- Compatibility with PyMongo 3.5.0+
 
 Release 16.3.0 (2016-11-25)
 ---------------------------
