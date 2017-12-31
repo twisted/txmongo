@@ -1,78 +1,73 @@
 language: python
-python: 2.7
+python:
+  - "2.7"
+  - "3.4"
+  - "3.5"
+  - "pypy"
+  - "pypy3"
 
-# container infra, when fixed
-#sudo: false
-#
-# addons:
-#  apt:
-#    sources:
-#    - mongodb-3.0-precise
-#    - pypy
-#addons:
-#  apt:
-#    packages:
-#    - mongodb-org-server
-#    - pypy
 
 env:
-    - TOX_ENV=py27-tw140
-    - TOX_ENV=py27-tw150
-    - TOX_ENV=py27-tw155
-    - TOX_ENV=py27-tw160
-    - TOX_ENV=py27-tw163
-    - TOX_ENV=py27-twlatest
-    - TOX_ENV=py27-twtrunk
-    - TOX_ENV=py33-tw160
-    - TOX_ENV=py33-tw163
-    - TOX_ENV=py33-twlatest
-    - TOX_ENV=py33-twtrunk
-    - TOX_ENV=py34-tw160
-    - TOX_ENV=py34-tw163
-    - TOX_ENV=py34-twlatest
-    - TOX_ENV=py34-twtrunk
-    - TOX_ENV=py35-tw160
-    - TOX_ENV=py35-tw163
-    - TOX_ENV=py35-twlatest
-    - TOX_ENV=py35-twtrunk
-    - TOX_ENV=pypy-tw140
-    - TOX_ENV=pypy-tw150
-    - TOX_ENV=pypy-tw155
-    - TOX_ENV=pypy-tw160
-    - TOX_ENV=pypy-tw163
-    - TOX_ENV=pypy-twlatest
-    - TOX_ENV=pypy-twtrunk
-    - TOX_ENV=pyflakes
-    - TOX_ENV=manifest
+    - TOX_ENV=tw166
+    - TOX_ENV=tw175
+    - TOX_ENV=tw179
+    - TOX_ENV=twlatest
+    - TOX_ENV=twtrunk
+
 
 matrix:
   fast_finish: true
   allow_failures:
     - env: TOX_ENV=pyflakes
-    - env: TOX_ENV=pypy-twtrunk
+    - python: pypy
+      env: TOX_ENV=twtrunk
+    - python: pypy3
+      env: TOX_ENV=twtrunk
+
+  include:
+    - python: 3.5
+      env: TOX_ENV=pyflakes
+    - python: 3.5
+      env: TOX_ENV=manifest
+    - python: 2.7
+      env: TOX_ENV=tw140
+    - python: 2.7
+      env: TOX_ENV=tw150
+    - python: 2.7
+      env: TOX_ENV=tw155
+    - python: pypy
+      env: TOX_ENV=tw140
+    - python: pypy
+      env: TOX_ENV=tw150
+    - python: pypy
+      env: TOX_ENV=tw155
+
 
 
 before_install:
-  - "sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 7F0CEB10"
-  - "echo 'deb http://repo.mongodb.org/apt/ubuntu '$(lsb_release -sc)'/mongodb-org/3.0 multiverse' | sudo tee /etc/apt/sources.list.d/mongodb-org-3.0.list"
-  - "sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 68854915"
-  - "echo 'deb http://ppa.launchpad.net/pypy/ppa/ubuntu '$(lsb_release -sc)' main' | sudo tee /etc/apt/sources.list.d/pypy.list"
-  - "sudo apt-get update"
-  - "sudo apt-get install mongodb-org-server pypy"
-  - "mongod --version"
-  - "pypy --version"
+  - sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 7F0CEB10
+  - echo 'deb http://repo.mongodb.org/apt/ubuntu '$(lsb_release -sc)'/mongodb-org/3.0 multiverse' | sudo tee /etc/apt/sources.list.d/mongodb-org-3.0.list
+  - sudo apt-get update
+  - sudo apt-get install mongodb-org-server
+    # PyCrypto detects libgmp-dev and build its fastmath native extension which is incompatible with pypy. So removing libgmp-dev for pypy builds.
+  - if [[ "$TRAVIS_PYTHON_VERSION" == pypy* ]]; then sudo apt-get remove -y --auto-remove libgmp-dev; fi
+  - mongod --version
+  - mkdir data; mongod --dbpath data --nounixsocket --fork --logpath mongod.log
 
 install:
   - pip install tox coveralls
 
 before_script:
-  - "until nc -z localhost 27017; do echo Waiting for MongoDB; sleep 1; done"
+  - until nc -z localhost 27017; do echo Waiting for MongoDB; sleep 1; done
 
 script:
   - tox -e $TOX_ENV
 
 after_success:
-    - coveralls
+  - coveralls
+
+after_script:
+  - killall monogd
 
 notifications:
     email: false
