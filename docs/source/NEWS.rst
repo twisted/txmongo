@@ -1,13 +1,14 @@
 Changelog
 =========
 
-Release 17.2.0 (UNRELEASED)
+Release 18.0.0 (2018-01-02)
 ---------------------------
 
 Bugfixes
 ^^^^^^^^
 
 - Fixed compatibility with PyMongo 3.6
+
 
 Release 17.1.0 (2017-08-11)
 ---------------------------
