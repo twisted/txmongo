@@ -12,8 +12,8 @@ from bson.code import Code
 from bson.son import SON
 from bson.codec_options import CodecOptions
 from pymongo.bulk import _Bulk, _COMMANDS, _merge_command
-from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure
-from pymongo.helpers import _check_write_command_response
+from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure, DuplicateKeyError, \
+    WriteError, WTimeoutError, WriteConcernError
 from pymongo.message import _OP_MAP, _INSERT
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult, BulkWriteResult
@@ -28,6 +28,37 @@ from txmongo.utils import check_deadline, timeout
 from txmongo import filter as qf
 from twisted.internet import defer
 from twisted.python.compat import unicode, comparable
+
+
+def _raise_last_write_error(write_errors):
+    # If the last batch had multiple errors only report
+    # the last error to emulate continue_on_error.
+    error = write_errors[-1]
+    if error.get("code") == 11000:
+        raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+    raise WriteError(error.get("errmsg"), error.get("code"), error)
+
+
+def _raise_write_concern_error(error):
+    if "errInfo" in error and error["errInfo"].get('wtimeout'):
+        # Make sure we raise WTimeoutError
+        raise WTimeoutError(
+            error.get("errmsg"), error.get("code"), error)
+    raise WriteConcernError(
+        error.get("errmsg"), error.get("code"), error)
+
+
+def _check_write_command_response(result):
+    """Backward compatibility helper for write command error handling.
+    """
+    # Prefer write errors over write concern errors
+    write_errors = result.get("writeErrors")
+    if write_errors:
+        _raise_last_write_error(write_errors)
+
+    error = result.get("writeConcernError")
+    if error:
+        _raise_write_concern_error(error)
 
 
 @comparable
@@ -632,7 +663,7 @@ class Collection(object):
         def on_ok(result):
             response = result
             if response:
-                _check_write_command_response([[0, response]])
+                _check_write_command_response(response)
             return InsertOneResult(inserted_id, self.write_concern.acknowledged)
         return self._insert_one(document, _deadline).addCallback(on_ok)
 
@@ -806,7 +837,7 @@ class Collection(object):
                            ("writeConcern", self.write_concern.document)])
 
             def on_ok(raw_response):
-                _check_write_command_response([[0, raw_response]])
+                _check_write_command_response(raw_response)
 
                 # Extract upserted_id from returned array
                 if raw_response.get("upserted"):
@@ -964,7 +995,7 @@ class Collection(object):
                            ("writeConcern", self.write_concern.document)])
 
             def on_ok(raw_response):
-                _check_write_command_response([[0, raw_response]])
+                _check_write_command_response(raw_response)
                 return raw_response
             return self._database.command(command, _deadline=_deadline).addCallback(on_ok)
 
