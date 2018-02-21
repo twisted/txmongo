@@ -1131,13 +1131,29 @@ class Collection(object):
     @timeout
     def aggregate(self, pipeline, full_response=False, _deadline=None):
         """aggregate(pipeline, full_response=False)"""
-        def on_ok(raw):
-            if full_response:
-                return raw
-            return raw.get("result")
+
+        def on_ok(raw, data=None):
+            if data is None:
+                data = []
+            if "firstBatch" in raw["cursor"]:
+                batch = raw["cursor"]["firstBatch"]
+            else:
+                batch = raw["cursor"].get("nextBatch", [])
+            data += batch
+            if raw["cursor"]["id"] == 0:
+                if full_response:
+                    raw["result"] = data
+                    return raw
+                return data
+            next_reply = self._database.command(
+                "getMore", collection=self._collection_name,
+                getMore=raw["cursor"]["id"]
+            )
+            return next_reply.addCallback(on_ok, data)
+
         return self._database.command(
             "aggregate", self._collection_name, pipeline=pipeline,
-            _deadline=_deadline, cursor={"batchSize": 0}
+            _deadline=_deadline, cursor={}
         ).addCallback(on_ok)
 
     @timeout
