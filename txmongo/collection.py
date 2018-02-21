@@ -1126,8 +1126,10 @@ class Collection(object):
             if full_response:
                 return raw
             return raw.get("result")
-        return self._database.command("aggregate", self._collection_name, pipeline = pipeline,
-                                      _deadline = _deadline).addCallback(on_ok)
+        return self._database.command(
+            "aggregate", self._collection_name, pipeline=pipeline,
+            _deadline=_deadline, cursor={"batchSize": 0}
+        ).addCallback(on_ok)
 
     @timeout
     def map_reduce(self, map, reduce, full_response=False, **kwargs):
@@ -1361,7 +1363,7 @@ class Collection(object):
                 def on_fail(failure):
                     failure.trap(defer.FirstError)
                     failure.value.subFailure.raiseException()
-                    
+
                 if self.write_concern.acknowledged and not ordered:
                     return defer.gatherResults(all_responses, consumeErrors=True)\
                         .addErrback(on_fail)
