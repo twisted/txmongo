@@ -12,24 +12,18 @@ from bson.code import Code
 from bson.son import SON
 from bson.codec_options import CodecOptions
 from pymongo.bulk import _Bulk, _COMMANDS, _merge_command
-from pymongo.errors import (
-    InvalidName, BulkWriteError, InvalidOperation, OperationFailure, DuplicateKeyError,
+from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure, DuplicateKeyError, \
     WriteError, WTimeoutError, WriteConcernError
-)
 from pymongo.message import _OP_MAP, _INSERT
-from pymongo.results import (
-    InsertOneResult, InsertManyResult, UpdateResult, DeleteResult, BulkWriteResult
-)
-from pymongo.common import (
-    validate_ok_for_update, validate_ok_for_replace, validate_is_mapping, validate_boolean
-)
+from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
+    DeleteResult, BulkWriteResult
+from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
+    validate_is_mapping, validate_boolean
 from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
 from txmongo.filter import _QueryFilter
-from txmongo.protocol import (
-    DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, Query, Getmore, Insert, Update,
-    Delete, KillCursors
-)
+from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
+    Query, Getmore, Insert, Update, Delete, KillCursors
 from txmongo.utils import check_deadline, timeout
 from txmongo import filter as qf
 from twisted.internet import defer
@@ -97,9 +91,7 @@ class Collection(object):
             msg = "TxMongo: collection names must not contain '$', '{0}'".format(repr(name))
             raise InvalidName(msg)
         if name[0] == "." or name[-1] == ".":
-            msg = "TxMongo: collection names must not start or end with '.', '{0}'".format(
-                repr(name)
-            )
+            msg = "TxMongo: collection names must not start or end with '.', '{0}'".format(repr(name))
             raise InvalidName(msg)
         if "\x00" in name:
             raise InvalidName("TxMongo: collection names must not contain the null character.")
@@ -234,8 +226,8 @@ class Collection(object):
                 return None
 
         return self._database.command(
-            SON([("listCollections", 1),
-                ("filter", {"name": self.name})])).addCallback(on_ok)
+                SON([("listCollections", 1),
+                     ("filter", {"name": self.name})])).addCallback(on_ok)
 
     @timeout
     def options(self, _deadline=None):
@@ -249,9 +241,7 @@ class Collection(object):
         """
         def on_3_0_fail(failure):
             failure.trap(OperationFailure)
-            return self._database.system.namespaces.find_one(
-                {"name": str(self)}, _deadline=_deadline
-            )
+            return self._database.system.namespaces.find_one({"name": str(self)}, _deadline=_deadline)
 
         def on_ok(result):
             if not result:
@@ -635,8 +625,8 @@ class Collection(object):
 
             write_concern = self._get_write_concern(safe, **kwargs)
             if write_concern.acknowledged:
-                return proto.get_last_error(
-                    str(self._database), **write_concern.document).addCallback(lambda _: ids)
+                return proto.get_last_error(str(self._database), **write_concern.document)\
+                        .addCallback(lambda _: ids)
 
             return ids
 
@@ -718,7 +708,7 @@ class Collection(object):
             key = str(idx).encode('ascii')
             value = BSON.encode(doc)
 
-            enough_size = buf.tell() + len(key) + 2 + len(value) - docs_start > max_bson
+            enough_size = buf.tell() + len(key)+2 + len(value) - docs_start > max_bson
             enough_count = idx >= max_count
             if enough_size or enough_count:
                 yield idx_offset, prepare_command()
@@ -1058,8 +1048,8 @@ class Collection(object):
             kwargs["bucketSize"] = kwargs.pop("bucket_size")
 
         index.update(kwargs)
-        return self._database.system.indexes.insert(
-            index, safe=True).addCallback(lambda _: name)
+        return self._database.system.indexes.insert(index, safe=True)\
+                .addCallback(lambda _: name)
 
     @timeout
     def ensure_index(self, sort_fields, _deadline=None, **kwargs):
@@ -1091,8 +1081,8 @@ class Collection(object):
             assert indexes_info["cursor"]["id"] == 0
             return indexes_info["cursor"]["firstBatch"]
         codec = CodecOptions(document_class=SON)
-        return self._database.command(
-            "listIndexes", self.name, codec_options=codec).addCallback(on_ok)
+        return self._database.command("listIndexes", self.name, codec_options=codec)\
+                .addCallback(on_ok)
 
     @timeout
     def index_information(self, _deadline=None):
@@ -1109,6 +1099,7 @@ class Collection(object):
             return info
 
         return self.__index_information_3_0().addErrback(on_3_0_fail).addCallback(on_ok)
+
 
     @timeout
     def rename(self, new_name, _deadline=None):
@@ -1160,13 +1151,12 @@ class Collection(object):
     def map_reduce(self, map, reduce, full_response=False, **kwargs):
         params = {"map": map, "reduce": reduce}
         params.update(**kwargs)
-
         def on_ok(raw):
             if full_response:
                 return raw
             return raw.get("results")
-        return self._database.command(
-            "mapreduce", self._collection_name, **params).addCallback(on_ok)
+        return self._database.command("mapreduce", self._collection_name, **params)\
+                .addCallback(on_ok)
 
     @timeout
     def find_and_modify(self, query=None, update=None, upsert=False, **kwargs):
@@ -1228,9 +1218,8 @@ class Collection(object):
 
         no_obj_error = "No matching object found"
 
-        return self._database.command(
-            cmd, allowable_errors=[no_obj_error], _deadline=_deadline
-        ).addCallback(lambda result: result.get("value"))
+        return self._database.command(cmd, allowable_errors=[no_obj_error], _deadline=_deadline)\
+                .addCallback(lambda result: result.get("value"))
 
     @timeout
     def find_one_and_delete(self, filter, projection=None, sort=None, _deadline=None):
@@ -1326,6 +1315,7 @@ class Collection(object):
 
         return iterate(iterate, on_cmd_result).addCallback(on_all_done)
 
+
     def _execute_batch_command(self, command_type, documents, ordered):
         assert command_type in _OP_MAP
 
@@ -1353,7 +1343,7 @@ class Collection(object):
 
             actual_write_concern = self.write_concern
             if ordered and self.write_concern.acknowledged is False:
-                actual_write_concern = WriteConcern(w=1)
+                actual_write_concern = WriteConcern(w = 1)
 
             batches = self._generate_batch_commands(self._collection_name, _COMMANDS[command_type],
                                                     _OP_MAP[command_type], documents, ordered,
