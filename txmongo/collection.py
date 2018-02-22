@@ -1120,7 +1120,7 @@ class Collection(object):
                                       **params).addCallback(lambda result: result.get("values"))
 
     @timeout
-    def aggregate(self, pipeline, full_response=False, _deadline=None):
+    def aggregate(self, pipeline, full_response=False, initial_batch_size=None, _deadline=None):
         """aggregate(pipeline, full_response=False)"""
 
         def on_ok(raw, data=None):
@@ -1142,9 +1142,14 @@ class Collection(object):
             )
             return next_reply.addCallback(on_ok, data)
 
+        if initial_batch_size is None:
+            cursor = {}
+        else:
+            cursor = {"batchSize": initial_batch_size}
+
         return self._database.command(
             "aggregate", self._collection_name, pipeline=pipeline,
-            _deadline=_deadline, cursor={}
+            _deadline=_deadline, cursor=cursor
         ).addCallback(on_ok)
 
     @timeout

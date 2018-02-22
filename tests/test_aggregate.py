@@ -33,7 +33,8 @@ class TestAggregate(unittest.TestCase):
         self.coll = self.conn.mydb.mycol
 
     @defer.inlineCallbacks
-    def test_Aggregate(self):
+    def test_aggregate(self):
+        """Test basic aggregation functionality"""
         yield self.coll.insert([{"oh": "hai", "lulz": 123},
                                 {"oh": "kthxbye", "lulz": 456},
                                 {"oh": "hai", "lulz": 789}, ], safe=True)
@@ -42,7 +43,7 @@ class TestAggregate(unittest.TestCase):
             {"$project": {"oh": 1, "lolz": "$lulz"}},
             {"$group": {"_id": "$oh", "many_lolz": {"$sum": "$lolz"}}},
             {"$sort": {"_id": 1}}
-            ])
+        ])
 
         self.assertEqual(len(res), 2)
         self.assertEqual(res[0]["_id"], "hai")
@@ -52,9 +53,70 @@ class TestAggregate(unittest.TestCase):
 
         res = yield self.coll.aggregate([{"$match": {"oh": "hai"}}], full_response=True)
 
-        self.assertTrue("ok" in res)
-        self.assertTrue("result" in res)
+        self.assertIn("ok", res)
+        self.assertIn("result", res)
         self.assertEqual(len(res["result"]), 2)
+
+        res = yield self.coll.aggregate(
+            [{"$match": {"oh": "hai"}}], full_response=True, initial_batch_size=1
+        )
+
+        self.assertIn("ok", res)
+        self.assertIn("result", res)
+        self.assertEqual(len(res["result"]), 2)
+
+    @defer.inlineCallbacks
+    def test_large_batch(self):
+        """Test aggregation with a large number of objects"""
+        cnt = 10000
+        yield self.coll.insert([{"key": "v{}".format(i), "value": i} for i in range(cnt)])
+        group = {
+            "$group": {
+                "_id": "$key"
+            }
+        }
+
+        # Default initial batch size (determined by the database)
+        res = yield self.coll.aggregate([group])
+        self.assertEqual(len(res), cnt)
+
+        # Initial batch size of zero (returns quickly in case of an error)
+        res = yield self.coll.aggregate([group], initial_batch_size=0)
+        self.assertEqual(len(res), cnt)
+
+        # Small initial batch size
+        res = yield self.coll.aggregate([group], initial_batch_size=10)
+        self.assertEqual(len(res), cnt)
+
+        # Initial batch size larger than the number of records
+        res = yield self.coll.aggregate([group], initial_batch_size=(cnt + 10))
+        self.assertEqual(len(res), cnt)
+
+    @defer.inlineCallbacks
+    def test_large_value(self):
+        """Test aggregation with large objects"""
+        cnt = 2
+        yield self.coll.insert([{"x": str(i) * 1024 * 1024} for i in range(cnt)])
+
+        group = {
+            "$group": {"_id": "$x"}
+        }
+
+        # Default initial batch size (determined by the database)
+        res = yield self.coll.aggregate([group])
+        self.assertEqual(len(res), cnt)
+
+        # Initial batch size of zero (returns quickly in case of an error)
+        res = yield self.coll.aggregate([group], initial_batch_size=0)
+        self.assertEqual(len(res), cnt)
+
+        # Small initial batch size
+        res = yield self.coll.aggregate([group], initial_batch_size=10)
+        self.assertEqual(len(res), cnt)
+
+        # Initial batch size larger than the number of records
+        res = yield self.coll.aggregate([group], initial_batch_size=(cnt + 10))
+        self.assertEqual(len(res), cnt)
 
     @defer.inlineCallbacks
     def tearDown(self):
