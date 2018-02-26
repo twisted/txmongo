@@ -1120,14 +1120,37 @@ class Collection(object):
                                       **params).addCallback(lambda result: result.get("values"))
 
     @timeout
-    def aggregate(self, pipeline, full_response=False, _deadline=None):
+    def aggregate(self, pipeline, full_response=False, initial_batch_size=None, _deadline=None):
         """aggregate(pipeline, full_response=False)"""
-        def on_ok(raw):
-            if full_response:
-                return raw
-            return raw.get("result")
-        return self._database.command("aggregate", self._collection_name, pipeline = pipeline,
-                                      _deadline = _deadline).addCallback(on_ok)
+
+        def on_ok(raw, data=None):
+            if data is None:
+                data = []
+            if "firstBatch" in raw["cursor"]:
+                batch = raw["cursor"]["firstBatch"]
+            else:
+                batch = raw["cursor"].get("nextBatch", [])
+            data += batch
+            if raw["cursor"]["id"] == 0:
+                if full_response:
+                    raw["result"] = data
+                    return raw
+                return data
+            next_reply = self._database.command(
+                "getMore", collection=self._collection_name,
+                getMore=raw["cursor"]["id"]
+            )
+            return next_reply.addCallback(on_ok, data)
+
+        if initial_batch_size is None:
+            cursor = {}
+        else:
+            cursor = {"batchSize": initial_batch_size}
+
+        return self._database.command(
+            "aggregate", self._collection_name, pipeline=pipeline,
+            _deadline=_deadline, cursor=cursor
+        ).addCallback(on_ok)
 
     @timeout
     def map_reduce(self, map, reduce, full_response=False, **kwargs):
@@ -1361,7 +1384,7 @@ class Collection(object):
                 def on_fail(failure):
                     failure.trap(defer.FirstError)
                     failure.value.subFailure.raiseException()
-                    
+
                 if self.write_concern.acknowledged and not ordered:
                     return defer.gatherResults(all_responses, consumeErrors=True)\
                         .addErrback(on_fail)
