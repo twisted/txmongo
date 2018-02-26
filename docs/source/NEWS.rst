@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Release 18.1.0 (UNRELEASED)
+---------------------------
+
+Bugfixes
+^^^^^^^^
+
+- Fixed compatibility of `Collection.aggregate()` with PyMongo 3.6
+
 Release 18.0.0 (2018-01-02)
 ---------------------------
 
@@ -30,8 +38,8 @@ Features
 - Client authentication by X509 certificates. Use your client certificate when connecting
   to MongoDB and then call ``Database.authenticate`` with certificate subject as username,
   empty password and ``mechanism="MONGODB-X509"``.
-- ``get_version()`` to approximate the behaviour of get_version in PyMongo. One noteable exception		
-  is the omission of searching by random (unindexed) meta-data which should be considered a bad idea		
+- ``get_version()`` to approximate the behaviour of get_version in PyMongo. One noteable exception
+  is the omission of searching by random (unindexed) meta-data which should be considered a bad idea
   as it may create *very* variable conditions in terms of loading and timing.
 - New ``ConnectionPool.drop_database()`` method for easy and convenient destruction of all your precious data.
 - ``count()`` to return the number of versions of any given file in GridFS.
@@ -41,14 +49,14 @@ API Changes
 
 - ``find()``, ``find_one()``, ``find_with_cursor()``, ``count()`` and ``distinct()`` signatures
   changed to more closely match PyMongo's counterparts. New signatures are:
-  
+
   - ``find(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)``
   - ``find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)``
   - ``find_one(filter=None, projection=None, **kwargs)``
   - ``count(filter=None, **kwargs)``
   - ``distinct(key, filter=None, **kwargs)``
-  
-  Old signatures are now deprecated and will be supported in this and one subsequent releases. 
+
+  Old signatures are now deprecated and will be supported in this and one subsequent releases.
   After that only new signatures will be valid.
 - ``cursor`` argument to ``find()`` is deprecated. Please use ``find_with_cursor()`` directly
   if you need to iterate over results by batches. ``cursor`` will be supported in this and
@@ -78,7 +86,7 @@ Features
 - ``codec_options`` properties for ``ConnectionPool``, ``Database`` and ``Collection``.
   ``Collection.with_options(codec_options=CodecOptions(document_class=...))`` is now preferred
   over ``Collection.find(..., as_class=...)``.
-  
+
 Bugfixes
 ^^^^^^^^
 
