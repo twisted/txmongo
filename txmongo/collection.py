@@ -367,7 +367,7 @@ class Collection(object):
 
     @timeout
     def find_with_cursor(self, *args, **kwargs):
-        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs)
+        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, batchSize=0, **kwargs)
 
         Find documents in a collection and return them in one batch at a time.
 
@@ -389,7 +389,8 @@ class Collection(object):
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find_with_cursor(**new_kwargs)
 
-    def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs):
+    def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, batchsize=0,**kwargs):
+        
         if filter is None:
             filter = SON()
 
@@ -401,6 +402,8 @@ class Collection(object):
             raise TypeError("TxMongo: skip must be an instance of int.")
         if not isinstance(limit, int):
             raise TypeError("TxMongo: limit must be an instance of int.")
+        if not isinstance(batchsize, int):
+            raise TypeError("TxMongo: batchsize must be an instance of int.")
 
         projection = self._normalize_fields_projection(projection)
 
@@ -414,8 +417,15 @@ class Collection(object):
 
             check_deadline(kwargs.pop("_deadline", None))
 
+            if batchsize and limit:
+                n_to_return = min(batchsize,limit)
+            elif batchsize:
+                n_to_return = batchsize
+            else:
+                n_to_return = limit
+
             query = Query(flags=flags, collection=str(self),
-                          n_to_skip=skip, n_to_return=limit,
+                          n_to_skip=skip, n_to_return=n_to_return,
                           query=filter, fields=projection)
 
             deferred_query = protocol.send_QUERY(query)
@@ -427,8 +437,10 @@ class Collection(object):
         # reference between closure and function object which will add unnecessary
         # work for GC.
         def after_reply(reply, protocol, this_func, fetched=0):
+
             documents = reply.documents
             docs_count = len(documents)
+
             if limit > 0:
                 docs_count = min(docs_count, limit - fetched)
             fetched += docs_count
@@ -439,8 +451,13 @@ class Collection(object):
             out = [document.decode(codec_options=options) for document in documents[:docs_count]]
 
             if reply.cursor_id:
+                # please note that this will not be the case if batchsize = 1
+                # it is documented (parameter numberToReturn for OP_QUERY)
+                # https://docs.mongodb.com/manual/reference/mongodb-wire-protocol/#wire-op-query 
                 if limit == 0:
                     to_fetch = 0  # no limit
+                    if batchsize:
+                      to_fetch = batchsize
                 elif limit < 0:
                     # We won't actually get here because MongoDB won't
                     # create cursor when limit < 0
@@ -449,6 +466,8 @@ class Collection(object):
                     to_fetch = limit - fetched
                     if to_fetch <= 0:
                         to_fetch = None  # close cursor
+                    elif batchsize:
+                        to_fetch = min(batchsize,to_fetch)
 
                 if to_fetch is None:
                     protocol.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
@@ -1120,37 +1139,14 @@ class Collection(object):
                                       **params).addCallback(lambda result: result.get("values"))
 
     @timeout
-    def aggregate(self, pipeline, full_response=False, initial_batch_size=None, _deadline=None):
+    def aggregate(self, pipeline, full_response=False, _deadline=None):
         """aggregate(pipeline, full_response=False)"""
-
-        def on_ok(raw, data=None):
-            if data is None:
-                data = []
-            if "firstBatch" in raw["cursor"]:
-                batch = raw["cursor"]["firstBatch"]
-            else:
-                batch = raw["cursor"].get("nextBatch", [])
-            data += batch
-            if raw["cursor"]["id"] == 0:
-                if full_response:
-                    raw["result"] = data
-                    return raw
-                return data
-            next_reply = self._database.command(
-                "getMore", collection=self._collection_name,
-                getMore=raw["cursor"]["id"]
-            )
-            return next_reply.addCallback(on_ok, data)
-
-        if initial_batch_size is None:
-            cursor = {}
-        else:
-            cursor = {"batchSize": initial_batch_size}
-
-        return self._database.command(
-            "aggregate", self._collection_name, pipeline=pipeline,
-            _deadline=_deadline, cursor=cursor
-        ).addCallback(on_ok)
+        def on_ok(raw):
+            if full_response:
+                return raw
+            return raw.get("result")
+        return self._database.command("aggregate", self._collection_name, pipeline = pipeline,
+                                      _deadline = _deadline).addCallback(on_ok)
 
     @timeout
     def map_reduce(self, map, reduce, full_response=False, **kwargs):
@@ -1384,7 +1380,7 @@ class Collection(object):
                 def on_fail(failure):
                     failure.trap(defer.FirstError)
                     failure.value.subFailure.raiseException()
-
+                    
                 if self.write_concern.acknowledged and not ordered:
                     return defer.gatherResults(all_responses, consumeErrors=True)\
                         .addErrback(on_fail)
