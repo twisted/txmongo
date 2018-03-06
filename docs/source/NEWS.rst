@@ -1,6 +1,16 @@
 Changelog
 =========
 
+
+Release UNVERSIONED
+---------------------------
+
+Features
+^^^^^^^^
+
+- Added support for paged request: implementation of batchsize parameter in Collection.find_with_cursor
+
+
 Release 18.1.0 (UNRELEASED)
 ---------------------------
 
