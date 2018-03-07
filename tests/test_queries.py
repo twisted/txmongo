@@ -98,12 +98,37 @@ class TestMongoQueries(SingleCollectionTest):
     def test_FindWithCursorBatchsize(self):
         yield self.coll.insert([{'v': i} for i in range(140)], safe=True)
 
-        docs, d = yield self.coll.find_with_cursor(batchsize=50)
+        docs, d = yield self.coll.find_with_cursor(batch_size=50)
         lengths = [] 
         while docs:
             lengths.append(len(docs))
             docs, d = yield d
         self.assertEqual(lengths, [50,50,40])
+
+    @defer.inlineCallbacks
+    def test_FindWithCursorBatchsizeLimit(self):
+        yield self.coll.insert([{'v': i} for i in range(140)], safe=True)
+
+        docs, d = yield self.coll.find_with_cursor(batch_size=50,limit=10)
+        lengths = [] 
+        while docs:
+            lengths.append(len(docs))
+            docs, d = yield d
+        self.assertEqual(lengths, [10])
+
+    @defer.inlineCallbacks
+    def test_FindWithCursorZeroBatchsize(self):
+        yield self.coll.insert([{'v': i} for i in range(140)], safe=True)
+
+        docs, d = yield self.coll.find_with_cursor(batch_size=0)
+        lengths = [] 
+        while docs:
+            lengths.append(len(docs))
+            docs, d = yield d
+        print(lengths)
+        self.assertEqual(lengths, [101,39])
+
+
 
     @defer.inlineCallbacks
     def test_LargeData(self):

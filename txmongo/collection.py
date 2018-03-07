@@ -367,7 +367,7 @@ class Collection(object):
 
     @timeout
     def find_with_cursor(self, *args, **kwargs):
-        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, batchSize=0, **kwargs)
+        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0, **kwargs)
 
         Find documents in a collection and return them in one batch at a time.
 
@@ -389,7 +389,7 @@ class Collection(object):
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find_with_cursor(**new_kwargs)
 
-    def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, batchsize=0,**kwargs):
+    def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0,**kwargs):
         
         if filter is None:
             filter = SON()
@@ -402,7 +402,7 @@ class Collection(object):
             raise TypeError("TxMongo: skip must be an instance of int.")
         if not isinstance(limit, int):
             raise TypeError("TxMongo: limit must be an instance of int.")
-        if not isinstance(batchsize, int):
+        if not isinstance(batch_size, int):
             raise TypeError("TxMongo: batchsize must be an instance of int.")
 
         projection = self._normalize_fields_projection(projection)
@@ -417,10 +417,10 @@ class Collection(object):
 
             check_deadline(kwargs.pop("_deadline", None))
 
-            if batchsize and limit:
-                n_to_return = min(batchsize,limit)
-            elif batchsize:
-                n_to_return = batchsize
+            if batch_size and limit:
+                n_to_return = min(batch_size,limit)
+            elif batch_size:
+                n_to_return = batch_size
             else:
                 n_to_return = limit
 
@@ -451,13 +451,13 @@ class Collection(object):
             out = [document.decode(codec_options=options) for document in documents[:docs_count]]
 
             if reply.cursor_id:
-                # please note that this will not be the case if batchsize = 1
+                # please note that this will not be the case if batch_size = 1
                 # it is documented (parameter numberToReturn for OP_QUERY)
                 # https://docs.mongodb.com/manual/reference/mongodb-wire-protocol/#wire-op-query 
                 if limit == 0:
                     to_fetch = 0  # no limit
-                    if batchsize:
-                      to_fetch = batchsize
+                    if batch_size:
+                      to_fetch = batch_size
                 elif limit < 0:
                     # We won't actually get here because MongoDB won't
                     # create cursor when limit < 0
@@ -466,8 +466,8 @@ class Collection(object):
                     to_fetch = limit - fetched
                     if to_fetch <= 0:
                         to_fetch = None  # close cursor
-                    elif batchsize:
-                        to_fetch = min(batchsize,to_fetch)
+                    elif batch_size:
+                        to_fetch = min(batch_size,to_fetch)
 
                 if to_fetch is None:
                     protocol.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
