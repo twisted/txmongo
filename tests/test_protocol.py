@@ -17,10 +17,10 @@ from __future__ import absolute_import, division
 
 from bson import BSON
 from twisted.trial import unittest
-from twisted.python.compat import unicode
-import mock
-from tests.utils import SingleCollectionTest
 from twisted.internet import defer
+from twisted.python.compat import unicode
+
+from tests.utils import SingleCollectionTest
 
 from txmongo.protocol import MongoClientProtocol, MongoDecoder, Insert, Query, \
     KillCursors, Getmore, Update, Delete, UPDATE_MULTI, UPDATE_UPSERT, \
