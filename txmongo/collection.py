@@ -403,7 +403,7 @@ class Collection(object):
         if not isinstance(limit, int):
             raise TypeError("TxMongo: limit must be an instance of int.")
         if not isinstance(batch_size, int):
-            raise TypeError("TxMongo: batchsize must be an instance of int.")
+            raise TypeError("TxMongo: batch_size must be an instance of int.")
 
         projection = self._normalize_fields_projection(projection)
 

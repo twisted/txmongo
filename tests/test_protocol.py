@@ -24,8 +24,7 @@ from tests.utils import SingleCollectionTest
 
 from txmongo.protocol import MongoClientProtocol, MongoDecoder, Insert, Query, \
     KillCursors, Getmore, Update, Delete, UPDATE_MULTI, UPDATE_UPSERT, \
-    DELETE_SINGLE_REMOVE, \
-    CursorNotFound
+    DELETE_SINGLE_REMOVE, CursorNotFound
 
 
 class _FakeTransport(object):
@@ -100,14 +99,14 @@ class TestCursors(SingleCollectionTest):
 
         protocol = yield self.conn.getprotocol()
 
-
         query = Query(query={},n_to_return=10,collection=str(self.coll))
 
         query_result = yield protocol.send_QUERY(query)
 
         cursor_id = query_result.cursor_id
-        _ = yield protocol.send_KILL_CURSORS(KillCursors(cursors=[cursor_id]))
 
-        with self.assertRaises(CursorNotFound):
-            next_reply = yield protocol.send_GETMORE(Getmore(collection = str(self.coll),cursor_id = cursor_id,n_to_return = 10))
+        yield protocol.send_KILL_CURSORS(KillCursors(cursors=[cursor_id]))
+
+        self.assertFailure(protocol.send_GETMORE(Getmore(collection = str(self.coll),cursor_id = cursor_id,n_to_return = 10)),
+                           CursorNotFound)
 
