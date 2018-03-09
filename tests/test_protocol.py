@@ -17,11 +17,14 @@ from __future__ import absolute_import, division
 
 from bson import BSON
 from twisted.trial import unittest
+from twisted.internet import defer
 from twisted.python.compat import unicode
+
+from tests.utils import SingleCollectionTest
 
 from txmongo.protocol import MongoClientProtocol, MongoDecoder, Insert, Query, \
     KillCursors, Getmore, Update, Delete, UPDATE_MULTI, UPDATE_UPSERT, \
-    DELETE_SINGLE_REMOVE
+    DELETE_SINGLE_REMOVE, CursorNotFound
 
 
 class _FakeTransport(object):
@@ -86,3 +89,24 @@ class TestMongoProtocol(unittest.TestCase):
         request = Delete(flags=DELETE_SINGLE_REMOVE, collection="coll",
                          selector=BSON.encode({'x': 42}))
         self.__test_encode_decode(request)
+
+class TestCursors(SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def test_CursorNotFound(self):
+
+        yield self.coll.insert([{'v': i} for i in range(140)], safe=True)
+
+        protocol = yield self.conn.getprotocol()
+
+        query = Query(query={},n_to_return=10,collection=str(self.coll))
+
+        query_result = yield protocol.send_QUERY(query)
+
+        cursor_id = query_result.cursor_id
+
+        yield protocol.send_KILL_CURSORS(KillCursors(cursors=[cursor_id]))
+
+        self.assertFailure(protocol.send_GETMORE(Getmore(collection = str(self.coll),cursor_id = cursor_id,n_to_return = 10)),
+                           CursorNotFound)
+

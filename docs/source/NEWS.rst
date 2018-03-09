@@ -1,6 +1,9 @@
 Changelog
 =========
 
+
+
+
 Release 18.1.0 (UNRELEASED)
 ---------------------------
 
@@ -17,6 +20,11 @@ Bugfixes
 ^^^^^^^^
 
 - Fixed compatibility with PyMongo 3.6
+
+Features
+^^^^^^^^
+
+- Added support for paged request: implementation of batchsize parameter in Collection.find_with_cursor
 
 
 Release 17.1.0 (2017-08-11)

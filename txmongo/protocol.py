@@ -22,7 +22,7 @@ import hmac
 import logging
 from pymongo import auth
 from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure, \
-    NotMasterError
+    NotMasterError, CursorNotFound
 from random import SystemRandom
 import struct
 from twisted.internet import defer, protocol, error
@@ -381,6 +381,11 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 df.errback(err)
                 if fail_conn:
                     self.transport.loseConnection()
+            elif request.response_flags & REPLY_CURSOR_NOT_FOUND:
+                # Inspired by pymongo handling
+                msg = "Cursor not found, cursor id: %d" % (request.cursor_id,)
+                errobj = {"ok": 0, "errmsg": msg, "code": 43}  
+                df.errback(CursorNotFound(msg, 43, errobj))
             else:
                 df.callback(request)
 
