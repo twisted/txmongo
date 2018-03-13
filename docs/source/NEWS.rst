@@ -11,6 +11,7 @@ Bugfixes
 ^^^^^^^^
 
 - Fixed compatibility of `Collection.aggregate()` with PyMongo 3.6
+- AutoReconnect exceptions may give invalid stack traces when not handled
 
 
 Release 18.0.0 (2018-01-02)
