@@ -12,6 +12,11 @@ Bugfixes
 
 - Fixed compatibility of `Collection.aggregate()` with PyMongo 3.6
 
+Features
+^^^^^^^^
+
+- Added support for paged request: implementation of batchsize parameter in Collection.find_with_cursor
+
 
 Release 18.0.0 (2018-01-02)
 ---------------------------
@@ -20,11 +25,6 @@ Bugfixes
 ^^^^^^^^
 
 - Fixed compatibility with PyMongo 3.6
-
-Features
-^^^^^^^^
-
-- Added support for paged request: implementation of batchsize parameter in Collection.find_with_cursor
 
 
 Release 17.1.0 (2017-08-11)
