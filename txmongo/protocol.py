@@ -323,16 +323,14 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         # too late.
         self.factory.setInstance(None, reason)
 
-        auto_reconnect = AutoReconnect("TxMongo lost connection to MongoDB.")
-
         if self.__deferreds:
             deferreds, self.__deferreds = self.__deferreds, {}
             for df in deferreds.values():
-                df.errback(auto_reconnect)
+                df.errback(AutoReconnect("TxMongo lost connection to MongoDB."))
         deferreds, self.__connection_ready = self.__connection_ready, []
         if deferreds:
             for df in deferreds:
-                df.errback(auto_reconnect)
+                df.errback(AutoReconnect("TxMongo lost connection to MongoDB."))
 
         protocol.Protocol.connectionLost(self, reason)
 
