@@ -4,7 +4,7 @@ Changelog
 
 
 
-Release 18.1.0 (UNRELEASED)
+Release 18.1.0 (2018-03-21)
 ---------------------------
 
 Bugfixes
