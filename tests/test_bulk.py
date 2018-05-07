@@ -1,12 +1,14 @@
 from bson import BSON
 from pymongo import InsertOne
-from pymongo.errors import BulkWriteError
+from pymongo.errors import BulkWriteError, OperationFailure
 from pymongo.operations import UpdateOne, DeleteOne, UpdateMany, ReplaceOne
 from pymongo.results import BulkWriteResult
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
+from mock import patch
 
 from tests.utils import SingleCollectionTest
+from txmongo.protocol import Reply
 
 
 class TestArgsValidation(SingleCollectionTest):
@@ -224,3 +226,18 @@ class TestHuge(SingleCollectionTest):
         docs = yield self.coll.find()
         total_size = sum(len(BSON.encode(doc)) for doc in docs)
         self.assertGreater(total_size, 40 * 1024**2)
+
+
+class TestOperationFailure(SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def test_OperationFailure(self):
+        yield self.coll.bulk_write([UpdateOne({}, {'$set': {'x': 42}}, upsert=True)])
+
+        def fake_send_query(*args):
+            # print('fake_send_query', args)
+            return defer.succeed(Reply(documents=[{'ok': 0.0, 'errmsg': 'operation was interrupted', 'code': 11602, 'codeName': 'InterruptedDueToReplStateChange'}]))
+
+        with patch('txmongo.protocol.MongoProtocol.send_QUERY', side_effect=fake_send_query):
+            with self.assertRaises(OperationFailure):
+                yield self.coll.bulk_write([UpdateOne({}, {'$set': {'x': 42}}, upsert=True)], ordered=True)
