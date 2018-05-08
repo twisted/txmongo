@@ -235,9 +235,11 @@ class TestOperationFailure(SingleCollectionTest):
         yield self.coll.bulk_write([UpdateOne({}, {'$set': {'x': 42}}, upsert=True)])
 
         def fake_send_query(*args):
-            # print('fake_send_query', args)
-            return defer.succeed(Reply(documents=[{'ok': 0.0, 'errmsg': 'operation was interrupted', 'code': 11602, 'codeName': 'InterruptedDueToReplStateChange'}]))
+            return defer.succeed(Reply(documents=[
+                {'ok': 0.0, 'errmsg': 'operation was interrupted', 'code': 11602,
+                 'codeName': 'InterruptedDueToReplStateChange'}]))
 
         with patch('txmongo.protocol.MongoProtocol.send_QUERY', side_effect=fake_send_query):
-            with self.assertRaises(OperationFailure):
-                yield self.coll.bulk_write([UpdateOne({}, {'$set': {'x': 42}}, upsert=True)], ordered=True)
+            yield self.assertFailure(
+                    self.coll.bulk_write([UpdateOne({}, {'$set': {'x': 42}}, upsert=True)], ordered=True),
+                    OperationFailure)
