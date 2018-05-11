@@ -14,6 +14,7 @@ from bson.codec_options import CodecOptions
 from pymongo.bulk import _Bulk, _COMMANDS, _merge_command
 from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure, DuplicateKeyError, \
     WriteError, WTimeoutError, WriteConcernError
+from pymongo.helpers import _check_command_response
 from pymongo.message import _OP_MAP, _INSERT
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult, BulkWriteResult
@@ -1350,6 +1351,7 @@ class Collection(object):
 
             def accumulate_result(reply, idx_offset):
                 result = reply.documents[0].decode()
+                _check_command_response(result)
                 results.append((idx_offset, result))
                 return result
 
