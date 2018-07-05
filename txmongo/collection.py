@@ -11,11 +11,11 @@ from bson import BSON, ObjectId
 from bson.code import Code
 from bson.son import SON
 from bson.codec_options import CodecOptions
-from pymongo.bulk import _Bulk, _COMMANDS, _merge_command
+from pymongo.bulk import _Bulk, _COMMANDS, _UOP
 from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure, DuplicateKeyError, \
     WriteError, WTimeoutError, WriteConcernError
 from pymongo.helpers import _check_command_response
-from pymongo.message import _OP_MAP, _INSERT
+from pymongo.message import _OP_MAP, _INSERT, _DELETE, _UPDATE
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult, BulkWriteResult
 from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
@@ -60,6 +60,48 @@ def _check_write_command_response(result):
     error = result.get("writeConcernError")
     if error:
         _raise_write_concern_error(error)
+
+
+def _merge_command(run, full_result, results):
+    """Merge a group of results from write commands into the full result.
+    """
+    for offset, result in results:
+
+        affected = result.get("n", 0)
+
+        if run.op_type == _INSERT:
+            full_result["nInserted"] += affected
+
+        elif run.op_type == _DELETE:
+            full_result["nRemoved"] += affected
+
+        elif run.op_type == _UPDATE:
+            upserted = result.get("upserted")
+            if upserted:
+                n_upserted = len(upserted)
+                for doc in upserted:
+                    doc["index"] = run.index(doc["index"] + offset)
+                full_result["upserted"].extend(upserted)
+                full_result["nUpserted"] += n_upserted
+                full_result["nMatched"] += (affected - n_upserted)
+            else:
+                full_result["nMatched"] += affected
+            full_result["nModified"] += result["nModified"]
+
+        write_errors = result.get("writeErrors")
+        if write_errors:
+            for doc in write_errors:
+                # Leave the server response intact for APM.
+                replacement = doc.copy()
+                idx = doc["index"] + offset
+                replacement["index"] = run.index(idx)
+                # Add the failed operation to the error document.
+                replacement[_UOP] = run.ops[idx]
+                full_result["writeErrors"].append(replacement)
+
+        wc_error = result.get("writeConcernError")
+        if wc_error:
+            full_result["writeConcernErrors"].append(wc_error)
 
 
 @comparable
