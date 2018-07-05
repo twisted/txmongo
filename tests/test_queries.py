@@ -415,7 +415,8 @@ class TestCommand(SingleCollectionTest):
             "delete", "mycol", check=True,
             allowable_errors=[
                 "missing deletes field",
-                "The deletes option is required to the delete command."
+                "The deletes option is required to the delete command.",
+                "BSON field 'delete.deletes' is missing but a required field"
             ]
         )
         self.assertFalse(result["ok"])

@@ -80,6 +80,9 @@ class TestMongoFilters(unittest.TestCase):
     def __3_2_or_higher(self):
         return self.db.command("buildInfo").addCallback(lambda info: info["versionArray"] >= [3, 2])
 
+    def __3_6_or_higher(self):
+        return self.db.command("buildInfo").addCallback(lambda info: info["versionArray"] >= [3, 6])
+
     @defer.inlineCallbacks
     def __test_simple_filter(self, filter, optionname, optionvalue):
         # Checking that `optionname` appears in profiler log with specified value
@@ -88,7 +91,9 @@ class TestMongoFilters(unittest.TestCase):
         yield self.coll.find({}, filter=filter)
         yield self.db.command("profile", 0)
 
-        if (yield self.__3_2_or_higher()):
+        if (yield self.__3_6_or_higher()):
+            profile_filter = {"command." + optionname: optionvalue}
+        elif (yield self.__3_2_or_higher()):
             # query options format in system.profile have changed in MongoDB 3.2
             profile_filter = {"query." + optionname: optionvalue}
         else:
@@ -123,7 +128,9 @@ class TestMongoFilters(unittest.TestCase):
         yield self.coll.find({}, filter=qf.sort(qf.ASCENDING('x')) + qf.comment(comment))
         yield self.db.command("profile", 0)
 
-        if (yield self.__3_2_or_higher()):
+        if (yield self.__3_6_or_higher()):
+            profile_filter = {"command.sort.x": 1, "command.comment": comment}
+        elif (yield self.__3_2_or_higher()):
             profile_filter = {"query.sort.x": 1, "query.comment": comment}
         else:
             profile_filter = {"query.$orderby.x": 1, "query.$comment": comment}
