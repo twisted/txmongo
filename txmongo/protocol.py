@@ -36,6 +36,8 @@ if PY3:
     _from_bytes = int.from_bytes
     _to_bytes = int.to_bytes
 else:
+    from binascii import (hexlify as _hexlify, unhexlify as _unhexlify)
+
     def _from_bytes(value, dummy, _int=int, _hexlify=_hexlify):
         """An implementation of int.from_bytes for python 2.x."""
         return _int(_hexlify(value), 16)
