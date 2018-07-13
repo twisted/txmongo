@@ -31,6 +31,7 @@ from twisted.internet import defer
 from twisted.python.compat import unicode, comparable
 
 
+# Copied from pymongo/helpers.py:193 at commit 47b0d8ebfd6cefca80c1e4521b47aec7cf8f529d
 def _raise_last_write_error(write_errors):
     # If the last batch had multiple errors only report
     # the last error to emulate continue_on_error.
@@ -40,6 +41,7 @@ def _raise_last_write_error(write_errors):
     raise WriteError(error.get("errmsg"), error.get("code"), error)
 
 
+# Copied from pymongo/helpers.py:202 at commit 47b0d8ebfd6cefca80c1e4521b47aec7cf8f529d
 def _raise_write_concern_error(error):
     if "errInfo" in error and error["errInfo"].get('wtimeout'):
         # Make sure we raise WTimeoutError
@@ -49,6 +51,7 @@ def _raise_write_concern_error(error):
         error.get("errmsg"), error.get("code"), error)
 
 
+# Copied from pymongo/helpers.py:211 at commit 47b0d8ebfd6cefca80c1e4521b47aec7cf8f529d
 def _check_write_command_response(result):
     """Backward compatibility helper for write command error handling.
     """
@@ -62,6 +65,7 @@ def _check_write_command_response(result):
         _raise_write_concern_error(error)
 
 
+# Copied from pymongo/bulk.py:93 at commit 96aaf2f5279fb9eee5d0c1a2ce53d243b2772eee
 def _merge_command(run, full_result, results):
     """Merge a group of results from write commands into the full result.
     """
