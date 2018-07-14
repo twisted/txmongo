@@ -10,6 +10,7 @@ Bugfixes
 
 - In combination with PyMongo 3.6.0 `bulk_write` might sometimes raise
   KeyError when bulk operation was interrupted (by failover, for example)
+- Compatibility with PyMongo 3.7
 
 
 Release 18.1.0 (2018-03-21)

@@ -1,6 +1,6 @@
 from bson import BSON
 from pymongo import InsertOne
-from pymongo.errors import BulkWriteError, OperationFailure
+from pymongo.errors import BulkWriteError, OperationFailure, NotMasterError
 from pymongo.operations import UpdateOne, DeleteOne, UpdateMany, ReplaceOne
 from pymongo.results import BulkWriteResult
 from pymongo.write_concern import WriteConcern
@@ -242,4 +242,4 @@ class TestOperationFailure(SingleCollectionTest):
         with patch('txmongo.protocol.MongoProtocol.send_QUERY', side_effect=fake_send_query):
             yield self.assertFailure(
                     self.coll.bulk_write([UpdateOne({}, {'$set': {'x': 42}}, upsert=True)], ordered=True),
-                    OperationFailure)
+                    OperationFailure, NotMasterError)
