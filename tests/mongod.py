@@ -68,7 +68,6 @@ class Mongod(object):
                 b"--noprealloc", b"--nojournal",
                 b"--smallfiles", b"--nssize", b"1",
                 b"--oplogSize", b"1",
-                b"--nohttpinterface",
         ]
         if self.auth: args.append(b"--auth")
         if self.replset: args.extend([b"--replSet", self.replset])
