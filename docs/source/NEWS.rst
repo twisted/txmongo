@@ -2,7 +2,7 @@ Changelog
 =========
 
 
-Release 18.2.0 (UNRELEASED)
+Release 18.2.0 (2018-07-19)
 ---------------------------
 
 Bugfixes
