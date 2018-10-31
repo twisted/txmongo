@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Release 18.3.0 (UNRELEASED)
+---------------------------
+
+Features
+^^^^^^^^
+
+- Allow passing only kwargs to `Database.create_collection()`
+
 
 Release 18.2.0 (2018-07-19)
 ---------------------------

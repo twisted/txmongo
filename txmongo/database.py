@@ -78,6 +78,10 @@ class Database(object):
         collection = Collection(self, name, write_concern=write_concern,
                                 codec_options=codec_options)
 
+        if options is None and kwargs:
+            options = kwargs
+            kwargs = {}
+
         if options:
             if "size" in options:
                 options["size"] = float(options["size"])
