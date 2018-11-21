@@ -336,6 +336,15 @@ class TestCreateCollection(unittest.TestCase):
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
+    def test_WithOptions(self):
+        coll = yield self.db.create_collection("opttest", capped=True, size=4096)
+        self.assertTrue(isinstance(coll, Collection))
+
+        opts = yield coll.options()
+        self.assertEqual(opts["capped"], True)
+        self.assertEqual(opts["size"], 4096)
+
+    @defer.inlineCallbacks
     def test_Fail(self):
         # Not using assertFailure() here because it doesn't wait until deferred is
         # resolved or failed but there was a bug that made deferred hang forever
