@@ -339,7 +339,7 @@ class ConnectionPool(object):
 
     def disconnect(self):
         self.__pinger_discovery.stop()
-        for pinger in self.__pingers.values():
+        for pinger in list(self.__pingers.values()):
             pinger.connector.disconnect()
 
         for factory in self.__pool:
