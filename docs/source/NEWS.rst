@@ -9,6 +9,11 @@ Features
 
 - Allow passing only kwargs to `Database.create_collection()`
 
+Bugfixes
+^^^^^^^^
+
+- Fixed RuntimeError: dictionary changed size during iteration in ConnectionPool.dicconnect #243
+
 
 Release 18.2.0 (2018-07-19)
 ---------------------------
