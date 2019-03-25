@@ -8,6 +8,7 @@ Features
 ^^^^^^^^
 
 - Allow passing only kwargs to `Database.create_collection()`
+- Support for ``mongodb+srv://`` URI scheme when installed with optional "srv" extra: ``pip install txmongo[srv]``
 
 Bugfixes
 ^^^^^^^^
