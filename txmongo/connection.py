@@ -251,7 +251,7 @@ class ConnectionPool(object):
         assert isinstance(pool_size, int)
         assert pool_size >= 1
 
-        if not uri.startswith("mongodb://"):
+        if not uri.startswith("mongodb://") and not uri.startswith("mongodb+srv://"):
             uri = "mongodb://" + uri
 
         self.__uri = parse_uri(uri)

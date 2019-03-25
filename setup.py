@@ -11,6 +11,9 @@ setup(
     keywords=["mongo", "mongodb", "pymongo", "gridfs", "txmongo"],
     packages=["txmongo", "txmongo._gridfs"],
     install_requires=["twisted>=14.0", "pymongo>=3.0"],
+    extras_require={
+        'srv': ['pymongo[srv]>=3.6'],
+    },
     license="Apache License, Version 2.0",
     include_package_data=True,
     test_suite="nose.collector",
