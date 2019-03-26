@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 18.3.0 (UNRELEASED)
+Release 19.1.0 (2019-03-26)
 ---------------------------
 
 Features
