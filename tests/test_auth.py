@@ -290,9 +290,10 @@ class TestMongoDBCR(unittest.TestCase):
             try:
                 conn = connection.MongoConnection(mongo_host, mongo_port)
 
-                ismaster = yield conn.admin.command("ismaster")
-                if ismaster["maxWireVersion"] < 3:
-                    raise unittest.SkipTest("This test is only for MongoDB 3.0")
+                server_status = yield conn.admin.command("serverStatus")
+                major_version = int(server_status['version'].split('.')[0])
+                if major_version != 3:
+                    raise unittest.SkipTest("This test is only for MongoDB 3.x")
 
                 # Force MongoDB 3.x to use MONGODB-CR auth schema
                 yield conn.admin.system.version.update_one({"_id": "authSchema"},
