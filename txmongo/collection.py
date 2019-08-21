@@ -1111,10 +1111,8 @@ class Collection(object):
 
         index.update(kwargs)
 
-        return self._database.command({
-            "createIndexes": self._collection_name,
-            "indexes": [index]
-        }).addCallback(lambda _: name)
+        return self._database.command("createIndexes", self._collection_name, indexes=[index])\
+            .addCallback(lambda _: name)
 
     @timeout
     def ensure_index(self, sort_fields, _deadline=None, **kwargs):
