@@ -1,6 +1,15 @@
 Changelog
 =========
 
+Release 19.2.0 (UNRELEASED)
+---------------------------
+
+Bugfixes
+^^^^^^^^
+
+- Fixed compatibility with PyMongo 3.9.0+
+
+
 Release 19.1.0 (2019-03-26)
 ---------------------------
 
