@@ -120,7 +120,11 @@ class TestReplicaSet(unittest.TestCase):
             empty = yield conn.db.coll.find(flags=QUERY_SLAVE_OK)
             self.assertEqual(empty, [])
 
-            yield self.assertFailure(conn.db.coll.insert({'x': 42}), OperationFailure)
+            server_status = yield conn.admin.command("serverStatus")
+            _version = [int(part) for part in server_status["version"].split('.')]
+
+            expected_error = AutoReconnect if _version > [4, 2] else OperationFailure
+            yield self.assertFailure(conn.db.coll.insert({'x': 42}), expected_error)
         finally:
             yield conn.disconnect()
 

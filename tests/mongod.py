@@ -65,10 +65,12 @@ class Mongod(object):
         args = [b"mongod",
                 b"--port", intToBytes(self.port),
                 b"--dbpath", self.__datadir,
-                b"--noprealloc",
                 # MongoDB 4.0 doesn't support nojournal + WiredTiger + ReplicaSet
                 # b"--nojournal",
-                b"--smallfiles", b"--nssize", b"1",
+                # MongoDB 4.2 doesn't support MMAPv1 and so --noprealloc and --smallfiles
+                # b"--noprealloc",
+                # b"--smallfiles",
+                # b"--nssize", b"1",
                 b"--oplogSize", b"1",
         ]
         if self.auth: args.append(b"--auth")

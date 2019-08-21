@@ -1099,23 +1099,22 @@ class Collection(object):
 
         key = SON()
         for k, v in sort_fields["orderby"]:
-            key.update({k: v})
+            key[k] = v
 
-        index = SON(dict(
-            ns=str(self),
-            name=name,
-            key=key
-        ))
+        index = {"name": name, "key": key}
 
         if "drop_dups" in kwargs:
-            kwargs["dropDups"] = kwargs.pop("drop_dups")
+            index["dropDups"] = kwargs.pop("drop_dups")
 
         if "bucket_size" in kwargs:
-            kwargs["bucketSize"] = kwargs.pop("bucket_size")
+            index["bucketSize"] = kwargs.pop("bucket_size")
 
         index.update(kwargs)
-        return self._database.system.indexes.insert(index, safe=True)\
-                .addCallback(lambda _: name)
+
+        return self._database.command({
+            "createIndexes": self._collection_name,
+            "indexes": [index]
+        }).addCallback(lambda _: name)
 
     @timeout
     def ensure_index(self, sort_fields, _deadline=None, **kwargs):
