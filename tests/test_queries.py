@@ -24,6 +24,7 @@ from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
 from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
+from twisted.trial import unittest
 from txmongo.protocol import MongoClientProtocol
 import txmongo.filter as qf
 from tests.utils import SingleCollectionTest
@@ -125,7 +126,6 @@ class TestMongoQueries(SingleCollectionTest):
         while docs:
             lengths.append(len(docs))
             docs, d = yield d
-        print(lengths)
         self.assertEqual(lengths, [101,39])
 
 
@@ -149,6 +149,11 @@ class TestMongoQueries(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_group(self):
+        server_status = yield self.conn.admin.command("serverStatus")
+        version = [int(part) for part in server_status['version'].split('.')]
+        if version >= [4, 2]:
+            raise unittest.SkipTest("`group` is only supported by MongoDB <= 4.0")
+
         yield self.coll.insert([{'v': i % 2} for i in range(5)], safe=True)
         reduce_ = """
         function(curr, result) {

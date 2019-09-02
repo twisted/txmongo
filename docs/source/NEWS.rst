@@ -8,6 +8,7 @@ Bugfixes
 ^^^^^^^^
 
 - Fixed compatibility with PyMongo 3.9.0+
+- `create_index()` is now working with MongoDB 4.2
 
 
 Release 19.1.0 (2019-03-26)
