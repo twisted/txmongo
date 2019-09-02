@@ -65,7 +65,9 @@ class Mongod(object):
         args = [b"mongod",
                 b"--port", intToBytes(self.port),
                 b"--dbpath", self.__datadir,
-                b"--noprealloc", b"--nojournal",
+                b"--noprealloc",
+                # MongoDB 4.0 doesn't support nojournal + WiredTiger + ReplicaSet
+                # b"--nojournal",
                 b"--smallfiles", b"--nssize", b"1",
                 b"--oplogSize", b"1",
         ]

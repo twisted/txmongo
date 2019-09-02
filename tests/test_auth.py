@@ -290,9 +290,10 @@ class TestMongoDBCR(unittest.TestCase):
             try:
                 conn = connection.MongoConnection(mongo_host, mongo_port)
 
-                ismaster = yield conn.admin.command("ismaster")
-                if ismaster["maxWireVersion"] < 3:
-                    raise unittest.SkipTest("This test is only for MongoDB 3.0")
+                server_status = yield conn.admin.command("serverStatus")
+                major_version = int(server_status['version'].split('.')[0])
+                if major_version != 3:
+                    raise unittest.SkipTest("This test is only for MongoDB 3.x")
 
                 # Force MongoDB 3.x to use MONGODB-CR auth schema
                 yield conn.admin.system.version.update_one({"_id": "authSchema"},
@@ -419,33 +420,33 @@ Z8j9QF2Jo2f+8AwEwQJAPaAkfH4UJ/dxQ/6xmn5JGJj8w91hAB1vg4M37tPKBoHx
 xm9+lxWGOq3vlPWI9U4mzzPZ0IaCc9Vh4kYoeUhQTA==
 -----END RSA PRIVATE KEY-----
 -----BEGIN CERTIFICATE-----
-MIIBxTCCAS4CCQDggej4Q/JZPTANBgkqhkiG9w0BAQsFADAkMRAwDgYDVQQKDAd0
-eG1vbmdvMRAwDgYDVQQDDAd0ZXN0aW5nMB4XDTE2MTAwMzIwNDIzM1oXDTE5MDYz
-MDIwNDIzM1owKjEQMA4GA1UECgwHdHhtb25nbzEWMBQGCgmSJomT8ixkARkWBnNl
-cnZlcjCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAzM2EQz7kGIkay76Re0Hi
-sounY8AEVB4+mJf3We3RPEGodPOLGuMeGvVCBNmD4PiauF6/3FQj+MB16tDpNrYE
-xMbAF9rjhoXlPAIoRAADi99y4gVKtAtSfccS+WUumhYBr8jADkXmgaXHuO9pECZQ
-p3ghh9z/L1aYf9Uz1omlnEECAwEAATANBgkqhkiG9w0BAQsFAAOBgQC/0qiQeGpK
-0dXsWb8M2UVxqmHDzcwSqBI55USfZ2BbwDVHm0ExMm03r2wrhuXE6Habmzf7nsRB
-DT2+MoNAQPiaNOrgIzDvbXOI75vr1B2Id18GG9zA0J30CNyvUV9y/gQ52X4/7GvN
-NQddF0MaGGpwCLi+Kc52ibq5yFBVv8n9Ww==
+MIIB0DCCATkCFDy1RlQvWM+OjvInm61kkiDaKnN0MA0GCSqGSIb3DQEBCwUAMCQx
+EDAOBgNVBAoMB3R4bW9uZ28xEDAOBgNVBAMMB3Rlc3RpbmcwHhcNMTkwODIwMTAz
+NDU1WhcNMjkwODE3MTAzNDU1WjAqMRYwFAYKCZImiZPyLGQBGRYGc2VydmVyMRAw
+DgYDVQQKDAd0eG1vbmdvMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDMzYRD
+PuQYiRrLvpF7QeKyi6djwARUHj6Yl/dZ7dE8Qah084sa4x4a9UIE2YPg+Jq4Xr/c
+VCP4wHXq0Ok2tgTExsAX2uOGheU8AihEAAOL33LiBUq0C1J9xxL5ZS6aFgGvyMAO
+ReaBpce472kQJlCneCGH3P8vVph/1TPWiaWcQQIDAQABMA0GCSqGSIb3DQEBCwUA
+A4GBALJdbrXT41YCidOl6+MKk+NyM+53puPIvnkUH7ymrd/CNae4eYa6qNX+dxIG
+oP9y4WM9lqctPGE3JBoohQbmkMxopT2XI/KgCvxNOe/TQje+qnKWkjjKBI/y1WNG
+19A8FRZrVO0+DGFUPlMSeqExse0/JgFZNqzSgt7LhE+COTI9
 -----END CERTIFICATE-----
 """
 
 
-    client_subject = "DC=client,O=txmongo"
+    client_subject = "O=txmongo,DC=client"
     client_cert = """
 -----BEGIN CERTIFICATE-----
-MIIBxTCCAS4CCQDggej4Q/JZPjANBgkqhkiG9w0BAQsFADAkMRAwDgYDVQQKDAd0
-eG1vbmdvMRAwDgYDVQQDDAd0ZXN0aW5nMB4XDTE2MTAwMzIwNDIzM1oXDTE5MDYz
-MDIwNDIzM1owKjEQMA4GA1UECgwHdHhtb25nbzEWMBQGCgmSJomT8ixkARkWBmNs
-aWVudDCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAkiJg+hVMxyfHgbtCv4QM
-r/95rol2IpF9GzsJDXRjN4jaf3iwaovS/gfJyaNDGo8aCb30o7hvrUIFHEk1BxK3
-ebEIZYuCN3A2Sf/cqx9GRiY/fkWgXQJBE06MzDF/25afwvN0ea54A+bS3se3v59i
-cSjxmV5CeX52ABq70YjHwAECAwEAATANBgkqhkiG9w0BAQsFAAOBgQB+zRvS8s6/
-QBjSuJ74Wj/nA1aONOX1EgzpyWvYgoUeWWpLKyDb6SmSvgpScVD1n7oZR6TbuPkI
-LXTwD5PKgkyRAIjdjR8F1QCkgCLm560l8xwB1p5IXMVflPBzEgS5GzwmQbpJqr16
-3Ug8rLMyBWqrF9NRcBztBvp3V1m3po41kg==
+MIIB0DCCATkCFDy1RlQvWM+OjvInm61kkiDaKnN1MA0GCSqGSIb3DQEBCwUAMCQx
+EDAOBgNVBAoMB3R4bW9uZ28xEDAOBgNVBAMMB3Rlc3RpbmcwHhcNMTkwODIwMTAz
+NTA0WhcNMjkwODE3MTAzNTA0WjAqMRYwFAYKCZImiZPyLGQBGRYGY2xpZW50MRAw
+DgYDVQQKDAd0eG1vbmdvMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCSImD6
+FUzHJ8eBu0K/hAyv/3muiXYikX0bOwkNdGM3iNp/eLBqi9L+B8nJo0MajxoJvfSj
+uG+tQgUcSTUHErd5sQhli4I3cDZJ/9yrH0ZGJj9+RaBdAkETTozMMX/blp/C83R5
+rngD5tLex7e/n2JxKPGZXkJ5fnYAGrvRiMfAAQIDAQABMA0GCSqGSIb3DQEBCwUA
+A4GBAIZbR0xP5Oi+vHiy7DXnHvQPGYQYgG5/uQ5Jb3+PAgYUmijRgwl6/bmeUYv5
+EwDx3sXWmbrCNlkePy1tZN+KXNzusEJQWIS7Tx4Crs2mNjcqvAi+59TOnxTo2ZA6
+k+zy+UlhXUuPcigJhyj6dx10SgRu6GQO1rOCtWYWUWmj/eFd
 -----END CERTIFICATE-----
 """
     client_key = """

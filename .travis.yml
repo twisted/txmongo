@@ -1,7 +1,6 @@
 language: python
 python:
   - "2.7"
-  - "3.4"
   - "3.5"
   - "pypy"
   - "pypy3"
@@ -29,6 +28,10 @@ matrix:
       env: TOX_ENV=pyflakes
     - python: 3.5
       env: TOX_ENV=manifest
+    - python: 3.4
+      env: TOX_ENV=tw179
+    - python: 3.4
+      env: TOX_ENV=tw166
     - python: 2.7
       env: TOX_ENV=tw140
     - python: 2.7

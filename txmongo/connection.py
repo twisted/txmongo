@@ -241,8 +241,6 @@ class ConnectionPool(object):
     __pool_size = None
     __uri = None
 
-    __wc_possible_options = {'w', "wtimeout", 'j', "fsync"}
-
     __pinger_discovery_interval = 10
 
     def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None,
@@ -256,10 +254,9 @@ class ConnectionPool(object):
 
         self.__uri = parse_uri(uri)
 
-        wc_options = self.__uri['options'].copy()
+        wc_options = dict(self.__uri['options'])
         wc_options.update(kwargs)
-        wc_options = dict((k, v) for k, v in wc_options.items() if k in self.__wc_possible_options)
-        self.__write_concern = WriteConcern(**wc_options)
+        self.__write_concern = self.__parse_write_concern_options(wc_options)
 
         self.__codec_options = kwargs.get('codec_options', DEFAULT_CODEC_OPTIONS)
 
@@ -291,6 +288,14 @@ class ConnectionPool(object):
         self.__pingers = {}
         self.__pinger_discovery = task.LoopingCall(self.__discovery_nodes_to_ping)
         self.__pinger_discovery.start(self.__pinger_discovery_interval, now=False)
+
+    @staticmethod
+    def __parse_write_concern_options(options):
+        concern = options.get('w')
+        wtimeout = options.get('wtimeout', options.get('wtimeoutms'))
+        j = options.get('j', options.get('journal'))
+        fsync = options.get('fsync')
+        return WriteConcern(concern, wtimeout, j, fsync)
 
     def __tcp_or_ssl_connect(self, host, port, factory, **kwargs):
         if self.ssl_context_factory:
