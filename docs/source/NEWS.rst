@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 19.2.0 (UNRELEASED)
+Release 19.2.0 (2019-09-16)
 ---------------------------
 
 Bugfixes
