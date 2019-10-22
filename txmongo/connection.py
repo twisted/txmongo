@@ -343,7 +343,8 @@ class ConnectionPool(object):
         return db.command("dropDatabase")
 
     def disconnect(self):
-        self.__pinger_discovery.stop()
+        if self.__pinger_discovery.running:
+            self.__pinger_discovery.stop()
         for pinger in list(self.__pingers.values()):
             pinger.connector.disconnect()
 
