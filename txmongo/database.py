@@ -3,11 +3,12 @@
 # found in the LICENSE file.
 
 from bson.son import SON
-from bson.codec_options import DEFAULT_CODEC_OPTIONS
+from bson.codec_options import DEFAULT_CODEC_OPTIONS, CodecOptions
 from pymongo.helpers import _check_command_response
 from twisted.python.compat import unicode
 from txmongo.collection import Collection
-from txmongo.utils import timeout
+from txmongo.utils import timeout, check_deadline
+from txmongo.protocol import Query
 
 
 class Database(object):
@@ -54,22 +55,33 @@ class Database(object):
 
     @timeout
     def command(self, command, value=1, check=True, allowable_errors=None,
-                codec_options=DEFAULT_CODEC_OPTIONS, _deadline=None, **kwargs):
+                codec_options=DEFAULT_CODEC_OPTIONS, _deadline=None, write_concern=None, **kwargs):
         """command(command, value=1, check=True, allowable_errors=None, codec_options=DEFAULT_CODEC_OPTIONS)"""
         if isinstance(command, (bytes, unicode)):
             command = SON([(command, value)])
         options = kwargs.copy()
         command.update(options)
 
-        def on_ok(response):
+        def on_proto(protocol):
+            check_deadline(_deadline)
+            return self._send_command_to_proto(protocol, command, check=check, allowable_errors=allowable_errors, codec_options=codec_options, write_concern=write_concern, _deadline=_deadline)
+
+        proto = self.connection.getprotocol()
+        return proto.addCallback(on_proto)
+
+    def _send_command_to_proto(self, proto, command, check=True, allowable_errors=None, codec_options=None, write_concern=None, flags=0, _deadline=None):
+        def on_reply(raw_reply):
+            check_deadline(_deadline)
+            response = raw_reply.documents[0].decode(codec_options=codec_options or self.codec_options)
+
             if check:
-                msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(repr(command), ns)
+                msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(repr(command), self)
                 _check_command_response(response, msg, allowable_errors)
 
             return response
 
-        ns = self["$cmd"].with_options(codec_options=codec_options)
-        return ns.find_one(command, _deadline=_deadline).addCallback(on_ok)
+        query = Query(collection=str(self) + '.$cmd', query=command, flags=flags)
+        return proto.send_QUERY(query).addCallback(on_reply)
 
 
     @timeout

@@ -188,7 +188,7 @@ class TestReplicaSet(unittest.TestCase):
 
             yield conn.db.coll.insert({'x': 42}, safe=True)
 
-            yield self.__mongod[0].stop()
+            yield self.__mongod[0].kill(signal.SIGSTOP)
 
             while True:
                 try:
@@ -200,6 +200,7 @@ class TestReplicaSet(unittest.TestCase):
                     pass
 
         finally:
+            yield self.__mongod[0].kill(signal.SIGCONT)
             yield conn.disconnect()
             self.flushLoggedErrors(AutoReconnect)
 
@@ -213,7 +214,7 @@ class TestReplicaSet(unittest.TestCase):
 
             yield conn.db.coll.insert({'x': 42}, safe=True)
 
-            yield self.__mongod[0].stop()
+            yield self.__mongod[0].kill(signal.SIGSTOP)
 
             while True:
                 try:
@@ -225,6 +226,7 @@ class TestReplicaSet(unittest.TestCase):
                     pass
 
         finally:
+            yield self.__mongod[0].kill(signal.SIGCONT)
             yield conn.disconnect()
             self.flushLoggedErrors(AutoReconnect)
 
