@@ -17,6 +17,7 @@ from __future__ import absolute_import, division
 
 from twisted.trial import unittest
 from twisted.internet import defer
+
 import txmongo
 import txmongo.filter as qf
 from pymongo.errors import OperationFailure
@@ -110,6 +111,9 @@ class TestMongoFilters(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Snapshot(self):
+        ismaster = yield self.db.command('ismaster')
+        if ismaster['maxWireVersion'] >= 7:
+            raise unittest.SkipTest('snapshot option is only for MongoDB <=3.6')
         yield self.__test_simple_filter(qf.snapshot(), "snapshot", True)
 
     @defer.inlineCallbacks

@@ -60,10 +60,9 @@ class _Connection(ReconnectingClientFactory):
             slaveok = uri_options['readpreference'] not in _PRIMARY_READ_PREFERENCES
 
         try:
-            if not slaveok:
-                # Update our server configuration. This may disconnect if the node
-                # is not a master.
-                yield self.configure(proto)
+            # Update our server configuration. This may disconnect if the node
+            # is not a master and slaveok is not set
+            yield self.configure(proto, slaveok)
 
             yield self._auth_proto(proto)
             self.setInstance(instance=proto)
@@ -77,7 +76,7 @@ class _Connection(ReconnectingClientFactory):
         return proto.send_QUERY(query)
 
     @defer.inlineCallbacks
-    def configure(self, proto):
+    def configure(self, proto, slaveok):
         """
             Configures the protocol using the information gathered from the
             remote Mongo instance. Such information may contain the max
@@ -134,11 +133,12 @@ class _Connection(ReconnectingClientFactory):
                 if host not in self.__allnodes:
                     self.__allnodes.append(host)
 
-        # Check if this node is the master.
-        ismaster = config.get("ismaster")
-        if not ismaster:
-            msg = "TxMongo: MongoDB host `%s` is not master." % config.get('me')
-            raise AutoReconnect(msg)
+        if not slaveok:
+            # Check if this node is the master.
+            ismaster = config.get("ismaster")
+            if not ismaster:
+                msg = "TxMongo: MongoDB host `%s` is not master." % config.get('me')
+                raise AutoReconnect(msg)
 
     def clientConnectionFailed(self, connector, reason):
         self.instance = None

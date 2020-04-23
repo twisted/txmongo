@@ -436,8 +436,202 @@ class Collection(object):
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find_with_cursor(**new_kwargs)
 
-    def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0,**kwargs):
-        
+    _MODIFIERS = SON([
+        ('$query', 'filter'),
+        ('$orderby', 'sort'),
+        ('$hint', 'hint'),
+        ('$comment', 'comment'),
+        ('$maxScan', 'maxScan'),
+        ('$maxTimeMS', 'maxTimeMS'),
+        ('$max', 'max'),
+        ('$min', 'min'),
+        ('$returnKey', 'returnKey'),
+        ('$showRecordId', 'showRecordId'),
+        ('$showDiskLoc', 'showRecordId'),  # <= MongoDB 3.0
+        ('$snapshot', 'snapshot'),  # <= MongoDB 4.0
+    ])
+
+    @classmethod
+    def _gen_find_command(cls, coll, filter_with_modifiers, projection, skip, limit, batch_size, max_wire_version):
+        cmd = SON([("find", coll)])
+        if "$query" in filter_with_modifiers:
+            cmd.update([(cls._MODIFIERS[key], val) if key in cls._MODIFIERS else (key, val)
+                        for key, val in filter_with_modifiers.items()])
+            if max_wire_version >= 7:  # MongoDB 4.0+
+                cmd.pop('snapshot', None)
+        else:
+            cmd["filter"] = filter_with_modifiers
+
+        if projection:
+            cmd["projection"] = projection
+        if skip:
+            cmd["skip"] = skip
+        if limit:
+            cmd["limit"] = abs(limit)
+            if limit < 0:
+                cmd["singleBatch"] = True
+                cmd["batchSize"] = abs(limit)
+        if batch_size:
+            cmd["batchSize"] = batch_size
+
+        if '$explain' in filter_with_modifiers:
+            cmd.pop('$explain')
+            cmd = SON([('explain', cmd)])
+
+        return cmd
+
+    def __send_find_command(self, protocol, filter, projection, skip, limit, batch_size, as_class, flags, deadline):
+        codec_options = self.codec_options
+        if as_class is not None:
+            codec_options = codec_options._replace(document_class=as_class)
+
+        def after_reply(result, this_func, fetched=0):
+            try:
+                check_deadline(deadline)
+            except Exception:
+                cursor_id = result.get("cursor", {}).get("id")
+                if cursor_id:
+                    kill = SON([
+                        ("killCursors", self.name),
+                        ("cursors", [cursor_id])
+                    ])
+                    self.database.command(kill)
+                raise
+
+            if "cursor" not in result:
+                return [result], defer.succeed(([], None))
+            cursor = result["cursor"]
+
+            docs_key = "firstBatch"
+            if "nextBatch" in cursor:
+                docs_key = "nextBatch"
+
+            docs_count = len(cursor[docs_key])
+            if limit > 0:
+                docs_count = min(docs_count, limit - fetched)
+            fetched += docs_count
+            out = cursor[docs_key][:docs_count]
+
+            if cursor["id"]:
+                if limit == 0:
+                    to_fetch = 0  # no limit
+                    if batch_size:
+                        to_fetch = batch_size
+                elif limit < 0:
+                    # We won't actually get here because MongoDB won't
+                    # create a cursor when limit < 0
+                    to_fetch = None
+                else:
+                    to_fetch = limit - fetched
+                    if to_fetch <= 0:
+                        to_fetch = None  # close cursor
+                    elif batch_size:
+                        to_fetch = min(batch_size, to_fetch)
+
+                if to_fetch is None:
+                    # FIXME: extract this to a function
+                    kill = SON([
+                        ("killCursors", self.name),
+                        ("cursors", [cursor["id"]])
+                    ])
+                    self.database.command(kill)
+                    return out, defer.succeed(([], None))
+
+                # FIXME: extract this to a function
+                get_more = SON([
+                    ("getMore", cursor["id"]),
+                    ("collection", self.name),
+                ])
+                if batch_size:
+                    get_more["batchSize"] = batch_size
+                next_reply = self.database._send_command_to_proto(protocol, get_more, codec_options=codec_options, flags=flags)
+                next_reply.addCallback(this_func, this_func, fetched)
+                return out, next_reply
+
+            return out, defer.succeed(([], None))
+
+        cmd = self._gen_find_command(self.name, filter, projection, skip, limit, batch_size, protocol.max_wire_version)
+        return self.database._send_command_to_proto(protocol, cmd, codec_options=codec_options, flags=flags)\
+            .addCallback(after_reply, after_reply)
+
+
+    def __send_legacy_find(self, protocol, filter, projection, skip, limit, batch_size, as_class, deadline, kwargs):
+        # this_func argument is just a reference to after_reply function itself.
+        # after_reply can reference to itself directly but this will create a circular
+        # reference between closure and function object which will add unnecessary
+        # work for GC.
+        def after_reply(reply, protocol, this_func, fetched=0):
+            try:
+                check_deadline(deadline)
+            except Exception:
+                if reply.cursor_id:
+                    protocol.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
+                raise
+
+            documents = reply.documents
+            docs_count = len(documents)
+
+            if limit > 0:
+                docs_count = min(docs_count, limit - fetched)
+            fetched += docs_count
+
+            options = self.codec_options
+            if as_class is not None:
+                options = options._replace(document_class=as_class)
+            out = [document.decode(codec_options=options) for document in documents[:docs_count]]
+
+            if reply.cursor_id:
+                # please note that this will not be the case if batch_size = 1
+                # it is documented (parameter numberToReturn for OP_QUERY)
+                # https://docs.mongodb.com/manual/reference/mongodb-wire-protocol/#wire-op-query
+                if limit == 0:
+                    to_fetch = 0  # no limit
+                    if batch_size:
+                      to_fetch = batch_size
+                elif limit < 0:
+                    # We won't actually get here because MongoDB won't
+                    # create a cursor when limit < 0
+                    to_fetch = None
+                else:
+                    to_fetch = limit - fetched
+                    if to_fetch <= 0:
+                        to_fetch = None  # close cursor
+                    elif batch_size:
+                        to_fetch = min(batch_size, to_fetch)
+
+                if to_fetch is None:
+                    protocol.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
+                    return out, defer.succeed(([], None))
+
+                next_reply = protocol.send_GETMORE(Getmore(
+                    collection=str(self), cursor_id=reply.cursor_id,
+                    n_to_return=to_fetch
+                ))
+                next_reply.addCallback(this_func, protocol, this_func, fetched)
+                return out, next_reply
+
+            return out, defer.succeed(([], None))
+
+        flags = kwargs.get("flags", 0)
+
+        if batch_size and limit:
+            n_to_return = min(batch_size, limit)
+        elif batch_size:
+            n_to_return = batch_size
+        else:
+            n_to_return = limit
+
+        query = Query(flags=flags, collection=str(self),
+                      n_to_skip=skip, n_to_return=n_to_return,
+                      query=filter, fields=projection)
+
+        deferred_query = protocol.send_QUERY(query)
+        deferred_query.addCallback(after_reply, protocol, after_reply)
+        return deferred_query
+
+
+    def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0, **kwargs):
+
         if filter is None:
             filter = SON()
 
@@ -459,75 +653,14 @@ class Collection(object):
         as_class = kwargs.get("as_class")
         proto = self._database.connection.getprotocol()
 
+        deadline = kwargs.pop("_deadline", None)
+
         def after_connection(protocol):
-            flags = kwargs.get("flags", 0)
-
-            check_deadline(kwargs.pop("_deadline", None))
-
-            if batch_size and limit:
-                n_to_return = min(batch_size,limit)
-            elif batch_size:
-                n_to_return = batch_size
-            else:
-                n_to_return = limit
-
-            query = Query(flags=flags, collection=str(self),
-                          n_to_skip=skip, n_to_return=n_to_return,
-                          query=filter, fields=projection)
-
-            deferred_query = protocol.send_QUERY(query)
-            deferred_query.addCallback(after_reply, protocol, after_reply)
-            return deferred_query
-
-        # this_func argument is just a reference to after_reply function itself.
-        # after_reply can reference to itself directly but this will create a circular
-        # reference between closure and function object which will add unnecessary
-        # work for GC.
-        def after_reply(reply, protocol, this_func, fetched=0):
-
-            documents = reply.documents
-            docs_count = len(documents)
-
-            if limit > 0:
-                docs_count = min(docs_count, limit - fetched)
-            fetched += docs_count
-
-            options = self.codec_options
-            if as_class is not None:
-                options = options._replace(document_class=as_class)
-            out = [document.decode(codec_options=options) for document in documents[:docs_count]]
-
-            if reply.cursor_id:
-                # please note that this will not be the case if batch_size = 1
-                # it is documented (parameter numberToReturn for OP_QUERY)
-                # https://docs.mongodb.com/manual/reference/mongodb-wire-protocol/#wire-op-query 
-                if limit == 0:
-                    to_fetch = 0  # no limit
-                    if batch_size:
-                      to_fetch = batch_size
-                elif limit < 0:
-                    # We won't actually get here because MongoDB won't
-                    # create cursor when limit < 0
-                    to_fetch = None
-                else:
-                    to_fetch = limit - fetched
-                    if to_fetch <= 0:
-                        to_fetch = None  # close cursor
-                    elif batch_size:
-                        to_fetch = min(batch_size,to_fetch)
-
-                if to_fetch is None:
-                    protocol.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
-                    return out, defer.succeed(([], None))
-
-                next_reply = protocol.send_GETMORE(Getmore(
-                    collection=str(self), cursor_id=reply.cursor_id,
-                    n_to_return=to_fetch
-                ))
-                next_reply.addCallback(this_func, protocol, this_func, fetched)
-                return out, next_reply
-
-            return out, defer.succeed(([], None))
+            check_deadline(deadline)
+            if protocol.max_wire_version < 4:
+                return self.__send_legacy_find(protocol, filter, projection, skip, limit, batch_size, as_class, deadline, kwargs)
+            return self.__send_find_command(protocol, filter, projection, skip, limit, batch_size, as_class,
+                                            kwargs.get("flags", 0), deadline)
 
         proto.addCallback(after_connection)
         return proto
