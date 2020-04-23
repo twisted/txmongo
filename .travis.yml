@@ -22,6 +22,12 @@ matrix:
       env: TOX_ENV=twtrunk
     - python: pypy3
       env: TOX_ENV=twtrunk
+      
+  exclude:
+    - python: 2.7
+      env: TOX_ENV=twlatest
+    - python: 2.7
+      env: TOX_ENV=twtrunk
 
   include:
     - python: 3.5
