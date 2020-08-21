@@ -4,9 +4,9 @@
 
 from bson.son import SON
 from bson.codec_options import DEFAULT_CODEC_OPTIONS
-from pymongo.helpers import _check_command_response
 from twisted.python.compat import unicode
 from txmongo.collection import Collection
+from txmongo.pymongo_internals import _check_command_response
 from txmongo.utils import timeout
 
 
