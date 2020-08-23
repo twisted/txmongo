@@ -20,7 +20,6 @@ import shutil
 
 from twisted.python.compat import intToBytes
 from twisted.python.filepath import FilePath
-from twisted.python.compat import _PY3
 from twisted.internet import defer, reactor
 from twisted.internet.error import ProcessDone
 
@@ -53,9 +52,8 @@ class Mongod(object):
             self.__datadir = dbpath
             self.__rmdatadir = False
 
-        if _PY3:
-            # Ensure it is always bytes
-            self.__datadir = FilePath(self.__datadir).asBytesMode().path
+        # Ensure it is always bytes
+        self.__datadir = FilePath(self.__datadir).asBytesMode().path
 
 
     def start(self):
