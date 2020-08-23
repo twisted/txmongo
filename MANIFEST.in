@@ -7,6 +7,7 @@ include *.spec
 include AUTHORS
 include CONTRIBUTORS
 prune Makefile
+prune Makefile.in
 prune debian
 prune docs
 recursive-include examples *.py
