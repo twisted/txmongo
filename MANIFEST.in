@@ -6,7 +6,7 @@ include tox.ini
 include *.spec
 include AUTHORS
 include CONTRIBUTORS
-prune Makefile
+include Makefile
 prune debian
 prune docs
 recursive-include examples *.py
