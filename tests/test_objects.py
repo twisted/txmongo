@@ -28,7 +28,6 @@ from txmongo.gridfs import GridFS, GridIn, GridOut, GridOutIterator, errors
 from txmongo._gridfs.errors import NoFile
 from twisted.trial import unittest
 from twisted.internet import defer
-from twisted.python.compat import _PY3
 try:
     from twisted._version import version as twisted_version
 except ImportError:
@@ -45,10 +44,7 @@ class TestMongoObjects(unittest.TestCase):
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         mydb = conn.mydb
         self.assertEqual(isinstance(mydb, database.Database), True)
-        if _PY3:
-            self.assertEqual(repr(mydb), "Database(Connection('127.0.0.1', 27017), 'mydb')")
-        else:
-            self.assertEqual(repr(mydb), "Database(Connection('127.0.0.1', 27017), u'mydb')")
+        self.assertEqual(repr(mydb), "Database(Connection('127.0.0.1', 27017), 'mydb')")
         self.assertEqual(repr(mydb("mydb2")), repr(mydb.__call__("mydb2")))
         mycol = mydb.mycol
         self.assertEqual(isinstance(mycol, collection.Collection), True)
