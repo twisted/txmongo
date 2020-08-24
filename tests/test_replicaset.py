@@ -143,15 +143,13 @@ class TestReplicaSet(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_AutoReconnect(self):
-        self.patch(_Connection, 'maxDelay', 5)
-
         try:
             uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
-            conn = ConnectionPool(uri)
+            conn = ConnectionPool(uri, max_delay=5)
 
             yield conn.db.coll.insert({'x': 42}, safe=True)
 
-            yield self.__mongod[0].stop()
+            self.__mongod[0].kill(signal.SIGSTOP)
 
             while True:
                 try:
@@ -162,14 +160,14 @@ class TestReplicaSet(unittest.TestCase):
                     pass
 
         finally:
+            self.__mongod[0].kill(signal.SIGCONT)
             yield conn.disconnect()
             self.flushLoggedErrors(AutoReconnect)
 
     @defer.inlineCallbacks
     def test_AutoReconnect_from_primary_step_down(self):
-        self.patch(_Connection, 'maxDelay', 5)
         uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
-        conn = ConnectionPool(uri)
+        conn = ConnectionPool(uri, max_delay=5)
 
         # this will force primary to step down, triggering an AutoReconnect that bubbles up
         # through the connection pool to the client
@@ -180,15 +178,13 @@ class TestReplicaSet(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_find_with_timeout(self):
-        self.patch(_Connection, 'maxDelay', 5)
-
         try:
             uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
-            conn = ConnectionPool(uri, initial_delay=3)
+            conn = ConnectionPool(uri, retry_delay=3, max_delay=5)
 
             yield conn.db.coll.insert({'x': 42}, safe=True)
 
-            yield self.__mongod[0].stop()
+            self.__mongod[0].kill(signal.SIGSTOP)
 
             while True:
                 try:
@@ -200,20 +196,19 @@ class TestReplicaSet(unittest.TestCase):
                     pass
 
         finally:
+            self.__mongod[0].kill(signal.SIGCONT)
             yield conn.disconnect()
             self.flushLoggedErrors(AutoReconnect)
 
     @defer.inlineCallbacks
     def test_find_with_deadline(self):
-        self.patch(_Connection, 'maxDelay', 5)
-
         try:
             uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
-            conn = ConnectionPool(uri, initial_delay=3)
+            conn = ConnectionPool(uri, retry_delay=3, max_delay=5)
 
             yield conn.db.coll.insert({'x': 42}, safe=True)
 
-            yield self.__mongod[0].stop()
+            self.__mongod[0].kill(signal.SIGSTOP)
 
             while True:
                 try:
@@ -225,20 +220,19 @@ class TestReplicaSet(unittest.TestCase):
                     pass
 
         finally:
+            self.__mongod[0].kill(signal.SIGCONT)
             yield conn.disconnect()
             self.flushLoggedErrors(AutoReconnect)
 
     @defer.inlineCallbacks
     def test_TimeExceeded_insert(self):
-        self.patch(_Connection, 'maxDelay', 5)
-
         try:
             uri = "mongodb://localhost:{0}/?w={1}".format(self.ports[0], len(self.ports))
-            conn = ConnectionPool(uri, initial_delay=3)
+            conn = ConnectionPool(uri, retry_delay=3, max_delay=5)
 
             yield conn.db.coll.insert({'x': 42}, safe=True)
 
-            yield self.__mongod[0].stop()
+            self.__mongod[0].kill(signal.SIGSTOP)
 
             while True:
                 try:
@@ -250,6 +244,7 @@ class TestReplicaSet(unittest.TestCase):
                     pass
 
         finally:
+            self.__mongod[0].kill(signal.SIGCONT)
             yield conn.disconnect()
             self.flushLoggedErrors(AutoReconnect)
 
