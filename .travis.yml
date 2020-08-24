@@ -1,15 +1,14 @@
 language: python
 python:
-  - "2.7"
   - "3.5"
-  - "pypy"
+  - "3.8"
   - "pypy3"
 
 
 env:
-    - TOX_ENV=tw166
-    - TOX_ENV=tw175
-    - TOX_ENV=tw179
+    - TOX_ENV=tw189
+    - TOX_ENV=tw1910
+    - TOX_ENV=tw203
     - TOX_ENV=twlatest
     - TOX_ENV=twtrunk
 
@@ -18,38 +17,14 @@ matrix:
   fast_finish: true
   allow_failures:
     - env: TOX_ENV=pyflakes
-    - python: pypy
-      env: TOX_ENV=twtrunk
     - python: pypy3
       env: TOX_ENV=twtrunk
       
-  exclude:
-    - python: 2.7
-      env: TOX_ENV=twlatest
-    - python: 2.7
-      env: TOX_ENV=twtrunk
-
   include:
-    - python: 3.5
+    - python: 3.8
       env: TOX_ENV=pyflakes
-    - python: 3.5
+    - python: 3.8
       env: TOX_ENV=manifest
-    - python: 3.4
-      env: TOX_ENV=tw179
-    - python: 3.4
-      env: TOX_ENV=tw166
-    - python: 2.7
-      env: TOX_ENV=tw140
-    - python: 2.7
-      env: TOX_ENV=tw150
-    - python: 2.7
-      env: TOX_ENV=tw155
-    - python: pypy
-      env: TOX_ENV=tw140
-    - python: pypy
-      env: TOX_ENV=tw150
-    - python: pypy
-      env: TOX_ENV=tw155
 
 
 
