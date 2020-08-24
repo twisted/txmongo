@@ -422,12 +422,12 @@ class ConnectionPool(object):
 
         for unused_peer in existing - peers:
             self.__pingers[unused_peer].connector.disconnect()
-            del self.__pingers[unused_peer]
+            self.__pingers.pop(unused_peer, None)
 
     def __on_ping_lost(self, addr):
         if addr in self.__pingers:
             self.__pingers[addr].connector.disconnect()
-            del self.__pingers[addr]
+            self.__pingers.pop(addr, None)
 
     def __on_ping_fail(self, addr):
         # Kill all pool connections to this addr
