@@ -105,7 +105,7 @@ API Changes
   if you need to iterate over results by batches. ``cursor`` will be supported in this and
   one subsequent releases.
 - ``as_class`` argument to ``find()``, ``find_with_cursor()`` and ``find_one()`` is deprecated.
-  Please use ``collection.with_options(codec_options=CodecOptions(document_class=...)).find()`
+  Please use ``collection.with_options(codec_options=CodecOptions(document_class=...)).find()``
   instead. It is lengthty, but it is more generic and this is how you do it with current PyMongo.
 - ``Database.command()`` now takes ``codec_options`` argument.
 - ``watchdog_interval`` and ``watchdog_timeout`` arguments of ``ConnectionPool`` renamed
@@ -146,7 +146,7 @@ API Changes
   exception object when ``insert_many`` is used with ``ordered=False``.
 - ``fields`` parameter removed for ``Collection.count()``.
 - ``ConnectionPool`` has two new parameters: ``watchdog_interval`` which is how many seconds before
-  testing a connection to see if it is stale, and ``watchdog_timeout``is how long the check takes
+  testing a connection to see if it is stale, and ``watchdog_timeout`` is how long the check takes
   before dropping the stale connection and try to reconnect.
 
 Features

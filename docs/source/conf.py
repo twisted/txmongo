@@ -33,7 +33,7 @@ extensions = [
     'sphinx.ext.doctest',
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
-    'sphinx.ext.pngmath',
+    'sphinx.ext.imgmath',
     'sphinx.ext.viewcode',
 ]
 
@@ -51,7 +51,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'TxMongo'
-copyright = u'2015, Alexandre Fiori, Bret Curtis'
+copyright = u'2021, Alexandre Fiori, Bret Curtis, Ilya Skriblovsky'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
