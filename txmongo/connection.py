@@ -15,7 +15,7 @@ from twisted.python import log
 from twisted.python.compat import StringType
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
-from txmongo.utils import timeout
+from txmongo.utils import timeout, get_err
 
 DEFAULT_MAX_BSON_SIZE = 16777216
 DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
@@ -103,7 +103,7 @@ class _Connection(ReconnectingClientFactory):
         # Make sure the command was successful.
         if not config.get("ok"):
             code = config.get("code")
-            msg = "TxMongo: " + config.get("err", "Unknown error")
+            msg = "TxMongo: " + get_err(config, "Unknown error")
             raise OperationFailure(msg, code)
 
         # Check that the replicaSet matches.

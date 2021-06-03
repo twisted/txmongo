@@ -30,6 +30,7 @@ import struct
 from twisted.internet import defer, protocol, error
 from twisted.python import failure, log
 from twisted.python.compat import unicode
+from txmongo.utils import get_err
 
 
 if PY3:
@@ -449,7 +450,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
             assert len(reply.documents) == 1
 
             document = reply.documents[0].decode()
-            err = document.get("err", None)
+            err = get_err(document, None)
             code = document.get("code", None)
 
             if err is not None:

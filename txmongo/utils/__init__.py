@@ -56,3 +56,9 @@ def timeout(func):
 def check_deadline(_deadline):
     if _deadline is not None and _deadline < time():
         raise TimeExceeded("TxMongo: now '{0}', deadline '{1}'".format(time(), _deadline))
+
+
+def get_err(document, default=None):
+    err = document.get("err", None) or document.get("codeName", None)
+    errmsg = document.get("errmsg", None)
+    return ": ".join(filter(None, (err, errmsg))) or default
