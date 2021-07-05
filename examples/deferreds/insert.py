@@ -31,7 +31,7 @@ def getCollection(db, collName):
 def insertData(coll):
     print "inserting data..."
     # insert some data, building a deferred list so that we can later check
-    # the succes or failure of each deferred result
+    # the success or failure of each deferred result
     deferreds = []
     for x in range(10000):
         d = coll.insert({"something":x*time.time()}, safe=True)

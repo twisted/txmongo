@@ -45,7 +45,7 @@ class GridFS(object):
         .. note::
 
             Instantiating a GridFS object will implicitly create it indexes.
-            This could leads to errors if the underlaying connection is closed
+            This could leads to errors if the underlying connection is closed
             before the indexes creation request has returned. To avoid this you
             should use the defer returned by :meth:`GridFS.indexes_created`.
 
