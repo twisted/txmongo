@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import, division
-from mock import patch
+from unittest.mock import patch
 from time import time
 from twisted.trial import unittest
 from twisted.internet import defer

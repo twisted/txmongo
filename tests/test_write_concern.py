@@ -15,7 +15,7 @@
 
 from __future__ import absolute_import, division
 
-from mock import patch
+from unittest.mock import patch
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 from twisted.trial import unittest

@@ -5,7 +5,7 @@
 from __future__ import absolute_import, division
 import io
 import struct
-import collections
+import collections.abc
 import warnings
 from bson import BSON, ObjectId
 from bson.code import Code
@@ -738,7 +738,7 @@ class Collection(object):
         """
         inserted_ids = []
         for doc in documents:
-            if isinstance(doc, collections.Mapping):
+            if isinstance(doc, collections.abc.Mapping):
                 inserted_ids.append(doc.setdefault("_id", ObjectId()))
             else:
                 raise TypeError("TxMongo: insert_many takes list of documents.")
@@ -1235,7 +1235,7 @@ class Collection(object):
                                          update=update, _deadline=_deadline)
 
     def bulk_write(self, requests, ordered=True):
-        if not isinstance(requests, collections.Iterable):
+        if not isinstance(requests, collections.abc.Iterable):
             raise TypeError("requests must be iterable")
 
         requests = list(requests)

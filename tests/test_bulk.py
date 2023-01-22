@@ -5,7 +5,7 @@ from pymongo.operations import UpdateOne, DeleteOne, UpdateMany, ReplaceOne
 from pymongo.results import BulkWriteResult
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
-from mock import patch
+from unittest.mock import patch
 
 from tests.utils import SingleCollectionTest
 from txmongo.protocol import Reply
