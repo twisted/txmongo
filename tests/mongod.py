@@ -18,7 +18,6 @@ from __future__ import absolute_import, division
 import tempfile
 import shutil
 
-from twisted.python.compat import intToBytes
 from twisted.python.filepath import FilePath
 from twisted.internet import defer, reactor
 from twisted.internet.error import ProcessDone
@@ -61,7 +60,7 @@ class Mongod(object):
         self.__notify_waiting.append(d)
 
         args = [b"mongod",
-                b"--port", intToBytes(self.port),
+                b"--port", (b'%d' % self.port),
                 b"--dbpath", self.__datadir,
                 # MongoDB 4.0 doesn't support nojournal + WiredTiger + ReplicaSet
                 # b"--nojournal",

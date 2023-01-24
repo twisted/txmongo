@@ -27,7 +27,7 @@ from txmongo.pymongo_internals import _check_write_command_response, _merge_comm
 from txmongo.utils import check_deadline, timeout
 from txmongo import filter as qf
 from twisted.internet import defer
-from twisted.python.compat import unicode, comparable
+from twisted.python.compat import comparable
 
 
 @comparable
@@ -50,8 +50,8 @@ class Collection(object):
     """
 
     def __init__(self, database, name, write_concern=None, codec_options=None):
-        if not isinstance(name, (bytes, unicode)):
-            raise TypeError("TxMongo: name must be an instance of (bytes, unicode).")
+        if not isinstance(name, (bytes, str)):
+            raise TypeError("TxMongo: name must be an instance of (bytes, str).")
 
         if not name or ".." in name:
             raise InvalidName("TxMongo: collection names cannot be empty.")
@@ -66,7 +66,7 @@ class Collection(object):
             raise InvalidName("TxMongo: collection names must not contain the null character.")
 
         self._database = database
-        self._collection_name = unicode(name)
+        self._collection_name = str(name)
         self.__write_concern = write_concern
         self.__codec_options = codec_options
 
@@ -173,7 +173,7 @@ class Collection(object):
         # Consider fields as iterable
         as_dict = {}
         for field in fields:
-            if not isinstance(field, (bytes, unicode)):
+            if not isinstance(field, (bytes, str)):
                 raise TypeError("TxMongo: fields must be a list of key names.")
             as_dict[field] = 1
         if not as_dict:
@@ -516,7 +516,7 @@ class Collection(object):
             "$reduce": Code(reduce),
         }
 
-        if isinstance(keys, (bytes, unicode)):
+        if isinstance(keys, (bytes, str)):
             body["$keyf"] = Code(keys)
         else:
             body["key"] = self._normalize_fields_projection(keys)
@@ -1045,7 +1045,7 @@ class Collection(object):
     @timeout
     def drop_index(self, index_identifier, _deadline=None):
         """drop_index(index_identifier)"""
-        if isinstance(index_identifier, (bytes, unicode)):
+        if isinstance(index_identifier, (bytes, str)):
             name = index_identifier
         elif isinstance(index_identifier, qf.sort):
             name = self._gen_index_name(index_identifier["orderby"])

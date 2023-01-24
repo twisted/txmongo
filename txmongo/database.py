@@ -4,7 +4,6 @@
 
 from bson.son import SON
 from bson.codec_options import DEFAULT_CODEC_OPTIONS
-from twisted.python.compat import unicode
 from txmongo.collection import Collection
 from txmongo.pymongo_internals import _check_command_response
 from txmongo.utils import timeout
@@ -18,7 +17,7 @@ class Database(object):
         self.__factory = factory
         self.__write_concern = write_concern
         self.__codec_options = codec_options
-        self._database_name = unicode(database_name)
+        self._database_name = str(database_name)
 
     def __str__(self):
         return self._database_name
@@ -56,7 +55,7 @@ class Database(object):
     def command(self, command, value=1, check=True, allowable_errors=None,
                 codec_options=DEFAULT_CODEC_OPTIONS, _deadline=None, **kwargs):
         """command(command, value=1, check=True, allowable_errors=None, codec_options=DEFAULT_CODEC_OPTIONS)"""
-        if isinstance(command, (bytes, unicode)):
+        if isinstance(command, (bytes, str)):
             command = SON([(command, value)])
         options = kwargs.copy()
         command.update(options)
@@ -96,12 +95,12 @@ class Database(object):
         """drop_collection(name_or_collection)"""
         if isinstance(name_or_collection, Collection):
             name = name_or_collection._collection_name
-        elif isinstance(name_or_collection, (bytes, unicode)):
+        elif isinstance(name_or_collection, (bytes, str)):
             name = name_or_collection
         else:
             raise TypeError("TxMongo: name must be an instance of basestring or txmongo.Collection")
 
-        return self.command("drop", unicode(name), allowable_errors=["ns not found"],
+        return self.command("drop", str(name), allowable_errors=["ns not found"],
                             _deadline=_deadline)
 
     @timeout
@@ -121,9 +120,9 @@ class Database(object):
         Send an authentication command for this database.
         mostly stolen from pymongo
         """
-        if not isinstance(name, (bytes, unicode)):
+        if not isinstance(name, (bytes, str)):
             raise TypeError("TxMongo: name must be an instance of basestring.")
-        if not isinstance(password, (bytes, unicode)):
+        if not isinstance(password, (bytes, str)):
             raise TypeError("TxMongo: password must be an instance of basestring.")
 
         """

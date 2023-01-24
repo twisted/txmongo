@@ -20,7 +20,6 @@ import datetime
 from io import BytesIO as StringIO
 import math
 import os
-from twisted.python.compat import unicode
 from twisted.internet import defer
 from txmongo._gridfs.errors import CorruptGridFile
 from txmongo.collection import Collection
@@ -224,9 +223,9 @@ class GridIn(object):
             read = data.read
         except AttributeError:
             # string
-            if not isinstance(data, (bytes, unicode)):
+            if not isinstance(data, (bytes, str)):
                 raise TypeError("TxMongo: can only write strings or file-like objects.")
-            if isinstance(data, unicode):
+            if isinstance(data, str):
                 try:
                     data = data.encode(self.encoding)
                 except AttributeError:

@@ -29,7 +29,6 @@ from random import SystemRandom
 import struct
 from twisted.internet import defer, protocol, error
 from twisted.python import failure, log
-from twisted.python.compat import unicode
 from txmongo.utils import get_err
 
 
@@ -484,7 +483,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         nonce = result["nonce"]
 
         auth_cmd = SON(authenticate=1)
-        auth_cmd["user"] = unicode(username)
+        auth_cmd["user"] = str(username)
         auth_cmd["nonce"] = nonce
         auth_cmd["key"] = auth._auth_key(nonce, username, password)
 
@@ -566,8 +565,8 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
     @defer.inlineCallbacks
     def authenticate(self, database_name, username, password, mechanism):
         database_name = str(database_name)
-        username = unicode(username)
-        password = unicode(password)
+        username = str(username)
+        password = str(password)
 
         yield self.__auth_lock.acquire()
 

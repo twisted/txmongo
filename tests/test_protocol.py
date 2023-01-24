@@ -18,7 +18,6 @@ from __future__ import absolute_import, division
 from bson import BSON
 from twisted.trial import unittest
 from twisted.internet import defer
-from twisted.python.compat import unicode
 
 from tests.utils import SingleCollectionTest
 
@@ -56,7 +55,7 @@ class TestMongoProtocol(unittest.TestCase):
             # len and request_id are not filled in request object
             if field not in ("len", "request_id"):
                 if isinstance(dec_value, bytes) and \
-                   isinstance(req_value, unicode):
+                   isinstance(req_value, str):
                     dec_value = dec_value.decode()
 
                 self.assertEqual(dec_value, req_value)
