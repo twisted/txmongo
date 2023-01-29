@@ -4,13 +4,12 @@
 
 from __future__ import absolute_import, division
 from collections import defaultdict
-from twisted.python.compat import unicode
 
 """Query filters"""
 
 
 def _direction(keys, direction):
-    if isinstance(keys, (bytes, unicode)):
+    if isinstance(keys, (bytes, str)):
         return (keys, direction),
     elif isinstance(keys, (list, tuple)):
         return tuple([(k, direction) for k in keys])
@@ -78,7 +77,7 @@ class _QueryFilter(defaultdict):
         try:
             assert isinstance(index_list, (list, tuple))
             for key, direction in index_list:
-                if not isinstance(key, (bytes, unicode)):
+                if not isinstance(key, (bytes, str)):
                     raise TypeError("TxMongo: invalid {0}ing key '{1}'"
                                     .format(name, repr(key)))
                 if direction not in self.ALLOWED_DIRECTIONS:

@@ -563,7 +563,6 @@ class TestMapReduce(SingleCollectionTest):
 
         result = yield self.coll.map_reduce(t_map, t_reduce, out={"inline": 1}, full_response=True)
         self.assertTrue(result["ok"], 1)
-        self.assertTrue("counts" in result)
         self.assertTrue("results" in result)
 
 

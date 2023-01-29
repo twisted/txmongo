@@ -12,7 +12,6 @@ from pymongo.write_concern import WriteConcern
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory, ClientFactory
 from twisted.python import log
-from twisted.python.compat import StringType
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
 from txmongo.utils import timeout, get_err
@@ -245,7 +244,7 @@ class ConnectionPool(object):
 
     def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None,
                  ping_interval=10, ping_timeout=10, **kwargs):
-        assert isinstance(uri, StringType)
+        assert isinstance(uri, str)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
 
@@ -332,7 +331,7 @@ class ConnectionPool(object):
             return None
 
     def drop_database(self, name_or_database):
-        if isinstance(name_or_database, (bytes, StringType)):
+        if isinstance(name_or_database, (bytes, str)):
             db = self[name_or_database]
         elif isinstance(name_or_database, Database):
             db = name_or_database

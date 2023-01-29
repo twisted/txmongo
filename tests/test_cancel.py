@@ -1,6 +1,6 @@
 import struct
 
-from mock import Mock
+from unittest.mock import Mock
 from pymongo.uri_parser import parse_uri
 from twisted.internet import defer
 from twisted.internet import reactor
