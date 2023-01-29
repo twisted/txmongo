@@ -58,7 +58,7 @@ copyright = u'2021, Alexandre Fiori, Bret Curtis, Ilya Skriblovsky'
 # built documents.
 #
 # The short X.Y version.
-version = '19.2.0'
+version = '23.0.0'
 # The full version, including alpha/beta/rc tags.
 release = version
 
