@@ -29,7 +29,8 @@ from .mongod import Mongod
 
 
 class TestReplicaSet(unittest.TestCase):
-
+    skip = "cannot test currently with github actions"
+    
     ports = [37017, 37018, 37019]
     rsname = "rs1"
 
