@@ -24,7 +24,7 @@ from twisted.internet import defer, ssl
 from txmongo import connection
 from txmongo.protocol import MongoAuthenticationError
 
-from .mongod import Mongod
+from tests.mongod import Mongod
 
 
 mongo_host = "localhost"

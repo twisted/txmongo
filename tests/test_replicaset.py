@@ -21,7 +21,7 @@ from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError
 from time import time
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
-from txmongo.connection import MongoConnection, ConnectionPool, _Connection
+from txmongo.connection import MongoConnection, ConnectionPool
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
 

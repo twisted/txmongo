@@ -13,3 +13,4 @@ check-manifest
 mock
 pyopenssl
 service_identity
+twine
