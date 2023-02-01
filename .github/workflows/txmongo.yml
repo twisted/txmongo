@@ -24,5 +24,9 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install tox and any other packages
         run: pip install tox
+      - name: Debug
+        run: |
+          ps -ef | grep -i mongo
+          killall mongod
       - name: Run tox
         run: tox -e replicaset
