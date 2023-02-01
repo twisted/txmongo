@@ -367,6 +367,8 @@ class TestMongoDBCR(unittest.TestCase):
 
 
 class TestX509(unittest.TestCase):
+    if onGithub():
+        skip = "cannot test currently with github actions"
     ca_subject = "CN=testing,O=txmongo"
     ca_cert = """
 -----BEGIN CERTIFICATE-----
