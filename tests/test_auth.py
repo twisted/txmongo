@@ -25,6 +25,7 @@ from txmongo import connection
 from txmongo.protocol import MongoAuthenticationError
 
 from tests.mongod import Mongod
+from utils import onGithub
 
 mongo_host = "localhost"
 mongo_port = 27018
@@ -32,6 +33,8 @@ mongo_uri = "mongodb://{0}:{1}/".format(mongo_host, mongo_port)
 
 
 class TestMongoAuth(unittest.TestCase):
+    if onGithub() != "auth":
+        skip = "cannot test currently with github actions"
     """
     NB: This testcase requires:
         * auth=true in MongoDB configuration file
@@ -270,7 +273,8 @@ class TestMongoAuth(unittest.TestCase):
 
 
 class TestMongoDBCR(unittest.TestCase):
-    skip = "cannot test currently with github actions"
+    if onGithub() != "auth":
+        skip = "cannot test currently with github actions"
     ua_login = "useradmin"
     ua_password = "useradminpwd"
 
@@ -365,7 +369,8 @@ class TestMongoDBCR(unittest.TestCase):
 
 
 class TestX509(unittest.TestCase):
-    skip = "cannot test currently with github actions"
+    if onGithub() != "auth":
+        skip = "cannot test currently with github actions"
     ca_subject = "CN=testing,O=txmongo"
     ca_cert = """
 -----BEGIN CERTIFICATE-----
