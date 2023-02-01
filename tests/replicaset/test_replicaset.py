@@ -25,8 +25,7 @@ from txmongo.connection import MongoConnection, ConnectionPool
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
 from tests.utils import onGithub
-
-from .mongod import Mongod
+from tests.mongod import Mongod
 
 
 class TestReplicaSet(unittest.TestCase):
