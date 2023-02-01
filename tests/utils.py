@@ -22,4 +22,4 @@ class SingleCollectionTest(unittest.TestCase):
 
 
 def onGithub():
-    return os.getenv("GITHUB_ACTIONS")
+    return os.getenv("GITHUB_ACTIONS") == "true"
