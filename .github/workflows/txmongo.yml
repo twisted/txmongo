@@ -25,4 +25,4 @@ jobs:
       - name: Install tox and any other packages
         run: pip install tox
       - name: Run tox
-        run: tox -e basic
+        run: tox -e replicaset
