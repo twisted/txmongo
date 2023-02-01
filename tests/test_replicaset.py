@@ -24,7 +24,7 @@ from twisted.internet import defer, reactor
 from txmongo.connection import MongoConnection, ConnectionPool
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
-from utils import onGithub
+from tests.utils import onGithub
 
 from .mongod import Mongod
 

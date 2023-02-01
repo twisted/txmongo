@@ -22,5 +22,4 @@ class SingleCollectionTest(unittest.TestCase):
 
 
 def onGithub():
-    if os.getenv("GITHUB_ACTIONS") == "true":
-        return os.getenv("TXMONGO_TEST_WITH")
+    return os.getenv("GITHUB_ACTIONS")

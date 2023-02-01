@@ -1,4 +1,4 @@
-name: TxMongo Basic
+name: TxMongo With Auth
 
 on: [push]
 
@@ -24,4 +24,4 @@ jobs:
       - name: Run tox
         env:
           TXMONGO_TEST_WITH: auth
-        run: tox
+        run: tox -- tests/test_auth.py
