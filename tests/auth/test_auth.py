@@ -25,7 +25,7 @@ from txmongo import connection
 from txmongo.protocol import MongoAuthenticationError
 
 from tests.mongod import Mongod
-from utils import onGithub
+from tests.utils import onGithub
 
 mongo_host = "localhost"
 mongo_port = 27018
