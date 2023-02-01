@@ -32,7 +32,6 @@ mongo_uri = "mongodb://{0}:{1}/".format(mongo_host, mongo_port)
 
 
 class TestMongoAuth(unittest.TestCase):
-    skip = "cannot test currently with github actions"
     """
     NB: This testcase requires:
         * auth=true in MongoDB configuration file

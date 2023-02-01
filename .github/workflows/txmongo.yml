@@ -13,10 +13,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - name: Start MongoDB in Docker Instance
+      - name: Start MongoDB (27017)
         uses: supercharge/mongodb-github-action@1.8.0
         with:
           mongodb-version: ${{ matrix.mongodb-version }}
+      - name: Start MongoDB with Auth (27018)
+        uses: supercharge/mongodb-github-action@1.8.0
+        with:
+          mongodb-version: ${{ matrix.mongodb-version }}
+          mongodb-username: supercharge
+          mongodb-password: superchargesecret
+          mongodb-db: supercharge
+          mongodb-port: 27018
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
