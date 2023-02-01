@@ -21,9 +21,9 @@ jobs:
         uses: supercharge/mongodb-github-action@1.8.0
         with:
           mongodb-version: ${{ matrix.mongodb-version }}
-          mongodb-username: supercharge
-          mongodb-password: superchargesecret
-          mongodb-db: supercharge
+          mongodb-username: mongoadmin
+          mongodb-password: secret
+          mongodb-db: admin
           mongodb-port: 27018
       - name: Setup Python
         uses: actions/setup-python@v4

@@ -49,8 +49,8 @@ class TestMongoAuth(unittest.TestCase):
     login2 = "user2"
     password2 = "pwd2"
 
-    ua_login = "useradmin"
-    ua_password = "useradminpwd"
+    ua_login = "mongoadmin"
+    ua_password = "secret"
 
     def __get_connection(self, pool_size=1):
         return connection.ConnectionPool(mongo_uri, pool_size)
@@ -83,6 +83,7 @@ class TestMongoAuth(unittest.TestCase):
     @defer.inlineCallbacks
     def createDBUsers(self):
         conn = self.__get_connection()
+        self.ismaster = yield conn.admin.command("ismaster")
         yield conn["admin"].authenticate(self.ua_login, self.ua_password)
 
         yield conn[self.db1].command("createUser", self.login1,
@@ -103,7 +104,7 @@ class TestMongoAuth(unittest.TestCase):
         #yield self.__mongod.start()
         self.addCleanup(self.clean)
 
-        yield self.createUserAdmin()
+        #yield self.createUserAdmin()
         yield self.createDBUsers()
 
     @defer.inlineCallbacks
@@ -118,7 +119,6 @@ class TestMongoAuth(unittest.TestCase):
             yield conn[self.db2][self.coll].drop()
             yield conn[self.db1].command("dropUser", self.login1)
             yield conn[self.db2].command("dropUser", self.login2)
-            yield conn["admin"].command("dropUser", self.ua_login)
             yield conn.disconnect()
         finally:
             #yield self.__mongod.stop()
