@@ -1,4 +1,4 @@
-name: TxMongo Basic
+name: TxMongo Replicaset
 
 on: [push]
 
