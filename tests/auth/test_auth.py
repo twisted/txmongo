@@ -25,6 +25,7 @@ from txmongo import connection
 from txmongo.protocol import MongoAuthenticationError
 
 from tests.mongod import Mongod
+from tests.utils import onGithub
 
 mongo_host = "localhost"
 mongo_port = 27018
@@ -32,7 +33,6 @@ mongo_uri = "mongodb://{0}:{1}/".format(mongo_host, mongo_port)
 
 
 class TestMongoAuth(unittest.TestCase):
-    skip = "cannot test currently with github actions"
     """
     NB: This testcase requires:
         * auth=true in MongoDB configuration file
@@ -50,8 +50,8 @@ class TestMongoAuth(unittest.TestCase):
     login2 = "user2"
     password2 = "pwd2"
 
-    ua_login = "useradmin"
-    ua_password = "useradminpwd"
+    ua_login = "mongoadmin"
+    ua_password = "secret"
 
     def __get_connection(self, pool_size=1):
         return connection.ConnectionPool(mongo_uri, pool_size)
@@ -84,6 +84,7 @@ class TestMongoAuth(unittest.TestCase):
     @defer.inlineCallbacks
     def createDBUsers(self):
         conn = self.__get_connection()
+        self.ismaster = yield conn.admin.command("ismaster")
         yield conn["admin"].authenticate(self.ua_login, self.ua_password)
 
         yield conn[self.db1].command("createUser", self.login1,
@@ -100,11 +101,11 @@ class TestMongoAuth(unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.__mongod = Mongod(port=mongo_port, auth=True)
-        yield self.__mongod.start()
+        #self.__mongod = Mongod(port=mongo_port, auth=True)
+        #yield self.__mongod.start()
         self.addCleanup(self.clean)
 
-        yield self.createUserAdmin()
+        #yield self.createUserAdmin()
         yield self.createDBUsers()
 
     @defer.inlineCallbacks
@@ -119,10 +120,10 @@ class TestMongoAuth(unittest.TestCase):
             yield conn[self.db2][self.coll].drop()
             yield conn[self.db1].command("dropUser", self.login1)
             yield conn[self.db2].command("dropUser", self.login2)
-            yield conn["admin"].command("dropUser", self.ua_login)
             yield conn.disconnect()
         finally:
-            yield self.__mongod.stop()
+            #yield self.__mongod.stop()
+            pass
 
     @defer.inlineCallbacks
     def test_AuthConnectionPool(self):
@@ -270,7 +271,8 @@ class TestMongoAuth(unittest.TestCase):
 
 
 class TestMongoDBCR(unittest.TestCase):
-    skip = "cannot test currently with github actions"
+    if onGithub():
+        skip = "cannot test currently with github actions"
     ua_login = "useradmin"
     ua_password = "useradminpwd"
 
@@ -365,7 +367,8 @@ class TestMongoDBCR(unittest.TestCase):
 
 
 class TestX509(unittest.TestCase):
-    skip = "cannot test currently with github actions"
+    if onGithub():
+        skip = "cannot test currently with github actions"
     ca_subject = "CN=testing,O=txmongo"
     ca_cert = """
 -----BEGIN CERTIFICATE-----

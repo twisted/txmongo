@@ -24,12 +24,14 @@ from twisted.internet import defer, reactor
 from txmongo.connection import MongoConnection, ConnectionPool
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
+from tests.utils import onGithub
 
 from .mongod import Mongod
 
 
 class TestReplicaSet(unittest.TestCase):
-    skip = "cannot test currently with github actions"
+    if onGithub():
+        skip = "cannot test currently with github actions"
 
     ports = [37017, 37018, 37019]
     rsname = "rs1"
