@@ -99,8 +99,8 @@ class TestMongoAuth(unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.__mongod = Mongod(port=mongo_port, auth=True)
-        yield self.__mongod.start()
+        #self.__mongod = Mongod(port=mongo_port, auth=True)
+        #yield self.__mongod.start()
         self.addCleanup(self.clean)
 
         yield self.createUserAdmin()
@@ -121,7 +121,8 @@ class TestMongoAuth(unittest.TestCase):
             yield conn["admin"].command("dropUser", self.ua_login)
             yield conn.disconnect()
         finally:
-            yield self.__mongod.stop()
+            #yield self.__mongod.stop()
+            pass
 
     @defer.inlineCallbacks
     def test_AuthConnectionPool(self):
