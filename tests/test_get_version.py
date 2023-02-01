@@ -14,13 +14,9 @@
 # limitations under the License.
 
 from __future__ import absolute_import, division
-from unittest.mock import patch
-from time import time
 from twisted.trial import unittest
 from twisted.internet import defer
 from txmongo import connection, gridfs
-from txmongo.utils import check_deadline
-from txmongo.errors import TimeExceeded
 from txmongo._gridfs.errors import NoFile
 
 class TestGFS(unittest.TestCase):
