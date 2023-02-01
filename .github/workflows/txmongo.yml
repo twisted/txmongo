@@ -5,18 +5,19 @@ on: [push]
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         python: ["3.8", "3.9", "3.10"]
-        mongodb-version: ['4.2']
 
     steps:
       - uses: actions/checkout@v3
-      - name: Start MongoDB (27017)
-        uses: supercharge/mongodb-github-action@1.8.0
-        with:
-          mongodb-version: ${{ matrix.mongodb-version }}
+      - name: Install MongoDB 4.4
+        run: |
+          wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | sudo apt-key add -
+          echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.4.list
+          sudo apt-get update
+          sudo apt-get install -y mongodb-org-server
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -24,5 +25,4 @@ jobs:
       - name: Install tox and any other packages
         run: pip install tox
       - name: Run tox
-        # Run tox using the version of Python in `PATH`
         run: tox -e basic
