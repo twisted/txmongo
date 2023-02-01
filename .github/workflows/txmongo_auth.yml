@@ -15,6 +15,12 @@ jobs:
       - uses: actions/checkout@v3
       - name: Start MongoDB with Auth (27018)
         uses: supercharge/mongodb-github-action@1.8.0
+        with:
+          mongodb-version: ${{ matrix.mongodb-version }}
+          mongodb-username: mongoadmin
+          mongodb-password: secret
+          mongodb-db: admin
+          mongodb-port: 27018
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -24,4 +30,4 @@ jobs:
       - name: Run tox
         env:
           TXMONGO_TEST_WITH: auth
-        run: tox -- tests/test_auth.py
+        run: tox -e auth
