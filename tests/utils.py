@@ -23,7 +23,3 @@ class SingleCollectionTest(unittest.TestCase):
 
 def onGithub():
     return os.getenv("GITHUB_ACTIONS") == "true"
-
-
-def toxFlag():
-    return os.getenv("TXMONGO_TOX_TEST")
