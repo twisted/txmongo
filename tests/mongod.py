@@ -28,7 +28,10 @@ class Mongod(object):
     # FIXME: this message might change in future versions of MongoDB
     # but waiting for this message is faster than pinging tcp port
     # so leaving this for now
-    success_message = b"waiting for connections on port"
+    success_messages = [
+        b"waiting for connections on port",
+        b"Waiting for connections",
+    ]
 
     def __init__(self, port=27017, auth=False, replset=None, dbpath=None, args=()):
         self.__proc = None
@@ -101,7 +104,7 @@ class Mongod(object):
 
     def childDataReceived(self, child_fd, data):
         self.__output += data
-        if self.success_message in self.__output:
+        if any(msg in self.__output for msg in self.success_messages):
             defs, self.__notify_waiting = self.__notify_waiting, []
             for d in defs:
                 d.callback(None)
