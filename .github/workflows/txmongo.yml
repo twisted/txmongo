@@ -25,7 +25,7 @@ jobs:
       - name: Install tox and any other packages
         run: pip install tox
       - name: Run tox
-        run: tox -e replicaset auth
+        run: tox -e replicaset,auth
       - name: Archive artifacts
         uses: actions/upload-artifact@v2
         with:
