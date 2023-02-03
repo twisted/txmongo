@@ -1,15 +1,39 @@
-name: TxMongo Replicaset
+name: TxMongo
 
 on: [push]
 
 jobs:
-  build:
+  basic:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.8", "3.9", "3.10"]
+        mongodb-version: ['4.2', '4.4']
+    steps:
+      - uses: actions/checkout@v3
+      - name: Start MongoDB (27017)
+        uses: supercharge/mongodb-github-action@1.8.0
+        with:
+          mongodb-version: ${{ matrix.mongodb-version }}
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install tox and any other packages
+        run: pip install tox
+      - name: Run tox
+        run: tox -e basic
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: code-coverage-report
+          path: htmlcov
 
+  advanced:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
         python: ["3.8", "3.9", "3.10"]
-
     steps:
       - uses: actions/checkout@v3
       - name: Install MongoDB 4.4
@@ -25,9 +49,4 @@ jobs:
       - name: Install tox and any other packages
         run: pip install tox
       - name: Run tox
-        run: tox -e replicaset,auth
-      - name: Archive artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: code-coverage-report
-          path: coverage/**
+        run: tox -e advanced
