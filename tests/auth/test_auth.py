@@ -271,6 +271,8 @@ class TestMongoAuth(unittest.TestCase):
 
 
 class TestMongoDBCR(unittest.TestCase):
+    if onGithub():
+        skip = "does not work for now on github"
     ua_login = "useradmin"
     ua_password = "useradminpwd"
 
@@ -281,8 +283,6 @@ class TestMongoDBCR(unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        if onGithub():
-            skip = "does not work for now on github"
         self.dbpath = tempfile.mkdtemp()
 
         mongod_noauth = Mongod(port=mongo_port, auth=False, dbpath=self.dbpath)
