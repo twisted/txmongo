@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import, division
-from mock import patch
+from unittest.mock import patch
 from pymongo.errors import OperationFailure
 import os
 import shutil
@@ -25,7 +25,6 @@ from txmongo import connection
 from txmongo.protocol import MongoAuthenticationError
 
 from tests.mongod import Mongod
-from tests.utils import onGithub
 
 mongo_host = "localhost"
 mongo_port = 27018
@@ -271,8 +270,6 @@ class TestMongoAuth(unittest.TestCase):
 
 
 class TestMongoDBCR(unittest.TestCase):
-    if onGithub():
-        skip = "cannot test currently with github actions"
     ua_login = "useradmin"
     ua_password = "useradminpwd"
 
