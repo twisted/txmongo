@@ -1,16 +1,14 @@
-name: TxMongo Basic
+name: TxMongo
 
 on: [push]
 
 jobs:
-  build:
-
+  basic:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python: ["3.8", "3.9", "3.10"]
-        mongodb-version: ['4.2']
-
+        mongodb-version: ['4.2', '4.4']
     steps:
       - uses: actions/checkout@v3
       - name: Start MongoDB (27017)
@@ -24,5 +22,31 @@ jobs:
       - name: Install tox and any other packages
         run: pip install tox
       - name: Run tox
-        # Run tox using the version of Python in `PATH`
         run: tox -e basic
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: code-coverage-report
+          path: htmlcov
+
+  advanced:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python: ["3.8", "3.9", "3.10"]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install MongoDB 4.4
+        run: |
+          wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | sudo apt-key add -
+          echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.4.list
+          sudo apt-get update
+          sudo apt-get install -y --allow-downgrades mongodb-org-server=4.4.18
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install tox and any other packages
+        run: pip install tox
+      - name: Run tox
+        run: tox -e advanced
