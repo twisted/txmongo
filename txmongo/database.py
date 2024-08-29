@@ -9,7 +9,7 @@ from txmongo.pymongo_internals import _check_command_response
 from txmongo.utils import timeout
 
 
-class Database(object):
+class Database:
     __factory = None
 
     def __init__(self, factory, database_name, write_concern=None,

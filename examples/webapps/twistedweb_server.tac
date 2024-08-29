@@ -27,7 +27,7 @@ from twisted.application import service, internet
 class Root(Resource):
     isLeaf = False
 
-class BaseHandler(object):
+class BaseHandler:
     isLeaf = True
     def __init__(self, db):
         self.db = db

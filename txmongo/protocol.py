@@ -13,11 +13,10 @@ implementation can be shared. This includes BSON encoding and
 decoding as well as Exception types, when applicable.
 """
 
-from __future__ import absolute_import, division
 import base64
 import hashlib
 
-from bson import BSON, SON, Binary, PY3
+from bson import BSON, SON, Binary
 from collections import namedtuple
 from hashlib import sha1
 import hmac
@@ -32,51 +31,28 @@ from twisted.python import failure, log
 from txmongo.utils import get_err
 
 
-if PY3:
-    _from_bytes = int.from_bytes
-    _to_bytes = int.to_bytes
-else:
-    from binascii import (hexlify as _hexlify, unhexlify as _unhexlify)
-
-    def _from_bytes(value, dummy, _int=int, _hexlify=_hexlify):
-        """An implementation of int.from_bytes for python 2.x."""
-        return _int(_hexlify(value), 16)
-
-
-    def _to_bytes(value, length, dummy, _unhexlify=_unhexlify):
-        """An implementation of int.to_bytes for python 2.x."""
-        fmt = '%%0%dx' % (2 * length,)
-        return _unhexlify(fmt % value)
-
-
 try:
-    # The fastest option, if it's been compiled to use OpenSSL's HMAC.
-    from backports.pbkdf2 import pbkdf2_hmac as _hi
+    from hashlib import pbkdf2_hmac as _hi
 except ImportError:
-    try:
-        # Python 2.7.8+, or Python 3.4+.
-        from hashlib import pbkdf2_hmac as _hi
-    except ImportError:
+    def _hi(hash_name, data, salt, iterations):
+        """A simple implementation of PBKDF2-HMAC."""
+        mac = hmac.HMAC(data, None, getattr(hashlib, hash_name))
 
-        def _hi(hash_name, data, salt, iterations):
-            """A simple implementation of PBKDF2-HMAC."""
-            mac = hmac.HMAC(data, None, getattr(hashlib, hash_name))
+        def _digest(msg, mac=mac):
+            """Get a digest for msg."""
+            _mac = mac.copy()
+            _mac.update(msg)
+            return _mac.digest()
 
-            def _digest(msg, mac=mac):
-                """Get a digest for msg."""
-                _mac = mac.copy()
-                _mac.update(msg)
-                return _mac.digest()
+        from_bytes = int.from_bytes
+        to_bytes = int.to_bytes
 
-            from_bytes = _from_bytes
-            to_bytes = _to_bytes
-
-            _u1 = _digest(salt + b'\x00\x00\x00\x01')
-            _ui = from_bytes(_u1, 'big')
-            for _ in range(iterations - 1):
-                _u1 = _digest(_u1)
-                _ui ^= from_bytes(_u1, 'big')
-            return to_bytes(_ui, mac.digest_size, 'big')
+        _u1 = _digest(salt + b'\x00\x00\x00\x01')
+        _ui = from_bytes(_u1, 'big')
+        for _ in range(iterations - 1):
+            _u1 = _digest(_u1)
+            _ui ^= from_bytes(_u1, 'big')
+        return to_bytes(_ui, mac.digest_size, 'big')
 
 
 INT_MAX = 2147483647
@@ -130,7 +106,7 @@ class KillCursors(namedtuple("KillCursors", ["len", "request_id", "response_to",
                 zero=0, n_cursors=0, cursors=None, **kwargs):
 
         n_cursors = len(cursors)
-        return super(KillCursors, cls).__new__(cls, length, request_id, response_to,
+        return super().__new__(cls, length, request_id, response_to,
                                                opcode, zero, n_cursors, cursors)
 
 
@@ -139,7 +115,7 @@ class Delete(namedtuple("Delete",
                          "flags", "selector"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_DELETE,
                 zero=0, collection='', flags=0, selector=None):
-        return super(Delete, cls).__new__(cls, len, request_id, response_to,
+        return super().__new__(cls, len, request_id, response_to,
                                           opcode, zero, collection,
                                           flags, selector)
 
@@ -149,7 +125,7 @@ class Getmore(namedtuple("Getmore", ["len", "request_id", "response_to",
                                      "n_to_return", "cursor_id"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_GETMORE,
                 zero=0, collection='', n_to_return=-1, cursor_id=-1):
-        return super(Getmore, cls).__new__(cls, len, request_id, response_to,
+        return super().__new__(cls, len, request_id, response_to,
                                            opcode, zero, collection,
                                            n_to_return, cursor_id)
 
@@ -159,7 +135,7 @@ class Insert(namedtuple("Insert", ["len", "request_id", "response_to",
                                    "documents"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_INSERT,
                 flags=0, collection='', documents=None):
-        return super(Insert, cls).__new__(cls, len, request_id, response_to,
+        return super().__new__(cls, len, request_id, response_to,
                                           opcode, flags, collection, documents)
 
 
@@ -174,7 +150,7 @@ class Reply(namedtuple("Reply", ["len", "request_id", "response_to", "opcode",
         if n_returned is None:
             n_returned = len(documents)
         documents = [b if isinstance(b, BSON) else BSON.encode(b) for b in documents]
-        return super(Reply, cls).__new__(cls, _len, request_id, response_to,
+        return super().__new__(cls, _len, request_id, response_to,
                                          opcode, response_flags, cursor_id,
                                          starting_from, n_returned,
                                          documents)
@@ -192,7 +168,7 @@ class Query(namedtuple("Query", ["len", "request_id", "response_to", "opcode",
             query = BSON.encode(query)
         if fields is not None and not isinstance(fields, BSON):
             fields = BSON.encode(fields)
-        return super(Query, cls).__new__(cls, len, request_id, response_to,
+        return super().__new__(cls, len, request_id, response_to,
                                          opcode, flags, collection, n_to_skip,
                                          n_to_return, query, fields)
 
@@ -202,7 +178,7 @@ class Update(namedtuple("Update", ["len", "request_id", "response_to",
                                    "selector", "update"])):
     def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_UPDATE,
                 zero=0, collection='', flags=0, selector=None, update=None):
-        return super(Update, cls).__new__(cls, len, request_id, response_to,
+        return super().__new__(cls, len, request_id, response_to,
                                           opcode, zero, collection, flags,
                                           selector, update)
 

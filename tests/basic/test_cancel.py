@@ -18,7 +18,7 @@ def _delay(time):
     return d
 
 
-class AssertCallbackNotCalled(object):
+class AssertCallbackNotCalled:
     """
     Context manager that assures Deferred's callback was not called
     after it was cancelled. So we can be sure that Deferred's canceller

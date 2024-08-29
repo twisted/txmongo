@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, division
-
 from bson import BSON, ObjectId
 from bson.son import SON
 from pymongo.errors import OperationFailure, WriteError, BulkWriteError, \
@@ -30,7 +28,7 @@ import txmongo.filter as qf
 from tests.utils import SingleCollectionTest
 
 
-class _CallCounter(object):
+class _CallCounter:
     def __init__(self, original):
         self.call_count = 0
         self.original = original
@@ -606,7 +604,7 @@ class TestInsertMany(SingleCollectionTest):
 
     def setUp(self):
         self.more_than_1k = [{"_id": i} for i in range(2016)]
-        return super(TestInsertMany, self).setUp()
+        return super().setUp()
 
     def test_InvalidArg(self):
         self.assertRaises(TypeError, self.coll.insert_many, {'x': 42})
@@ -709,7 +707,7 @@ class TestUpdateOne(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestUpdateOne, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([{'x': 1}, {'x': 2}])
 
     @defer.inlineCallbacks
@@ -764,7 +762,7 @@ class TestReplaceOne(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestReplaceOne, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([{'x': 1}, {'x': 2}])
 
     @defer.inlineCallbacks
@@ -816,7 +814,7 @@ class TestUpdateMany(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestUpdateMany, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([{'x': 1}, {'x': 2}])
 
     @defer.inlineCallbacks
@@ -880,7 +878,7 @@ class TestDeleteOne(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestDeleteOne, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([{'x': 1}, {'x': 1}])
 
     @defer.inlineCallbacks
@@ -912,7 +910,7 @@ class TestDeleteMany(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestDeleteMany, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([{'x': 1}, {'x': 1}])
 
     @defer.inlineCallbacks
@@ -944,7 +942,7 @@ class TestFindOneAndDelete(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestFindOneAndDelete, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([{'x': 1, 'y': 1},
                                      {'x': 2, 'y': 2},
                                      {'x': 3, 'y': 3}])
@@ -972,7 +970,7 @@ class TestFindOneAndReplace(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestFindOneAndReplace, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([{'x': 10, 'y': 10},
                                      {'x': 20, 'y': 20},
                                      {'x': 30, 'y': 30}])
@@ -1021,7 +1019,7 @@ class TestFindOneAndUpdate(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestFindOneAndUpdate, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([{'x': 10, 'y': 10},
                                      {'x': 20, 'y': 20},
                                      {'x': 30, 'y': 30}])
@@ -1068,13 +1066,13 @@ class TestCount(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestCount, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([{'x': 10}, {'x': 20}, {'x': 30}])
 
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.db.system.profile.drop()
-        yield super(TestCount, self).tearDown()
+        yield super().tearDown()
 
     @defer.inlineCallbacks
     def test_count(self):

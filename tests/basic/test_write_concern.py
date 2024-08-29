@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, division
-
 from unittest.mock import patch
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer

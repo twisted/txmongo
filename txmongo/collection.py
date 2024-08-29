@@ -2,7 +2,6 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-from __future__ import absolute_import, division
 import io
 import struct
 import collections.abc
@@ -31,7 +30,7 @@ from twisted.python.compat import comparable
 
 
 @comparable
-class Collection(object):
+class Collection:
     """Creates new :class:`Collection` object
 
     :param database:
@@ -183,7 +182,7 @@ class Collection(object):
 
     @staticmethod
     def _gen_index_name(keys):
-        return u'_'.join([u"%s_%s" % item for item in keys])
+        return '_'.join(["%s_%s" % item for item in keys])
 
     def _list_collections_3_0(self):
         def on_ok(response):

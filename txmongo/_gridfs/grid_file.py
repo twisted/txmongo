@@ -14,7 +14,6 @@
 
 """Tools for representing files stored in GridFS."""
 
-from __future__ import absolute_import, division
 from bson import Binary, ObjectId
 import datetime
 from io import BytesIO as StringIO
@@ -60,7 +59,7 @@ def _create_property(field_name, docstring,
     return property(getter, doc=docstring)
 
 
-class GridIn(object):
+class GridIn:
     """Class to write data to GridFS.
     """
 
@@ -281,7 +280,7 @@ class GridIn(object):
         return False  # untrue will propagate exceptions
 
 
-class GridOut(object):
+class GridOut:
     """Class to read data out of GridFS.
     """
 
@@ -348,7 +347,7 @@ class GridOut(object):
         if size < 0 or size > remainder:
             size = remainder
 
-        class State(object): pass
+        class State: pass
         state = State()
         state.data = self.__buffer
         state.chunk_number = (len(state.data) + self.__position) / self.chunk_size
@@ -418,7 +417,7 @@ class GridOut(object):
         return str(self._file)
 
 
-class GridOutIterator(object):
+class GridOutIterator:
     def __init__(self, grid_out, chunks):
         self.__id = grid_out._id
         self.__chunks = chunks

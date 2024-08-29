@@ -2,8 +2,6 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-from __future__ import absolute_import, division
-
 from bson.codec_options import DEFAULT_CODEC_OPTIONS
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.uri_parser import parse_uri
@@ -234,7 +232,7 @@ class _Connection(ReconnectingClientFactory):
             return defer.succeed(None)
 
 
-class ConnectionPool(object):
+class ConnectionPool:
     __index = 0
     __pool = None
     __pool_size = None
