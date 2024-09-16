@@ -51,14 +51,14 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'TxMongo'
-copyright = '2021, Alexandre Fiori, Bret Curtis, Ilya Skriblovsky'
+copyright = '2024, Alexandre Fiori, Bret Curtis, Ilya Skriblovsky'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-version = '23.0.0'
+version = '24.0.0'
 # The full version, including alpha/beta/rc tags.
 release = version
 
