@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, division
-
 import tempfile
 import shutil
 
@@ -23,7 +21,7 @@ from twisted.internet import defer, reactor
 from twisted.internet.error import ProcessDone
 
 
-class Mongod(object):
+class Mongod:
 
     # FIXME: this message might change in future versions of MongoDB
     # but waiting for this message is faster than pinging tcp port

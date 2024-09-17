@@ -14,8 +14,6 @@
 
 """Exceptions raised by the :mod:`gridfs` package"""
 
-from __future__ import absolute_import, division
-
 
 class GridFSError(Exception):
     """Base class for all GridFS exceptions.

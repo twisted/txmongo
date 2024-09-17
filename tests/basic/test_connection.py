@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, division
 from unittest.mock import patch
 from time import time
 from twisted.trial import unittest
@@ -54,8 +53,6 @@ class TestMongoConnection(unittest.TestCase):
         test = connection.ConnectionPool()
         yield test.disconnect()
         test = connection.ConnectionPool("mongodb://127.0.0.1/dbname")
-        yield test.disconnect()
-        test = connection.ConnectionPool(u"mongodb://127.0.0.1/dbname")
         yield test.disconnect()
         self.assertRaises(AssertionError, connection.ConnectionPool, object)
         self.assertRaises(AssertionError, connection.ConnectionPool, 1)

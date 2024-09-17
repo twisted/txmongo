@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, division
-
 import signal
 from bson import SON
 from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError

@@ -29,7 +29,7 @@ class TestErrorHandling(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestErrorHandling, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_one({'_id': 1})
 
     @defer.inlineCallbacks
@@ -136,7 +136,7 @@ class TestBulkUpdate(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestBulkUpdate, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([
             {'x': 42},
             {'y': 123},
@@ -191,7 +191,7 @@ class TestBulkDelete(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def setUp(self):
-        yield super(TestBulkDelete, self).setUp()
+        yield super().setUp()
         yield self.coll.insert_many([
             {'x': 42},
             {'x': 123},

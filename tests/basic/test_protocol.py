@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, division
-
 from bson import BSON
 from twisted.trial import unittest
 from twisted.internet import defer
@@ -26,7 +24,7 @@ from txmongo.protocol import MongoClientProtocol, MongoDecoder, Insert, Query, \
     DELETE_SINGLE_REMOVE, CursorNotFound
 
 
-class _FakeTransport(object):
+class _FakeTransport:
     """Catches all content that MongoClientProtocol wants to send over the wire"""
 
     def __init__(self):
