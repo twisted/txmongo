@@ -137,7 +137,7 @@ class TestWriteConcern(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_ConnectionUrlParams(self):
-        conn = ConnectionPool("mongodb://{0}:{1}/?w=2&j=true".format(mongo_host, mongo_port))
+        conn = ConnectionPool("mongodb://{0}:{1}/?w=2&journal=true".format(mongo_host, mongo_port))
         coll = conn.mydb.mycol
 
         try:

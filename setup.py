@@ -10,7 +10,7 @@ setup(
     url="https://github.com/twisted/txmongo",
     keywords=["mongo", "mongodb", "pymongo", "gridfs", "txmongo"],
     packages=["txmongo", "txmongo._gridfs"],
-    install_requires=["twisted>=14.0", "pymongo>=3.0, <4.0"],
+    install_requires=["twisted>=14.0", "pymongo>=3.0, <5.0"],
     extras_require={
         'srv': ['pymongo[srv]>=3.6'],
     },

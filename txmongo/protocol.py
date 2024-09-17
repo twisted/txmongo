@@ -15,21 +15,28 @@ decoding as well as Exception types, when applicable.
 
 import base64
 import hashlib
-
-from bson import BSON, SON, Binary
-from collections import namedtuple
-from hashlib import sha1
 import hmac
 import logging
+import struct
+from collections import namedtuple
+from hashlib import sha1
+from random import SystemRandom
+
+from bson import BSON, SON, Binary
 from pymongo import auth
 from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure, \
-    NotMasterError, CursorNotFound
-from random import SystemRandom
-import struct
+    CursorNotFound
 from twisted.internet import defer, protocol, error
 from twisted.python import failure, log
+
 from txmongo.utils import get_err
 
+
+try:
+    from pymongo.errors import NotPrimaryError
+except ImportError:
+    # For pymongo < 3.12
+    from pymongo.errors import NotMasterError as NotPrimaryError
 
 try:
     from hashlib import pbkdf2_hmac as _hi
@@ -397,7 +404,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 msg = "TxMongo: " + doc.get("$err", "Unknown error")
                 fail_conn = False
                 if code == 13435:
-                    err = NotMasterError(msg)
+                    err = NotPrimaryError(msg)
                     fail_conn = True
                 else:
                     err = OperationFailure(msg, code)
