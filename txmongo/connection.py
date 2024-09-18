@@ -4,7 +4,8 @@
 
 import warnings
 
-from bson.codec_options import DEFAULT_CODEC_OPTIONS
+from bson.binary import UuidRepresentation
+from bson.codec_options import CodecOptions
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.read_preferences import ReadPreference
 from pymongo.uri_parser import parse_uri
@@ -262,7 +263,7 @@ class ConnectionPool:
         wc_options.update(kwargs)
         self.__write_concern = self.__parse_write_concern_options(wc_options)
 
-        self.__codec_options = kwargs.get('codec_options', DEFAULT_CODEC_OPTIONS)
+        self.__codec_options = kwargs.get('codec_options', CodecOptions(uuid_representation=UuidRepresentation.STANDARD))
 
         retry_delay = kwargs.get('retry_delay', 1.0)
         max_delay = kwargs.get('max_delay', 60.0)

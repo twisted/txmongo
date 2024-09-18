@@ -2,15 +2,19 @@ language: python
 python:
   - "3.5"
   - "3.8"
+  - "3.11"
   - "pypy3"
 
 
 env:
-    - TOX_ENV=tw189
-    - TOX_ENV=tw1910
-    - TOX_ENV=tw203
+    - TOX_ENV=tw217
+    - TOX_ENV=tw2210
+    - TOX_ENV=tw2310
     - TOX_ENV=twlatest
     - TOX_ENV=twtrunk
+    - TOX_ENV=pymongo_313
+    - TOX_ENV=pymongo_470
+    - TOX_ENV=pymongo_latest
 
 
 matrix:

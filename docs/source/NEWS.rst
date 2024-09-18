@@ -1,13 +1,21 @@
 Changelog
 =========
 
-Release 24.0.0 (2024-09-18)
+Release 24.0.0 (2024-09-16)
 ---------------------------
+
+API Changes
+^^^^^^^^
+
+- This is the last release that supports Python <3.8 and MongoDB <4.0
+
+
+Release UPCOMING (yyyy-mm-dd)
+-----------------------------
 
 API Changes
 ^^^^^^^^^^^
 
-- This is the last release that supports Python <3.8 and MongoDB <4.0
 - PyMongo 4+ is now supported. If you will migrate from PyMongo 3 to PyMongo 4, please be sure
   to check their PyMongo's guide because newer version has a number of incompatible changes.
 

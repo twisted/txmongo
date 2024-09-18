@@ -17,7 +17,7 @@ def timeout(func):
             deadline = now + seconds
 
         if deadline is not None and deadline < now:
-            raise TimeExceeded("TxMongo: run time exceeded by {0}s.".format(now-deadline))
+            raise TimeExceeded(f"TxMongo: run time exceeded by {now - deadline}s.")
 
         kwargs['_deadline'] = deadline
         raw_d = func(*args, **kwargs)
@@ -30,11 +30,10 @@ def timeout(func):
 
         timeout_d = defer.Deferred()
         times_up = reactor.callLater(seconds, timeout_d.callback, None)
-
         def on_ok(result):
             if timeout_d.called:
                 raw_d.cancel()
-                raise TimeExceeded("TxMongo: run time of {0}s exceeded.".format(seconds))
+                raise TimeExceeded(f"TxMongo: run time of {seconds}s exceeded.")
             else:
                 times_up.cancel()
                 return result[0]
@@ -55,7 +54,7 @@ def timeout(func):
 
 def check_deadline(_deadline):
     if _deadline is not None and _deadline < time():
-        raise TimeExceeded("TxMongo: now '{0}', deadline '{1}'".format(time(), _deadline))
+        raise TimeExceeded(f"TxMongo: now '{time()}', deadline '{_deadline}'")
 
 
 def get_err(document, default=None):
