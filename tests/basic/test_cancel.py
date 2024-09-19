@@ -1,14 +1,13 @@
 import struct
-
 from unittest.mock import Mock
+
 from pymongo.uri_parser import parse_uri
-from twisted.internet import defer
-from twisted.internet import reactor
+from twisted.internet import defer, reactor
 from twisted.test import proto_helpers
 from twisted.trial import unittest
-from txmongo import MongoProtocol
-from txmongo import Query
-from txmongo.connection import _Connection, ConnectionPool
+
+from txmongo import MongoProtocol, Query
+from txmongo.connection import ConnectionPool, _Connection
 from txmongo.protocol import Reply
 
 
@@ -24,6 +23,7 @@ class AssertCallbackNotCalled:
     after it was cancelled. So we can be sure that Deferred's canceller
     correctly removed it from waiting lists.
     """
+
     def __init__(self, deferred):
         self.deferred = deferred
 
@@ -42,13 +42,15 @@ class TestCancelParts(unittest.TestCase):
         proto = MongoProtocol()
         proto.makeConnection(tr)
 
-        d = proto.send_QUERY(Query(query={'x': 42}))
+        d = proto.send_QUERY(Query(query={"x": 42}))
         d.cancel()
 
         with AssertCallbackNotCalled(d):
-            reply = Reply(response_to=1, documents=[{'x': 42}])
-            reply_bin = struct.pack("<iiiiqii", 1, *reply[2:8]) + b''.join(reply.documents)
-            reply_bin = struct.pack('<i', len(reply_bin) + 4) + reply_bin
+            reply = Reply(response_to=1, documents=[{"x": 42}])
+            reply_bin = struct.pack("<iiiiqii", 1, *reply[2:8]) + b"".join(
+                reply.documents
+            )
+            reply_bin = struct.pack("<i", len(reply_bin) + 4) + reply_bin
             proto.dataReceived(reply_bin)
 
         self.failureResultOf(d, defer.CancelledError)
@@ -104,10 +106,10 @@ class TestCancelIntegrated(unittest.TestCase):
         # stage operations can be safely cancelled -- they won't be
         # sent to MongoDB at all. This test checks this.
 
-        d1 = self.coll.insert_one({'x': 1})
-        d2 = self.coll.insert_one({'x': 2})
-        d3 = self.coll.insert_one({'x': 3})
-        d4 = self.coll.insert_one({'x': 4})
+        d1 = self.coll.insert_one({"x": 1})
+        d2 = self.coll.insert_one({"x": 2})
+        d3 = self.coll.insert_one({"x": 3})
+        d4 = self.coll.insert_one({"x": 4})
 
         d1.cancel()
         d3.cancel()
@@ -118,7 +120,7 @@ class TestCancelIntegrated(unittest.TestCase):
         self.assertTrue(d2.called)
         self.failureResultOf(d3, defer.CancelledError)
 
-        docs = yield self.coll.distinct('x')
+        docs = yield self.coll.distinct("x")
         self.assertEqual(set(docs), {2, 4})
 
     @defer.inlineCallbacks
@@ -127,11 +129,11 @@ class TestCancelIntegrated(unittest.TestCase):
         # of mind. NB: remove can be cancelled only because ConnectionPool
         # is not connected yet.
         for i in range(10):
-            self.coll.insert_one({'x': i})
+            self.coll.insert_one({"x": i})
 
-        d1 = self.coll.remove({'x': {"$lt": 3}})
-        d2 = self.coll.remove({'x': {"$gte": 3, "$lt": 6}})
-        d3 = self.coll.remove({'x': {"$gte": 6, "$lt": 9}})
+        d1 = self.coll.remove({"x": {"$lt": 3}})
+        d2 = self.coll.remove({"x": {"$gte": 3, "$lt": 6}})
+        d3 = self.coll.remove({"x": {"$gte": 6, "$lt": 9}})
 
         d2.cancel()
 
@@ -140,7 +142,7 @@ class TestCancelIntegrated(unittest.TestCase):
         self.assertTrue(d1.called)
         self.failureResultOf(d2, defer.CancelledError)
 
-        x = yield self.coll.distinct('x')
+        x = yield self.coll.distinct("x")
         self.assertEqual(set(x), {3, 4, 5, 9})
 
     @defer.inlineCallbacks
@@ -150,7 +152,7 @@ class TestCancelIntegrated(unittest.TestCase):
 
         yield self.coll.count()
 
-        d = self.coll.insert({'x': 42})
+        d = self.coll.insert({"x": 42})
         d.cancel()
 
         yield _delay(1)

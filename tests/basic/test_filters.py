@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from twisted.trial import unittest
+from pymongo.errors import OperationFailure
 from twisted.internet import defer
+from twisted.trial import unittest
+
 import txmongo
 import txmongo.filter as qf
-from pymongo.errors import OperationFailure
 
 mongo_host = "localhost"
 mongo_port = 27017
@@ -30,7 +31,7 @@ class TestMongoFilters(unittest.TestCase):
         self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
         self.db = self.conn.mydb
         self.coll = self.db.mycol
-        yield self.coll.insert({'x': 42})
+        yield self.coll.insert({"x": 42})
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -38,48 +39,59 @@ class TestMongoFilters(unittest.TestCase):
         yield self.db.system.profile.drop()
         yield self.conn.disconnect()
 
-
     @defer.inlineCallbacks
     def test_Hint(self):
         # find() should fail with 'bad hint' if hint specifier works correctly
-        self.assertFailure(self.coll.find({}, filter=qf.hint([('x', 1)])), OperationFailure)
+        self.assertFailure(
+            self.coll.find({}, filter=qf.hint([("x", 1)])), OperationFailure
+        )
 
         # create index and test it is honoured
         yield self.coll.create_index(qf.sort(qf.ASCENDING("x")), name="test_index")
-        found_1 = yield self.coll.find({}, filter=qf.hint([('x', 1)]))
+        found_1 = yield self.coll.find({}, filter=qf.hint([("x", 1)]))
         found_2 = yield self.coll.find({}, filter=qf.hint(qf.ASCENDING("x")))
         found_3 = yield self.coll.find({}, filter=qf.hint("test_index"))
         self.assertTrue(found_1 == found_2 == found_3)
 
         # find() should fail with 'bad hint' if hint specifier works correctly
-        self.assertFailure(self.coll.find({}, filter=qf.hint(["test_index", 1])), OperationFailure)
-        self.assertFailure(self.coll.find({}, filter=qf.hint(qf.ASCENDING("test_index"))),
-                           OperationFailure)
+        self.assertFailure(
+            self.coll.find({}, filter=qf.hint(["test_index", 1])), OperationFailure
+        )
+        self.assertFailure(
+            self.coll.find({}, filter=qf.hint(qf.ASCENDING("test_index"))),
+            OperationFailure,
+        )
 
     def test_SortAscendingMultipleFields(self):
-        self.assertEqual(qf.sort(qf.ASCENDING(['x', 'y'])), qf.sort(qf.ASCENDING('x') +
-                                                                    qf.ASCENDING('y')))
+        self.assertEqual(
+            qf.sort(qf.ASCENDING(["x", "y"])),
+            qf.sort(qf.ASCENDING("x") + qf.ASCENDING("y")),
+        )
 
     def test_SortOneLevelList(self):
-        self.assertEqual(qf.sort([('x', 1)]), qf.sort(('x', 1)))
+        self.assertEqual(qf.sort([("x", 1)]), qf.sort(("x", 1)))
 
     def test_SortInvalidKey(self):
         self.assertRaises(TypeError, qf.sort, [(1, 2)])
-        self.assertRaises(TypeError, qf.sort, [('x', 3)])
+        self.assertRaises(TypeError, qf.sort, [("x", 3)])
 
     def test_SortGeoIndexes(self):
-        self.assertEqual(qf.sort(qf.GEO2D('x')), qf.sort([('x', "2d")]))
-        self.assertEqual(qf.sort(qf.GEO2DSPHERE('x')), qf.sort([('x', "2dsphere")]))
-        self.assertEqual(qf.sort(qf.GEOHAYSTACK('x')), qf.sort([('x', "geoHaystack")]))
+        self.assertEqual(qf.sort(qf.GEO2D("x")), qf.sort([("x", "2d")]))
+        self.assertEqual(qf.sort(qf.GEO2DSPHERE("x")), qf.sort([("x", "2dsphere")]))
+        self.assertEqual(qf.sort(qf.GEOHAYSTACK("x")), qf.sort([("x", "geoHaystack")]))
 
     def test_TextIndex(self):
         self.assertEqual(qf.sort(qf.TEXT("title")), qf.sort([("title", "text")]))
 
     def __3_2_or_higher(self):
-        return self.db.command("buildInfo").addCallback(lambda info: info["versionArray"] >= [3, 2])
+        return self.db.command("buildInfo").addCallback(
+            lambda info: info["versionArray"] >= [3, 2]
+        )
 
     def __3_6_or_higher(self):
-        return self.db.command("buildInfo").addCallback(lambda info: info["versionArray"] >= [3, 6])
+        return self.db.command("buildInfo").addCallback(
+            lambda info: info["versionArray"] >= [3, 6]
+        )
 
     @defer.inlineCallbacks
     def __test_simple_filter(self, filter, optionname, optionvalue):
@@ -117,13 +129,17 @@ class TestMongoFilters(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_FilterMerge(self):
-        self.assertEqual(qf.sort(qf.ASCENDING('x') + qf.DESCENDING('y')),
-                         qf.sort(qf.ASCENDING('x')) + qf.sort(qf.DESCENDING('y')))
+        self.assertEqual(
+            qf.sort(qf.ASCENDING("x") + qf.DESCENDING("y")),
+            qf.sort(qf.ASCENDING("x")) + qf.sort(qf.DESCENDING("y")),
+        )
 
         comment = "hello world"
 
         yield self.db.command("profile", 2)
-        yield self.coll.find({}, filter=qf.sort(qf.ASCENDING('x')) + qf.comment(comment))
+        yield self.coll.find(
+            {}, filter=qf.sort(qf.ASCENDING("x")) + qf.comment(comment)
+        )
         yield self.db.command("profile", 0)
 
         if (yield self.__3_6_or_higher()):
@@ -136,5 +152,7 @@ class TestMongoFilters(unittest.TestCase):
         self.assertEqual(cnt, 1)
 
     def test_Repr(self):
-        self.assertEqual(repr(qf.sort(qf.ASCENDING('x'))),
-                         "<mongodb QueryFilter: {'orderby': (('x', 1),)}>")
+        self.assertEqual(
+            repr(qf.sort(qf.ASCENDING("x"))),
+            "<mongodb QueryFilter: {'orderby': (('x', 1),)}>",
+        )

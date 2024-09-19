@@ -4,10 +4,10 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-import _local_path
 import sys
 import time
 
+import _local_path
 from twisted.internet import reactor
 from twisted.python import log
 
@@ -15,16 +15,15 @@ import txmongo
 
 
 def updateData(ignored, conn):
-    print "updating data..."
+    print("updating data...")
     collection = conn.foo.test
-    d = collection.update(
-        {"foo": "bar"}, {"$set": {"name": "jane doe"}}, safe=True)
+    d = collection.update({"foo": "bar"}, {"$set": {"name": "jane doe"}}, safe=True)
     d.addErrback(log.err)
     return d
 
 
 def insertData(conn):
-    print "inserting data..."
+    print("inserting data...")
     collection = conn.foo.test
     d = collection.insert({"foo": "bar", "name": "john doe"}, safe=True)
     d.addErrback(log.err)
@@ -33,7 +32,7 @@ def insertData(conn):
 
 
 def finish(ignore):
-    print "finishing up..."
+    print("finishing up...")
     reactor.stop()
 
 
@@ -44,7 +43,7 @@ def example():
     return d
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     log.startLogging(sys.stdout)
     example()
     reactor.run()

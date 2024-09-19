@@ -1,7 +1,9 @@
 from functools import wraps
 from time import time
-from txmongo.errors import TimeExceeded
+
 from twisted.internet import defer, reactor
+
+from txmongo.errors import TimeExceeded
 
 
 def timeout(func):
@@ -19,7 +21,7 @@ def timeout(func):
         if deadline is not None and deadline < now:
             raise TimeExceeded(f"TxMongo: run time exceeded by {now - deadline}s.")
 
-        kwargs['_deadline'] = deadline
+        kwargs["_deadline"] = deadline
         raw_d = func(*args, **kwargs)
 
         if deadline is None:
@@ -30,6 +32,7 @@ def timeout(func):
 
         timeout_d = defer.Deferred()
         times_up = reactor.callLater(seconds, timeout_d.callback, None)
+
         def on_ok(result):
             if timeout_d.called:
                 raw_d.cancel()
@@ -44,12 +47,14 @@ def timeout(func):
             times_up.cancel()
             failure.value.subFailure.raiseException()
 
-
-        return defer.DeferredList([raw_d, timeout_d], fireOnOneCallback=True,
-                                  fireOnOneErrback=True, consumeErrors=True).addCallbacks(on_ok, on_fail)
+        return defer.DeferredList(
+            [raw_d, timeout_d],
+            fireOnOneCallback=True,
+            fireOnOneErrback=True,
+            consumeErrors=True,
+        ).addCallbacks(on_ok, on_fail)
 
     return _timeout
-
 
 
 def check_deadline(_deadline):

@@ -14,10 +14,12 @@
 # limitations under the License.
 
 import datetime
+
 from bson import SON
 from bson.codec_options import CodecOptions
-from twisted.trial import unittest
 from twisted.internet import defer
+from twisted.trial import unittest
+
 from txmongo.connection import MongoConnection
 from txmongo.database import Database
 
@@ -32,7 +34,7 @@ class TestCodecOptions(unittest.TestCase):
         self.conn = MongoConnection(mongo_host, mongo_port)
         self.db = self.conn.db
         self.coll = self.db.coll
-        yield self.coll.insert_one({'x': 42, 'y': datetime.datetime.now()})
+        yield self.coll.insert_one({"x": 42, "y": datetime.datetime.now()})
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -62,8 +64,8 @@ class TestCodecOptions(unittest.TestCase):
     @defer.inlineCallbacks
     def test_TzAware(self):
         doc = yield self.coll.find_one()
-        self.assertIsNone(doc['y'].tzinfo, None)
+        self.assertIsNone(doc["y"].tzinfo, None)
 
         tz_aware = CodecOptions(tz_aware=True)
         doc = yield self.coll.with_options(codec_options=tz_aware).find_one()
-        self.assertIsNotNone(doc['y'].tzinfo, None)
+        self.assertIsNotNone(doc["y"].tzinfo, None)

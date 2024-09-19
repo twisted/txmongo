@@ -6,11 +6,14 @@
 import sys
 import warnings
 
+from txmongo.connection import (
+    MongoConnection,
+    MongoConnectionPool,
+    lazyMongoConnection,
+    lazyMongoConnectionPool,
+)
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
-from txmongo.connection import MongoConnection, MongoConnectionPool, lazyMongoConnection, \
-    lazyMongoConnectionPool
-
 
 assert Database
 assert MongoProtocol
@@ -21,4 +24,7 @@ assert lazyMongoConnection
 assert lazyMongoConnectionPool
 
 if sys.version_info < (3, 8):
-    warnings.warn("Only Python 3.8+ will be supported in the next version of TxMongo", DeprecationWarning)
+    warnings.warn(
+        "Only Python 3.8+ will be supported in the next version of TxMongo",
+        DeprecationWarning,
+    )

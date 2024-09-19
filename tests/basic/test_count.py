@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from twisted.trial import unittest
 from twisted.internet import defer
+from twisted.trial import unittest
+
 from txmongo import connection, gridfs
 
 
@@ -23,23 +24,23 @@ class TestGFS(unittest.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         self.conn = connection.ConnectionPool("mongodb://127.0.0.1/dbname")
-        self.db = self.conn['dbname']
+        self.db = self.conn["dbname"]
         self.gfs = gridfs.GridFS(self.db)
-        for n in range(0,10):
+        for n in range(0, 10):
             data = "Hello" + str(n)
-            yield self.gfs.put(data.encode('utf-8'), filename="world")
+            yield self.gfs.put(data.encode("utf-8"), filename="world")
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.db.command('dropDatabase')
+        yield self.db.command("dropDatabase")
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
     def test_GFSCount(self):
-        count = yield self.gfs.count('world')
+        count = yield self.gfs.count("world")
         self.assertEqual(count, 10)
 
     @defer.inlineCallbacks
     def test_GFSNoCount(self):
-        count = yield self.gfs.count('worldx')
+        count = yield self.gfs.count("worldx")
         self.assertEqual(count, 0)

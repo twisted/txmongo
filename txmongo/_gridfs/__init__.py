@@ -19,17 +19,18 @@ The :mod:`gridfs` package is an implementation of GridFS on top of
 """
 
 from twisted.internet import defer
+
+from txmongo import filter
 from txmongo._gridfs.errors import NoFile
 from txmongo._gridfs.grid_file import GridIn, GridOut, GridOutIterator
-from txmongo import filter
-from txmongo.filter import ASCENDING, DESCENDING
 from txmongo.database import Database
+from txmongo.filter import ASCENDING, DESCENDING
 
 assert GridOutIterator
 
+
 class GridFS(object):
-    """An instance of GridFS on top of a single Database.
-    """
+    """An instance of GridFS on top of a single Database."""
 
     def __init__(self, database, collection="fs"):
         """Create a new instance of :class:`GridFS`.
@@ -58,16 +59,19 @@ class GridFS(object):
         self.__collection = database[collection]
         self.__files = self.__collection.files
         self.__chunks = self.__collection.chunks
-        self.__indexes_created_defer = defer.DeferredList([
-            self.__files.create_index(
-                filter.sort(ASCENDING("filename") + ASCENDING("uploadDate"))),
-            self.__chunks.create_index(
-                filter.sort(ASCENDING("files_id") + ASCENDING("n")), unique=True)
-        ])
+        self.__indexes_created_defer = defer.DeferredList(
+            [
+                self.__files.create_index(
+                    filter.sort(ASCENDING("filename") + ASCENDING("uploadDate"))
+                ),
+                self.__chunks.create_index(
+                    filter.sort(ASCENDING("files_id") + ASCENDING("n")), unique=True
+                ),
+            ]
+        )
 
     def indexes_created(self):
-        """Returns a defer on the creation of this GridFS instance's indexes
-        """
+        """Returns a defer on the creation of this GridFS instance's indexes"""
         d = defer.Deferred()
         self.__indexes_created_defer.chainDeferred(d)
         return d
@@ -114,9 +118,9 @@ class GridFS(object):
         def _finally(result):
             return grid_file.close().addCallback(lambda _: result)
 
-        return grid_file.write(data)\
-            .addBoth(_finally)\
-            .addCallback(lambda _: grid_file._id)
+        return (
+            grid_file.write(data).addBoth(_finally).addCallback(lambda _: grid_file._id)
+        )
 
     def get(self, file_id):
         """Get a file from GridFS by ``"_id"``.
@@ -129,11 +133,15 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
+
         def ok(doc):
             if doc is None:
-                raise NoFile("TxMongo: no file in gridfs with _id {0}".format(repr(file_id)))
+                raise NoFile(
+                    "TxMongo: no file in gridfs with _id {0}".format(repr(file_id))
+                )
 
             return GridOut(self.__collection, doc)
+
         return self.__collection.files.find_one({"_id": file_id}).addCallback(ok)
 
     def get_version(self, filename=None, version=-1):
@@ -158,7 +166,7 @@ class GridFS(object):
           - `filename`: ``"filename"`` of the file to get, or `None`
           - `version` (optional): version of the file to get (defaults
             to -1, the most recent version uploaded)
-        """        
+        """
         query = {"filename": filename}
         skip = abs(version)
         if version < 0:
@@ -173,8 +181,9 @@ class GridFS(object):
 
             raise NoFile("no version %d for filename %r" % (version, filename))
 
-        return self.__files.find(query, filter=filter.sort(myorder), limit=1, skip=skip)\
-            .addCallback(ok)
+        return self.__files.find(
+            query, filter=filter.sort(myorder), limit=1, skip=skip
+        ).addCallback(ok)
 
     def count(self, filename):
         """Count the number of versions of a given file.
@@ -202,14 +211,20 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
+
         def ok(doc):
             if doc is None:
-                raise NoFile("TxMongo: no file in gridfs with filename {0}".format(repr(filename)))
+                raise NoFile(
+                    "TxMongo: no file in gridfs with filename {0}".format(
+                        repr(filename)
+                    )
+                )
 
             return GridOut(self.__collection, doc)
 
-        return self.__files.find_one({"filename": filename},
-                                     filter = filter.sort(DESCENDING("uploadDate"))).addCallback(ok)
+        return self.__files.find_one(
+            {"filename": filename}, filter=filter.sort(DESCENDING("uploadDate"))
+        ).addCallback(ok)
 
     # TODO add optional safe mode for chunk removal?
     def delete(self, file_id):
@@ -228,10 +243,12 @@ class GridFS(object):
 
         .. versionadded:: 1.6
         """
-        return defer.DeferredList([
-            self.__files.remove({"_id": file_id}, safe=True),
-            self.__chunks.remove({"files_id": file_id})
-        ])
+        return defer.DeferredList(
+            [
+                self.__files.remove({"_id": file_id}, safe=True),
+                self.__chunks.remove({"files_id": file_id}),
+            ]
+        )
 
     def list(self):
         """List the names of all files stored in this instance of

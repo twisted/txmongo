@@ -14,12 +14,14 @@
 # limitations under the License.
 
 from unittest.mock import patch
+
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 from twisted.trial import unittest
-from txmongo.connection import MongoConnection, ConnectionPool
-from txmongo.database import Database
+
 from txmongo.collection import Collection
+from txmongo.connection import ConnectionPool, MongoConnection
+from txmongo.database import Database
 
 mongo_host = "localhost"
 mongo_port = 27017
@@ -33,28 +35,28 @@ class TestWriteConcern(unittest.TestCase):
     @defer.inlineCallbacks
     def test_Priority(self):
         """
-            Check that connection-level, database-level, collection-level
-            and query-level write concerns are respected with correct priority
+        Check that connection-level, database-level, collection-level
+        and query-level write concerns are respected with correct priority
         """
         conn = MongoConnection(mongo_host, mongo_port, w=1, wtimeout=500)
 
         try:
             with self.mock_gle() as mock:
-                yield conn.mydb.mycol.insert({'x': 42})
+                yield conn.mydb.mycol.insert({"x": 42})
                 mock.assert_called_once_with("mydb", w=1, wtimeout=500)
 
             db_w0 = Database(conn, "mydb", write_concern=WriteConcern(w=0))
             with self.mock_gle() as mock:
-                yield db_w0.mycol.insert({'x': 42})
+                yield db_w0.mycol.insert({"x": 42})
                 self.assertFalse(mock.called)
 
             coll = Collection(db_w0, "mycol", write_concern=WriteConcern(w=2))
             with self.mock_gle() as mock:
-                yield coll.insert({'x': 42})
+                yield coll.insert({"x": 42})
                 mock.assert_called_once_with("mydb", w=2)
 
             with self.mock_gle() as mock:
-                yield coll.insert({'x': 42}, j=True)
+                yield coll.insert({"x": 42}, j=True)
                 mock.assert_called_once_with("mydb", j=True)
 
         finally:
@@ -68,15 +70,15 @@ class TestWriteConcern(unittest.TestCase):
 
         try:
             with self.mock_gle() as mock:
-                yield coll.insert({'x': 42})
+                yield coll.insert({"x": 42})
                 mock.assert_called_once_with("mydb", w=1, wtimeout=500)
 
             with self.mock_gle() as mock:
-                yield coll.insert({'x': 42}, safe=False)
+                yield coll.insert({"x": 42}, safe=False)
                 self.assertFalse(mock.called)
 
             with self.mock_gle() as mock:
-                yield coll.insert({'x': 42}, safe=True)
+                yield coll.insert({"x": 42}, safe=True)
                 mock.assert_called_once_with("mydb", w=1, wtimeout=500)
         finally:
             yield coll.drop()
@@ -89,15 +91,15 @@ class TestWriteConcern(unittest.TestCase):
 
         try:
             with self.mock_gle() as mock:
-                yield coll.insert({'x': 42})
+                yield coll.insert({"x": 42})
                 self.assertFalse(mock.called)
 
             with self.mock_gle() as mock:
-                yield coll.insert({'x': 42}, safe=False)
+                yield coll.insert({"x": 42}, safe=False)
                 self.assertFalse(mock.called)
 
             with self.mock_gle() as mock:
-                yield coll.insert({'x': 42}, safe=True)
+                yield coll.insert({"x": 42}, safe=True)
                 mock.assert_called_once_with("mydb")
         finally:
             yield coll.drop()
@@ -127,9 +129,9 @@ class TestWriteConcern(unittest.TestCase):
         coll = conn.mydb.mycol
 
         try:
-            yield self.__test_operation(coll, "insert", {'x': 42})
-            yield self.__test_operation(coll, "update", {}, {'x': 42})
-            yield self.__test_operation(coll, "save", {'x': 42})
+            yield self.__test_operation(coll, "insert", {"x": 42})
+            yield self.__test_operation(coll, "update", {}, {"x": 42})
+            yield self.__test_operation(coll, "save", {"x": 42})
             yield self.__test_operation(coll, "remove", {})
         finally:
             yield coll.drop()
@@ -137,13 +139,15 @@ class TestWriteConcern(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_ConnectionUrlParams(self):
-        conn = ConnectionPool("mongodb://{0}:{1}/?w=2&journal=true".format(mongo_host, mongo_port))
+        conn = ConnectionPool(
+            "mongodb://{0}:{1}/?w=2&journal=true".format(mongo_host, mongo_port)
+        )
         coll = conn.mydb.mycol
 
         try:
             with self.mock_gle() as mock:
-                yield coll.insert({'x': 42})
-                mock.assert_called_once_with('mydb', w=2, j=True)
+                yield coll.insert({"x": 42})
+                mock.assert_called_once_with("mydb", w=2, j=True)
         finally:
             yield coll.drop()
             yield conn.disconnect()

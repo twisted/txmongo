@@ -5,8 +5,10 @@
 # found in the LICENSE file.
 
 import time
-import txmongo
+
 from twisted.internet import defer, reactor
+
+import txmongo
 
 
 @defer.inlineCallbacks
@@ -18,9 +20,10 @@ def example():
 
     # insert some data
     for x in range(10000):
-        result = yield test.insert({"something": x*time.time()}, safe=True)
-        print result
+        result = yield test.insert({"something": x * time.time()}, safe=True)
+        print(result)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     example().addCallback(lambda ign: reactor.stop())
     reactor.run()

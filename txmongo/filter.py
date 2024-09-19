@@ -9,7 +9,7 @@ from collections import defaultdict
 
 def _direction(keys, direction):
     if isinstance(keys, (bytes, str)):
-        return (keys, direction),
+        return ((keys, direction),)
     elif isinstance(keys, (list, tuple)):
         return tuple([(k, direction) for k in keys])
 
@@ -77,15 +77,20 @@ class _QueryFilter(defaultdict):
             assert isinstance(index_list, (list, tuple))
             for key, direction in index_list:
                 if not isinstance(key, (bytes, str)):
-                    raise TypeError("TxMongo: invalid {0}ing key '{1}'"
-                                    .format(name, repr(key)))
+                    raise TypeError(
+                        "TxMongo: invalid {0}ing key '{1}'".format(name, repr(key))
+                    )
                 if direction not in self.ALLOWED_DIRECTIONS:
-                    raise TypeError("TxMongo invalid {0}ing direction '{1}'"
-                                    .format(name, direction))
+                    raise TypeError(
+                        "TxMongo invalid {0}ing direction '{1}'".format(name, direction)
+                    )
                 self[operation] += tuple(((key, direction),))
         except Exception:
-            raise TypeError("TxMongo: invalid list of keys for {0}, {1}"
-                            .format(name, repr(index_list)))
+            raise TypeError(
+                "TxMongo: invalid list of keys for {0}, {1}".format(
+                    name, repr(index_list)
+                )
+            )
 
     def __repr__(self):
         return "<mongodb QueryFilter: %s>" % dict.__repr__(self)

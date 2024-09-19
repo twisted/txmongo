@@ -2,7 +2,7 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-from txmongo._gridfs import GridFS, GridIn, GridOut, errors, grid_file, GridOutIterator
+from txmongo._gridfs import GridFS, GridIn, GridOut, GridOutIterator, errors, grid_file
 
 assert GridFS
 assert GridIn

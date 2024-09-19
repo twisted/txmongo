@@ -5,8 +5,10 @@
 # found in the LICENSE file.
 
 import _local_path
-import txmongo
 from twisted.internet import defer, reactor
+
+import txmongo
+
 
 @defer.inlineCallbacks
 def example():
@@ -16,12 +18,15 @@ def example():
     test = foo.test  # `test` collection
 
     # insert
-    yield test.insert({"foo":"bar", "name":"bla"}, safe=True)
+    yield test.insert({"foo": "bar", "name": "bla"}, safe=True)
 
     # update
-    result = yield test.update({"foo":"bar"}, {"$set": {"name":"john doe"}}, safe=True)
-    print "result:", result
+    result = yield test.update(
+        {"foo": "bar"}, {"$set": {"name": "john doe"}}, safe=True
+    )
+    print("result:", result)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     example().addCallback(lambda ign: reactor.stop())
     reactor.run()

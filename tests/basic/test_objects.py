@@ -13,19 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import time
-
 from io import BytesIO as StringIO
 
-import os
-from bson import objectid, timestamp, SON
+from bson import SON, objectid, timestamp
 from pymongo.write_concern import WriteConcern
-import txmongo
-from txmongo import database, collection, filter as qf
-from txmongo.gridfs import GridFS, GridIn, GridOut, GridOutIterator, errors
-from txmongo._gridfs.errors import NoFile
-from twisted.trial import unittest
 from twisted.internet import defer
+from twisted.trial import unittest
+
+import txmongo
+from txmongo import collection, database
+from txmongo import filter as qf
+from txmongo._gridfs.errors import NoFile
+from txmongo.gridfs import GridFS, GridIn, GridOut, GridOutIterator, errors
+
 try:
     from twisted._version import version as twisted_version
 except ImportError:
@@ -38,7 +40,7 @@ mongo_port = 27017
 class TestMongoObjects(unittest.TestCase):
     @defer.inlineCallbacks
     def test_MongoObjects(self):
-        """ Tests creating mongo objects """
+        """Tests creating mongo objects"""
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         mydb = conn.mydb
         self.assertEqual(isinstance(mydb, database.Database), True)
@@ -85,7 +87,7 @@ class TestMongoObjects(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_MongoOperations(self):
-        """ Tests mongo operations """
+        """Tests mongo operations"""
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         test = conn.foo.test
 
@@ -125,8 +127,7 @@ class TestMongoObjects(unittest.TestCase):
         test.drop()
 
         # insert with specific timestamp
-        doc1 = {"_id": objectid.ObjectId(),
-                "ts": timestamp.Timestamp(1, 2)}
+        doc1 = {"_id": objectid.ObjectId(), "ts": timestamp.Timestamp(1, 2)}
         yield test.insert(doc1, safe=True)
 
         result = yield test.find_one(doc1)
@@ -134,8 +135,7 @@ class TestMongoObjects(unittest.TestCase):
         self.assertEqual(result.get("ts").inc, 2)
 
         # insert with specific timestamp
-        doc2 = {"_id": objectid.ObjectId(),
-                "ts": timestamp.Timestamp(2, 1)}
+        doc2 = {"_id": objectid.ObjectId(), "ts": timestamp.Timestamp(2, 1)}
         yield test.insert(doc2, safe=True)
 
         # the objects come back sorted by ts correctly.
@@ -146,8 +146,7 @@ class TestMongoObjects(unittest.TestCase):
         self.assertEqual(result[1]["_id"], doc2["_id"])
 
         # insert with null timestamp
-        doc3 = {"_id": objectid.ObjectId(),
-                "ts": timestamp.Timestamp(0, 0)}
+        doc3 = {"_id": objectid.ObjectId(), "ts": timestamp.Timestamp(0, 0)}
         yield test.insert(doc3, safe=True)
 
         # time field loaded correctly
@@ -165,35 +164,43 @@ class TestMongoObjects(unittest.TestCase):
 
 
 class TestGridFsObjects(unittest.TestCase):
-    """ Test the GridFS operations from txmongo._gridfs """
+    """Test the GridFS operations from txmongo._gridfs"""
+
     @defer.inlineCallbacks
     def _disconnect(self, conn):
-        """ Disconnect the connection """
+        """Disconnect the connection"""
         yield conn.disconnect()
 
     def _drop_gridfs(self, db):
         """
         Drop the default gridfs instance (i.e. ``fs``) associate to this database
         """
-        return defer.gatherResults([
-            db.drop_collection('fs.files'),
-            db.drop_collection('fs.chunks')
-        ])
+        return defer.gatherResults(
+            [db.drop_collection("fs.files"), db.drop_collection("fs.chunks")]
+        )
 
     @defer.inlineCallbacks
     def test_GridFileObjects(self):
-        """ Tests gridfs objects """
+        """Tests gridfs objects"""
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
         yield self._drop_gridfs(db)
         self.assertRaises(TypeError, GridFS, None)
         _ = GridFS(db)  # Default collection
         self.assertRaises(TypeError, GridIn, None)
-        with GridIn(db.fs, filename="test_with", contentType="text/plain", chunk_size=1024):
+        with GridIn(
+            db.fs, filename="test_with", contentType="text/plain", chunk_size=1024
+        ):
             pass
-        grid_in_file = GridIn(db.fs, filename="test_1", contentType="text/plain",
-                              content_type="text/plain", chunk_size=65536, length=1048576,
-                              upload_date="20150101")
+        grid_in_file = GridIn(
+            db.fs,
+            filename="test_1",
+            contentType="text/plain",
+            content_type="text/plain",
+            chunk_size=65536,
+            length=1048576,
+            upload_date="20150101",
+        )
         self.assertFalse(grid_in_file.closed)
         if twisted_version.major >= 15:
             with self.assertRaises(TypeError):
@@ -204,7 +211,7 @@ class TestGridFsObjects(unittest.TestCase):
                 _ = grid_in_file.test
         grid_in_file.test = 1
         yield grid_in_file.write(b"0xDEADBEEF")
-        yield grid_in_file.write(b"0xDEADBEEF"*1048576)
+        yield grid_in_file.write(b"0xDEADBEEF" * 1048576)
         self.assertTrue("20150101", grid_in_file.upload_date)
         yield grid_in_file.writelines([b"0xDEADBEEF", b"0xDEADBEEF"])
         yield grid_in_file.close()
@@ -225,7 +232,7 @@ class TestGridFsObjects(unittest.TestCase):
         grid_out_file.seek(0, os.SEEK_END)
         self.assertEqual(10 * (1 + 1048576 + 2), grid_out_file.tell())
         yield grid_out_file.close()
-        data = b''
+        data = b""
         for block_dfr in GridOutIterator(grid_out_file, db.fs.chunks):
             block = yield block_dfr
             if block:
@@ -234,9 +241,12 @@ class TestGridFsObjects(unittest.TestCase):
                 break
         self.assertEqual(data, b"0xDEADBEEF" * (1 + 1048576 + 2))
 
-
-        fake_doc = {"_id": "test_id", "length": 1048576, "filename": "test",
-                    "upload_date": "20150101"}
+        fake_doc = {
+            "_id": "test_id",
+            "length": 1048576,
+            "filename": "test",
+            "upload_date": "20150101",
+        }
         self.assertRaises(TypeError, GridOut, None, None)
         grid_out_file = GridOut(db.fs, fake_doc)
         if twisted_version.major >= 15:
@@ -257,7 +267,7 @@ class TestGridFsObjects(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_GridFsObjects(self):
-        """ Tests gridfs objects """
+        """Tests gridfs objects"""
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
         yield self._drop_gridfs(db)
@@ -270,8 +280,9 @@ class TestGridFsObjects(unittest.TestCase):
         db = conn.test
         yield self._drop_gridfs(db)
         gfs = GridFS(db)  # Default collection
-        _ = yield gfs.put(b"0xDEADBEEF", filename="test_2", contentType="text/plain",
-                          chunk_size=65536)
+        _ = yield gfs.put(
+            b"0xDEADBEEF", filename="test_2", contentType="text/plain", chunk_size=65536
+        )
         # disconnect
         yield conn.disconnect()
 
@@ -285,17 +296,26 @@ class TestGridFsObjects(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_GridFsIteration(self):
-        """ Tests gridfs iterator """
+        """Tests gridfs iterator"""
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
         yield self._drop_gridfs(db)
         gfs = GridFS(db)  # Default collection
-        new_file = gfs.new_file(filename="testName", contentType="text/plain", length=1048576,
-                                chunk_size=4096)
-        yield new_file.write(b"0xDEADBEEF"*4096*2)
+        new_file = gfs.new_file(
+            filename="testName",
+            contentType="text/plain",
+            length=1048576,
+            chunk_size=4096,
+        )
+        yield new_file.write(b"0xDEADBEEF" * 4096 * 2)
         yield new_file.close()
-        fake_doc = {"_id": new_file._id, "name": "testName", "length": 4096*2, "chunkSize": 4096,
-                    "contentType": "text/plain"}
+        fake_doc = {
+            "_id": new_file._id,
+            "name": "testName",
+            "length": 4096 * 2,
+            "chunkSize": 4096,
+            "contentType": "text/plain",
+        }
         grid_out_file = GridOut(db.fs, fake_doc)
         iterator = GridOutIterator(grid_out_file, db.fs.chunks)
         next_it = yield next(iterator)
@@ -304,8 +324,13 @@ class TestGridFsObjects(unittest.TestCase):
         next_it = yield next(iterator)
         self.assertEqual(next_it, None)
 
-        fake_bad_doc = {"_id": "bad_id", "name": "testName", "length": 4096*2,
-                        "chunkSize": 4096, "contentType": "text/plain"}
+        fake_bad_doc = {
+            "_id": "bad_id",
+            "name": "testName",
+            "length": 4096 * 2,
+            "chunkSize": 4096,
+            "contentType": "text/plain",
+        }
         grid_bad_out_file = GridOut(db.fs, fake_bad_doc)
         bad_iterator = GridOutIterator(grid_bad_out_file, db.fs.chunks)
         if twisted_version.major >= 15:
@@ -317,7 +342,7 @@ class TestGridFsObjects(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_GridFsOperations(self):
-        """ Tests gridfs operations """
+        """Tests gridfs operations"""
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
         # Drop files first TODO: iterate through files and delete them
@@ -340,8 +365,9 @@ class TestGridFsObjects(unittest.TestCase):
                 with self.assertRaises(NoFile):
                     yield gfs.get_last_version("optest")
 
-            g_in = gfs.new_file(filename="optest", contentType="text/plain",
-                                chunk_size=65536)  # non-default chunk size used
+            g_in = gfs.new_file(
+                filename="optest", contentType="text/plain", chunk_size=65536
+            )  # non-default chunk size used
             # yielding to ensure writes complete before we close and close before we try to read
             yield g_in.write(in_file.read())
             yield g_in.close()
@@ -352,11 +378,15 @@ class TestGridFsObjects(unittest.TestCase):
             out_file.write(data)
             _id = g_out._id
         except Exception as e:
-            self.fail("Failed to communicate with the GridFS. " +
-                      "Is MongoDB running? %s" % e)
+            self.fail(
+                "Failed to communicate with the GridFS. " + "Is MongoDB running? %s" % e
+            )
         else:
-            self.assertEqual(in_file.getvalue(), out_file.getvalue(),
-                             "Could not read the value from writing an input")
+            self.assertEqual(
+                in_file.getvalue(),
+                out_file.getvalue(),
+                "Could not read the value from writing an input",
+            )
         finally:
             in_file.close()
             out_file.close()
@@ -364,14 +394,17 @@ class TestGridFsObjects(unittest.TestCase):
                 g_out.close()
 
         listed_files = yield gfs.list()
-        self.assertEqual(["optest"], listed_files,
-                         "`optest` is the only expected file and we received %s" % listed_files)
+        self.assertEqual(
+            ["optest"],
+            listed_files,
+            "`optest` is the only expected file and we received %s" % listed_files,
+        )
 
         yield gfs.delete(_id)
 
     @defer.inlineCallbacks
     def test_GridFsIndexesCreation(self):
-        """ Tests gridfs indexes creation"""
+        """Tests gridfs indexes creation"""
         conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
         db = conn.test
         yield self._drop_gridfs(db)
@@ -385,11 +418,19 @@ class TestGridFsObjects(unittest.TestCase):
         yield gfs.indexes_created()
 
         indexes = yield db.fs.files.index_information()
-        self.assertTrue(any(key["key"] == SON([("filename", 1), ("uploadDate", 1)])
-                            for key in indexes.values()))
+        self.assertTrue(
+            any(
+                key["key"] == SON([("filename", 1), ("uploadDate", 1)])
+                for key in indexes.values()
+            )
+        )
 
         indexes = yield db.fs.chunks.index_information()
-        self.assertTrue(any(key["key"] == SON([("files_id", 1), ("n", 1)])
-                            for key in indexes.values()))
+        self.assertTrue(
+            any(
+                key["key"] == SON([("files_id", 1), ("n", 1)])
+                for key in indexes.values()
+            )
+        )
 
         yield conn.disconnect()
