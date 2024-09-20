@@ -19,9 +19,12 @@ import hmac
 import logging
 import struct
 from collections import namedtuple
+from dataclasses import dataclass, field
 from hashlib import sha1
 from random import SystemRandom
+from typing import List, Dict
 
+import bson
 from bson import BSON, SON, Binary
 from pymongo import auth
 from pymongo.errors import (
@@ -70,23 +73,25 @@ except ImportError:
 INT_MAX = 2147483647
 
 OP_REPLY = 1
-OP_MSG = 1000
 OP_UPDATE = 2001
 OP_INSERT = 2002
 OP_QUERY = 2004
 OP_GETMORE = 2005
 OP_DELETE = 2006
 OP_KILL_CURSORS = 2007
+OP_COMPRESSED = 2012
+OP_MSG = 2013
 
 OP_NAMES = {
     OP_REPLY: "REPLY",
-    OP_MSG: "MSG",
     OP_UPDATE: "UPDATE",
     OP_INSERT: "INSERT",
     OP_QUERY: "QUERY",
     OP_GETMORE: "GETMORE",
     OP_DELETE: "DELETE",
     OP_KILL_CURSORS: "KILL_CURSORS",
+    OP_COMPRESSED: "COMPRESSED",
+    OP_MSG: "MSG",
 }
 
 DELETE_SINGLE_REMOVE = 1 << 0
@@ -109,8 +114,6 @@ UPDATE_MULTI = 1 << 1
 
 INSERT_CONTINUE_ON_ERROR = 1 << 0
 
-Msg = namedtuple("Msg", ["len", "request_id", "response_to", "opcode", "message"])
-
 
 class KillCursors(
     namedtuple(
@@ -127,7 +130,7 @@ class KillCursors(
         zero=0,
         n_cursors=0,
         cursors=None,
-        **kwargs
+        **kwargs,
     ):
 
         n_cursors = len(cursors)
@@ -375,6 +378,33 @@ class Update(
         )
 
 
+@dataclass
+class MsgHeader:
+    len: int = 0  # FIXME: do we need this?
+    request_id: int = 0
+    response_to: int = 0
+    opcode: int = OP_MSG
+
+
+OP_MSG_CHECKSUM_PRESENT = 1 << 0
+OP_MSG_MORE_TO_COME = 1 << 1
+OP_MSG_EXHAUST_ALLOWED = 1 << 16
+
+
+@dataclass
+class Msg:
+    body: bytes
+    header: MsgHeader = field(default_factory=MsgHeader)
+    flag_bits: int = 0
+    documents: Dict[str, List[bytes]] = field(default_factory=dict)
+
+    @property
+    def opcode(self):
+        # FIXME: MongoServerProtocol.handle assumes that message object has an opcode attribute
+        #        Maybe we should refactor other messages too. Or get rid of MsgHeader dataclass.
+        return self.header.opcode
+
+
 class MongoClientProtocol(protocol.Protocol):
     __request_id = 1
 
@@ -403,10 +433,6 @@ class MongoClientProtocol(protocol.Protocol):
         iovec = [struct.pack("<iiiqii", *request[2:8])]
         iovec.extend(request.documents)
         self._send(iovec)
-
-    def send_MSG(self, request):
-        iovec = [struct.pack("<ii", *request[2:4]), request.message, b"\x00"]
-        return self._send(iovec)
 
     def send_UPDATE(self, request):
         iovec = [
@@ -468,6 +494,20 @@ class MongoClientProtocol(protocol.Protocol):
             iovec.append(struct.pack("<q", cursor))
         return self._send(iovec)
 
+    def send_MSG(self, msg: Msg) -> int:
+        iovec = [
+            struct.pack(
+                "<iii", msg.header.response_to, msg.header.opcode, msg.flag_bits
+            ),
+            b"\x00",  # body payloadType=0
+            msg.body,
+        ]
+        for key, value in msg.documents.items():
+            iovec.extend(
+                [b"\x01", key.encode("ascii"), b"\x00", value]  # payloadType=1
+            )
+        return self._send(iovec)
+
 
 class MongoServerProtocol(protocol.Protocol):
     __decoder = None
@@ -497,9 +537,6 @@ class MongoServerProtocol(protocol.Protocol):
     def handle_REPLY(self, request):
         pass
 
-    def handle_MSG(self, request):
-        pass
-
     def handle_UPDATE(self, request):
         pass
 
@@ -516,6 +553,9 @@ class MongoServerProtocol(protocol.Protocol):
         pass
 
     def handle_KILL_CURSORS(self, request):
+        pass
+
+    def handle_MSG(self, request):
         pass
 
 
@@ -601,6 +641,10 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         request_id = MongoClientProtocol.send_QUERY(self, request)
         return self.__wait_for_reply_to(request_id)
 
+    def send_MSG(self, msg: Msg) -> defer.Deferred:
+        request_id = MongoClientProtocol.send_MSG(self, msg)
+        return self.__wait_for_reply_to(request_id)
+
     def handle_REPLY(self, request):
         if request.response_to in self.__deferreds:
             df = self.__deferreds.pop(request.response_to)
@@ -624,6 +668,13 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 df.errback(CursorNotFound(msg, 43, errobj))
             else:
                 df.callback(request)
+
+    def handle_MSG(self, request: Msg):
+        if dfr := self.__deferreds.pop(request.header.response_to, None):
+            result = bson.decode(request.body)
+            for key, bsons in request.documents.items():
+                result[key] = [bson.decode(b) for b in bsons]
+            dfr.callback(result)
 
     def fail(self, reason):
         log.err(str(reason))
@@ -917,10 +968,6 @@ class MongoDecoder:
                 cursor_list.append(cursor)
                 offset += 8
             return KillCursors(*(header + cursors + (cursor_list,)))
-        elif opcode == OP_MSG:
-            if message_data[-1] != b"\x00":
-                raise ConnectionFailure()
-            return Msg(*(header + (message_data[16:-1].decode("ascii"),)))
         elif opcode == OP_REPLY:
             reply = struct.unpack("<iqii", message_data[16:36])
             docs = []
@@ -936,5 +983,44 @@ class MongoDecoder:
                 docs.append(doc)
                 offset += document_length
             return Reply(*(header + reply + (docs,)))
+        elif opcode == OP_MSG:
+            msg_length = header[0]
+            body = None
+            documents: Dict[str, List[bytes]] = {}
+            offset = 20
+            while offset < msg_length:
+                payload_type = message_data[offset]
+                offset += 1
+                if payload_type == 0:
+                    bson_size = struct.unpack(
+                        "<i",
+                        message_data[offset : offset + 4],
+                    )[0]
+                    body = message_data[offset : offset + bson_size]
+                    offset += bson_size
+                elif payload_type == 1:
+                    size = struct.unpack("<i", message_data[offset : offset + 4])[0]
+                    null_pos = message_data.index(0, offset + 4)
+                    key = message_data[offset + 4 : null_pos].decode("ascii")
+                    bsons = []
+                    bson_offset = null_pos + 1
+                    while bson_offset < size:
+                        bson_size = struct.unpack(
+                            "<i", message_data[bson_offset : bson_offset + 4]
+                        )[0]
+                        bsons += message_data[bson_offset : bson_offset + bson_size]
+                        bson_offset += bson_size
+                    documents[key] = bsons
+            return Msg(
+                header=MsgHeader(
+                    len=msg_length,
+                    request_id=header[1],
+                    response_to=header[2],
+                    opcode=header[3],
+                ),
+                flag_bits=struct.unpack("<i", message_data[16:20])[0],
+                body=body,
+                documents=documents,
+            )
         else:
             raise ConnectionFailure()
