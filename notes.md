@@ -10,6 +10,7 @@
 - Check what are the other packages listed in tox.ini. Do we really need them?
   - Can the pinning versions of these packages reduce tox startup time?
 - Do we need OP_COMPRESSED?
+- Check if we need to block connection in case of MORE_TO_COME in response as RFC says
 
 
 ## Plan:
