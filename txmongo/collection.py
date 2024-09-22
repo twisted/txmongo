@@ -7,6 +7,7 @@ import io
 import struct
 import warnings
 
+import bson
 from bson import BSON, ObjectId
 from bson.code import Code
 from bson.codec_options import CodecOptions
@@ -49,6 +50,8 @@ from txmongo.protocol import (
     KillCursors,
     Query,
     Update,
+    Msg,
+    OP_MSG_MORE_TO_COME,
 )
 from txmongo.pymongo_internals import (
     _check_command_response,
@@ -425,7 +428,7 @@ class Collection:
         limit=0,
         sort=None,
         batch_size=0,
-        **kwargs
+        **kwargs,
     ):
         if filter is None:
             filter = SON()
@@ -743,7 +746,8 @@ class Collection:
             )
 
     @timeout
-    def insert_one(self, document, _deadline=None):
+    @defer.inlineCallbacks
+    def insert_one(self, document, _deadline=None) -> InsertOneResult:
         """insert_one(document)
 
         Insert a single document into collection
@@ -758,13 +762,27 @@ class Collection:
             document["_id"] = ObjectId()
         inserted_id = document["_id"]
 
-        def on_ok(result):
-            response = result
-            if response:
-                _check_write_command_response(response)
-            return InsertOneResult(inserted_id, self.write_concern.acknowledged)
+        proto = yield self._database.connection.getprotocol()
+        check_deadline(_deadline)
+        msg = Msg(
+            body=bson.encode(
+                {
+                    "insert": self._collection_name,
+                    "$db": str(self.database),
+                    "writeConcern": self.write_concern.document,
+                }
+            ),
+            payload={
+                "documents": [bson.encode(document, codec_options=self.codec_options)],
+            },
+        )
+        if not self.write_concern.acknowledged:
+            msg.flag_bits |= OP_MSG_MORE_TO_COME
 
-        return self._insert_one(document, _deadline).addCallback(on_ok)
+        response = yield proto.send_MSG(msg)
+        if response:
+            _check_write_command_response(response)
+        return InsertOneResult(inserted_id, self.write_concern.acknowledged)
 
     def _generate_batch_commands(
         self,
@@ -1385,7 +1403,7 @@ class Collection:
             "findAndModify",
             self._collection_name,
             allowable_errors=[no_obj_error],
-            **params
+            **params,
         ).addCallback(on_ok)
 
     # Distinct findAndModify utility method is needed because traditional
@@ -1400,7 +1418,7 @@ class Collection:
         upsert=None,
         return_document=ReturnDocument.BEFORE,
         _deadline=None,
-        **kwargs
+        **kwargs,
     ):
         validate_is_mapping("filter", filter)
         if not isinstance(return_document, bool):

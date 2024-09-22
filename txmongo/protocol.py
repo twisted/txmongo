@@ -396,7 +396,7 @@ class Msg:
     body: bytes
     header: MsgHeader = field(default_factory=MsgHeader)
     flag_bits: int = 0
-    documents: Dict[str, List[bytes]] = field(default_factory=dict)
+    payload: Dict[str, List[bytes]] = field(default_factory=dict)
 
     @property
     def opcode(self):
@@ -415,7 +415,7 @@ class MongoClientProtocol(protocol.Protocol):
         request_id, self.__request_id = self.__request_id, self.__request_id + 1
         if self.__request_id >= INT_MAX:
             self.__request_id = 1
-        data_length = sum([len(chunk) for chunk in io_vector]) + 8
+        data_length = sum(len(chunk) for chunk in io_vector) + 8
         data_req = struct.pack("<ii", data_length, request_id)
         io_vector.insert(0, data_req)
         self.transport.write(b"".join(io_vector))
@@ -499,12 +499,19 @@ class MongoClientProtocol(protocol.Protocol):
             struct.pack(
                 "<iii", msg.header.response_to, msg.header.opcode, msg.flag_bits
             ),
-            b"\x00",  # body payloadType=0
+            # section with payloadType=0
+            b"\x00",
             msg.body,
         ]
-        for key, value in msg.documents.items():
+        for arg_name, docs in msg.payload.items():
+            # section with payloadType=1
+            payload = [arg_name.encode("ascii"), b"\x00", *docs]
             iovec.extend(
-                [b"\x01", key.encode("ascii"), b"\x00", value]  # payloadType=1
+                [
+                    b"\x01",
+                    struct.pack("<i", 4 + sum(len(x) for x in payload)),
+                    *payload,
+                ]
             )
         return self._send(iovec)
 
@@ -643,6 +650,8 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
     def send_MSG(self, msg: Msg) -> defer.Deferred:
         request_id = MongoClientProtocol.send_MSG(self, msg)
+        if msg.flag_bits & OP_MSG_MORE_TO_COME:
+            return defer.succeed(None)
         return self.__wait_for_reply_to(request_id)
 
     def handle_REPLY(self, request):
@@ -672,8 +681,8 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
     def handle_MSG(self, request: Msg):
         if dfr := self.__deferreds.pop(request.header.response_to, None):
             result = bson.decode(request.body)
-            for key, bsons in request.documents.items():
-                result[key] = [bson.decode(b) for b in bsons]
+            for arg_name, bsons in request.payload.items():
+                result[arg_name] = [bson.decode(b) for b in bsons]
             dfr.callback(result)
 
     def fail(self, reason):
@@ -986,7 +995,7 @@ class MongoDecoder:
         elif opcode == OP_MSG:
             msg_length = header[0]
             body = None
-            documents: Dict[str, List[bytes]] = {}
+            payload: Dict[str, List[bytes]] = {}
             offset = 20
             while offset < msg_length:
                 payload_type = message_data[offset]
@@ -1001,7 +1010,7 @@ class MongoDecoder:
                 elif payload_type == 1:
                     size = struct.unpack("<i", message_data[offset : offset + 4])[0]
                     null_pos = message_data.index(0, offset + 4)
-                    key = message_data[offset + 4 : null_pos].decode("ascii")
+                    arg_name = message_data[offset + 4 : null_pos].decode("ascii")
                     bsons = []
                     bson_offset = null_pos + 1
                     while bson_offset < size:
@@ -1010,7 +1019,7 @@ class MongoDecoder:
                         )[0]
                         bsons += message_data[bson_offset : bson_offset + bson_size]
                         bson_offset += bson_size
-                    documents[key] = bsons
+                    payload[arg_name] = bsons
             return Msg(
                 header=MsgHeader(
                     len=msg_length,
@@ -1020,7 +1029,7 @@ class MongoDecoder:
                 ),
                 flag_bits=struct.unpack("<i", message_data[16:20])[0],
                 body=body,
-                documents=documents,
+                payload=payload,
             )
         else:
             raise ConnectionFailure()
