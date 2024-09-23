@@ -11,6 +11,8 @@
   - Can the pinning versions of these packages reduce tox startup time?
 - Do we need OP_COMPRESSED?
 - Check if we need to block connection in case of MORE_TO_COME in response as RFC says
+- Check Msg size against maxMessageSizeBytes
+- Implement missing test cases from [OP_MSG spec test plan](https://github.com/mongodb/specifications/blob/master/source/message/OP_MSG.md#test-plan)
 
 
 ## Plan:
