@@ -1,10 +1,15 @@
-## Currently supported versions:
+## Versions, currently supported by vendors:
 - Python: 3.8+
 - MongoDB: 5.0+ (actually 6.0+ soon)
     - new `OP_MSG` protocol is supported in MongoDB 3.6+
 - PyMongo: probably 3.12+
     - PyMongo 3.x still supports Py2.7 and MongoDB 2.6+
     - PyMongo 3.8 doesn't have `bson.encode/decode` functions
+ 
+## We decided to support:
+- Python 3.8+
+- MongoDB 4.0+
+- PyMongo 3.12+
 
 ## TODO
 - Check what are the other packages listed in tox.ini. Do we really need them?
