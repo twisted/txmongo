@@ -404,6 +404,48 @@ class Msg:
         #        Maybe we should refactor other messages too. Or get rid of MsgHeader dataclass.
         return self.header.opcode
 
+    def size_in_bytes(self) -> int:
+        """return estimated overll message length including messageLength and requestID"""
+        # checksum is not added since we don't support it for now
+        return (
+            4 * 4  # header
+            + 4  # flatBits
+            + 1  # payloadType
+            + len(self.body)  # body length
+            + sum(
+                (
+                    1  # payloadType
+                    + len(key.encode("ascii"))  # identifier
+                    + 1  # closing NULL of identifier
+                    + sum(len(doc) for doc in docs)  # payload
+                )
+                for key, docs in self.payload.items()
+            )
+        )
+
+    def encode(self) -> List[bytes]:
+        """return list of bytes objects to be sent over the wire,
+        excluding leading messageLength and requestID"""
+        iovec = [
+            struct.pack(
+                "<iii", self.header.response_to, self.header.opcode, self.flag_bits
+            ),
+            # section with payloadType=0
+            b"\x00",
+            self.body,
+        ]
+        for arg_name, docs in self.payload.items():
+            # section with payloadType=1
+            payload = [arg_name.encode("ascii"), b"\x00", *docs]
+            iovec.extend(
+                [
+                    b"\x01",
+                    struct.pack("<i", 4 + sum(len(x) for x in payload)),
+                    *payload,
+                ]
+            )
+        return iovec
+
 
 class MongoClientProtocol(protocol.Protocol):
     __request_id = 1
@@ -495,25 +537,7 @@ class MongoClientProtocol(protocol.Protocol):
         return self._send(iovec)
 
     def send_MSG(self, msg: Msg) -> int:
-        iovec = [
-            struct.pack(
-                "<iii", msg.header.response_to, msg.header.opcode, msg.flag_bits
-            ),
-            # section with payloadType=0
-            b"\x00",
-            msg.body,
-        ]
-        for arg_name, docs in msg.payload.items():
-            # section with payloadType=1
-            payload = [arg_name.encode("ascii"), b"\x00", *docs]
-            iovec.extend(
-                [
-                    b"\x01",
-                    struct.pack("<i", 4 + sum(len(x) for x in payload)),
-                    *payload,
-                ]
-            )
-        return self._send(iovec)
+        return self._send(msg.encode())
 
 
 class MongoServerProtocol(protocol.Protocol):
@@ -580,6 +604,10 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
     min_wire_version = None
     max_wire_version = None
+
+    max_bson_size = None
+    max_write_batch_size = None
+    max_message_size = None
 
     def __init__(self):
         MongoServerProtocol.__init__(self)
