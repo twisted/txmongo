@@ -6,6 +6,8 @@ import collections.abc
 import io
 import struct
 import warnings
+from operator import itemgetter
+from typing import Iterable, List, Iterator, Mapping, Optional, Tuple
 
 import bson
 from bson import BSON, ObjectId
@@ -26,7 +28,7 @@ from pymongo.errors import (
     InvalidOperation,
     OperationFailure,
 )
-from pymongo.message import _INSERT, _OP_MAP
+from pymongo.message import _OP_MAP
 from pymongo.results import (
     BulkWriteResult,
     DeleteResult,
@@ -36,6 +38,7 @@ from pymongo.results import (
 )
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
+from twisted.internet.defer import Deferred, gatherResults, FirstError
 from twisted.python.compat import comparable
 
 from txmongo import filter as qf
@@ -762,9 +765,8 @@ class Collection:
             document["_id"] = ObjectId()
         inserted_id = document["_id"]
 
-        proto = yield self._database.connection.getprotocol()
-        check_deadline(_deadline)
         msg = Msg(
+            flag_bits=0 if self.write_concern.acknowledged else OP_MSG_MORE_TO_COME,
             body=bson.encode(
                 {
                     "insert": self._collection_name,
@@ -776,9 +778,9 @@ class Collection:
                 "documents": [bson.encode(document, codec_options=self.codec_options)],
             },
         )
-        if not self.write_concern.acknowledged:
-            msg.flag_bits |= OP_MSG_MORE_TO_COME
 
+        proto = yield self._database.connection.getprotocol()
+        check_deadline(_deadline)
         response = yield proto.send_MSG(msg)
         if response:
             _check_write_command_response(response)
@@ -879,17 +881,132 @@ class Collection:
             :class:`Deferred` that called back with
             :class:`pymongo.results.InsertManyResult`
         """
-        inserted_ids = []
         for doc in documents:
-            if isinstance(doc, collections.abc.Mapping):
-                inserted_ids.append(doc.setdefault("_id", ObjectId()))
-            else:
+            if not isinstance(doc, Mapping):
                 raise TypeError("TxMongo: insert_many takes list of documents.")
 
-        bulk = _Bulk(self, ordered, bypass_document_validation=False)
-        bulk.ops = [(_INSERT, doc) for doc in documents]
-        result = InsertManyResult(inserted_ids, self.write_concern.acknowledged)
-        return self._execute_bulk(bulk).addCallback(lambda _: result)
+        return self._do_insert_many(documents, ordered, _deadline)
+
+    @defer.inlineCallbacks
+    def _do_insert_many(
+        self, documents: Iterable[Mapping], ordered: bool, _deadline: Optional[float]
+    ):
+        documents = list(documents)
+
+        inserted_ids = []
+        for doc in documents:
+            inserted_ids.append(doc.setdefault("_id", ObjectId()))
+
+        def gen_messages(
+            write_concern: WriteConcern,
+            max_write_batch_size: int,
+            max_message_size: int,
+        ) -> Iterator[Tuple[int, Msg]]:
+            msg = Msg(
+                flag_bits=0 if write_concern.acknowledged else OP_MSG_MORE_TO_COME,
+                body=bson.encode(
+                    {
+                        "insert": self._collection_name,
+                        "$db": str(self.database),
+                        "ordered": bool(ordered),
+                        "writeConcern": write_concern.document,
+                    }
+                ),
+                payload={"documents": []},
+            )
+            docs_offset = 0
+            msg_doc_count = 0
+            msg_size = empty_msg_size = msg.size_in_bytes()
+            for doc in documents:
+                doc_bytes = bson.encode(doc, codec_options=self.codec_options)
+
+                enough_docs = msg_doc_count >= max_write_batch_size
+                enough_size = msg_size + len(doc_bytes) >= max_message_size
+                if enough_docs or enough_size:
+                    yield docs_offset, msg
+
+                    msg.payload["documents"] = []
+                    docs_offset += msg_doc_count
+                    msg_doc_count = 0
+                    msg_size = empty_msg_size
+
+                msg.payload["documents"].append(doc_bytes)
+                msg_doc_count += 1
+                msg_size += len(doc_bytes)
+
+            yield docs_offset, msg
+
+        proto = yield self._database.connection.getprotocol()
+        check_deadline(_deadline)
+
+        # There are four major cases with different behavior of insert_many:
+        #   * Unack, Unordered:  sending all batches and not handling responses at all
+        #                        so ignoring any errors
+        #
+        #   * Ack, Unordered:    sending all batches, accumulating all responses and
+        #                        returning aggregated response
+        #
+        #   * Unack, Ordered:    handling DB responses despite unacknowledged write_concern
+        #                        because we must stop on first error (not raising it though)
+        #
+        #   * Ack, Ordered:      stopping on first error and raising BulkWriteError
+
+        effective_write_concern = self.write_concern
+        if ordered and self.write_concern.acknowledged is False:
+            effective_write_concern = WriteConcern(w=1)
+
+        all_responses: List[Deferred] = []
+
+        result = {
+            "writeErrors": [],
+            "writeConcernErrors": [],
+            "nInserted": 0,
+        }
+
+        def accumulate_response(response: dict, idx_offset: int) -> dict:
+            _check_command_response(response)
+            result["nInserted"] += response["n"]
+            if write_errors := response.get("writeErrors"):
+                for err in write_errors:
+                    replacement = err.copy()
+                    replacement["index"] += idx_offset
+                    replacement["op"] = documents[replacement["index"]]
+                    result["writeErrors"].append(replacement)
+            if wc_error := response.get("writeConcernError"):
+                result["writeConcernErrors"].append(wc_error)
+            return response
+
+        for doc_offset, msg in gen_messages(
+            effective_write_concern, proto.max_write_batch_size, proto.max_message_size
+        ):
+            check_deadline(_deadline)
+            deferred = proto.send_MSG(msg)
+            if effective_write_concern.acknowledged:
+                if ordered:
+                    response = yield deferred
+                    accumulate_response(response, doc_offset)
+                    if ordered:
+                        if "writeErrors" in response:
+                            break
+                else:
+                    all_responses.append(
+                        deferred.addCallback(accumulate_response, doc_offset)
+                    )
+
+        if effective_write_concern.acknowledged and not ordered:
+            try:
+                yield gatherResults(all_responses, consumeErrors=True)
+            except FirstError as exc:
+                exc.subFailure.raiseException()
+
+        if self.write_concern.acknowledged:
+            write_errors = result["writeErrors"]
+            if write_errors:
+                write_errors.sort(key=itemgetter("index"))
+            if write_errors or result["writeConcernErrors"]:
+                raise BulkWriteError(result)
+
+        return InsertManyResult(inserted_ids, self.write_concern.acknowledged)
 
     @timeout
     def update(
