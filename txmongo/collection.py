@@ -1081,41 +1081,47 @@ class Collection:
 
         return self._database.connection.getprotocol().addCallback(on_proto)
 
+    @defer.inlineCallbacks
     def _update(self, filter, update, upsert, multi, _deadline):
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
 
-        if self.write_concern.acknowledged:
-            updates = [
-                SON(
-                    [("q", filter), ("u", update), ("upsert", upsert), ("multi", multi)]
-                )
-            ]
+        msg = Msg(
+            flag_bits=0 if self.write_concern.acknowledged else OP_MSG_MORE_TO_COME,
+            body=bson.encode(
+                {
+                    "update": self._collection_name,
+                    "$db": str(self.database),
+                    "writeConcern": self.write_concern.document,
+                }
+            ),
+            payload={
+                "updates": [
+                    bson.encode(
+                        {
+                            "q": filter,
+                            "u": update,
+                            "upsert": bool(upsert),
+                            "multi": bool(multi),
+                        },
+                        codec_options=self.codec_options,
+                    )
+                ],
+            },
+        )
 
-            command = SON(
-                [
-                    ("update", self._collection_name),
-                    ("updates", updates),
-                    ("writeConcern", self.write_concern.document),
-                ]
-            )
+        proto = yield self._database.connection.getprotocol()
+        check_deadline(_deadline)
+        response = yield proto.send_MSG(msg)
+        if response:
+            _check_write_command_response(response)
+            if response.get("n") and "upserted" in response:
+                # MongoDB >= 2.6.0 returns the upsert _id in an array
+                # element. Break it out for backward compatibility.
+                if "upserted" in response:
+                    response["upserted"] = response["upserted"][0]["_id"]
 
-            def on_ok(raw_response):
-                _check_write_command_response(raw_response)
-
-                # Extract upserted_id from returned array
-                if raw_response.get("upserted"):
-                    raw_response["upserted"] = raw_response["upserted"][0]["_id"]
-                return raw_response
-
-            return self._database.command(command, _deadline=_deadline).addCallback(
-                on_ok
-            )
-
-        else:
-            return self.update(
-                filter, update, upsert=upsert, multi=multi, _deadline=_deadline
-            ).addCallback(lambda _: None)
+        return UpdateResult(response, self.write_concern.acknowledged)
 
     @timeout
     def update_one(self, filter, update, upsert=False, _deadline=None):
@@ -1148,10 +1154,7 @@ class Collection:
         """
         validate_ok_for_update(update)
 
-        def on_ok(raw_response):
-            return UpdateResult(raw_response, self.write_concern.acknowledged)
-
-        return self._update(filter, update, upsert, False, _deadline).addCallback(on_ok)
+        return self._update(filter, update, upsert, False, _deadline)
 
     @timeout
     def update_many(self, filter, update, upsert=False, _deadline=None):
@@ -1184,10 +1187,7 @@ class Collection:
         """
         validate_ok_for_update(update)
 
-        def on_ok(raw_response):
-            return UpdateResult(raw_response, self.write_concern.acknowledged)
-
-        return self._update(filter, update, upsert, True, _deadline).addCallback(on_ok)
+        return self._update(filter, update, upsert, True, _deadline)
 
     @timeout
     def replace_one(self, filter, replacement, upsert=False, _deadline=None):
@@ -1217,12 +1217,7 @@ class Collection:
         """
         validate_ok_for_replace(replacement)
 
-        def on_ok(raw_response):
-            return UpdateResult(raw_response, self.write_concern.acknowledged)
-
-        return self._update(filter, replacement, upsert, False, _deadline).addCallback(
-            on_ok
-        )
+        return self._update(filter, replacement, upsert, False, _deadline)
 
     @timeout
     def save(self, doc, safe=None, **kwargs):
