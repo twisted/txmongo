@@ -734,23 +734,6 @@ class Collection:
 
         return self._database.connection.getprotocol().addCallback(on_proto)
 
-    def _insert_one(self, document, _deadline):
-        if self.write_concern.acknowledged:
-            command = SON(
-                [
-                    ("insert", self._collection_name),
-                    ("documents", [document]),
-                    ("ordered", True),
-                    ("writeConcern", self.write_concern.document),
-                ]
-            )
-            return self._database.command(command, _deadline=_deadline)
-        else:
-            # falling back to OP_INSERT in case of unacknowledged op
-            return self.insert([document], _deadline=_deadline).addCallback(
-                lambda _: None
-            )
-
     @timeout
     @defer.inlineCallbacks
     def insert_one(self, document: Document, _deadline=None) -> InsertOneResult:
