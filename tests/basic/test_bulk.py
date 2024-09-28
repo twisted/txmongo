@@ -275,20 +275,16 @@ class TestOperationFailure(SingleCollectionTest):
 
         def fake_send_query(*args):
             return defer.succeed(
-                Reply(
-                    documents=[
-                        {
-                            "ok": 0.0,
-                            "errmsg": "operation was interrupted",
-                            "code": 11602,
-                            "codeName": "InterruptedDueToReplStateChange",
-                        }
-                    ]
-                )
+                {
+                    "ok": 0.0,
+                    "errmsg": "operation was interrupted",
+                    "code": 11602,
+                    "codeName": "InterruptedDueToReplStateChange",
+                }
             )
 
         with patch(
-            "txmongo.protocol.MongoProtocol.send_QUERY", side_effect=fake_send_query
+            "txmongo.protocol.MongoProtocol.send_MSG", side_effect=fake_send_query
         ):
             yield self.assertFailure(
                 self.coll.bulk_write(

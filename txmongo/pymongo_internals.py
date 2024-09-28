@@ -1,3 +1,5 @@
+from typing import Mapping, Any, Optional, MutableMapping
+
 from pymongo.errors import (
     CursorNotFound,
     DuplicateKeyError,
@@ -7,7 +9,13 @@ from pymongo.errors import (
     WriteError,
     WTimeoutError,
 )
-from pymongo.message import _DELETE, _INSERT, _UPDATE
+
+from txmongo._bulk import (
+    _Run,
+    _INSERT,
+    _UPDATE,
+    _DELETE,
+)
 
 try:
     from pymongo.errors import NotPrimaryError
@@ -82,46 +90,64 @@ def _check_write_command_response(result):
         _raise_write_concern_error(error)
 
 
-# Copied from pymongo/bulk.py:93 at commit 96aaf2f5279fb9eee5d0c1a2ce53d243b2772eee
-def _merge_command(run, full_result, results):
-    """Merge a group of results from write commands into the full result."""
-    for offset, result in results:
+# Copied from pymongo/helpers_shared.py:266 at commit e03f8f24f2387882fcaa5d3099d2cef7ae100816
+def _get_wce_doc(result: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
+    """Return the writeConcernError or None."""
+    wce = result.get("writeConcernError")
+    if wce:
+        # The server reports errorLabels at the top level but it's more
+        # convenient to attach it to the writeConcernError doc itself.
+        error_labels = result.get("errorLabels")
+        if error_labels:
+            # Copy to avoid changing the original document.
+            wce = wce.copy()
+            wce["errorLabels"] = error_labels
+    return wce
 
-        affected = result.get("n", 0)
 
-        if run.op_type == _INSERT:
-            full_result["nInserted"] += affected
+# Copied from pymongo/bulk_shared.py:72 at commit e03f8f24f2387882fcaa5d3099d2cef7ae100816
+def _merge_command(
+    run: _Run,
+    full_result: MutableMapping[str, Any],
+    offset: int,
+    result: Mapping[str, Any],
+) -> None:
+    """Merge a write command result into the full bulk result."""
+    affected = result.get("n", 0)
 
-        elif run.op_type == _DELETE:
-            full_result["nRemoved"] += affected
+    if run.op_type == _INSERT:
+        full_result["nInserted"] += affected
 
-        elif run.op_type == _UPDATE:
-            upserted = result.get("upserted")
-            if upserted:
-                n_upserted = len(upserted)
-                for doc in upserted:
-                    doc["index"] = run.index(doc["index"] + offset)
-                full_result["upserted"].extend(upserted)
-                full_result["nUpserted"] += n_upserted
-                full_result["nMatched"] += affected - n_upserted
-            else:
-                full_result["nMatched"] += affected
-            full_result["nModified"] += result["nModified"]
+    elif run.op_type == _DELETE:
+        full_result["nRemoved"] += affected
 
-        write_errors = result.get("writeErrors")
-        if write_errors:
-            for doc in write_errors:
-                # Leave the server response intact for APM.
-                replacement = doc.copy()
-                idx = doc["index"] + offset
-                replacement["index"] = run.index(idx)
-                # Add the failed operation to the error document.
-                replacement["op"] = run.ops[idx]
-                full_result["writeErrors"].append(replacement)
+    elif run.op_type == _UPDATE:
+        upserted = result.get("upserted")
+        if upserted:
+            n_upserted = len(upserted)
+            for doc in upserted:
+                doc["index"] = run.index(doc["index"] + offset)
+            full_result["upserted"].extend(upserted)
+            full_result["nUpserted"] += n_upserted
+            full_result["nMatched"] += affected - n_upserted
+        else:
+            full_result["nMatched"] += affected
+        full_result["nModified"] += result["nModified"]
 
-        wc_error = result.get("writeConcernError")
-        if wc_error:
-            full_result["writeConcernErrors"].append(wc_error)
+    write_errors = result.get("writeErrors")
+    if write_errors:
+        for doc in write_errors:
+            # Leave the server response intact for APM.
+            replacement = doc.copy()
+            idx = doc["index"] + offset
+            replacement["index"] = run.index(idx)
+            # Add the failed operation to the error document.
+            replacement["op"] = run.ops[idx]
+            full_result["writeErrors"].append(replacement)
+
+    wce = _get_wce_doc(result)
+    if wce:
+        full_result["writeConcernErrors"].append(wce)
 
 
 # Copied from pymongo/helpers.py:105 at commit d7d94b2776098dba32686ddf3ada1f201172daaf
