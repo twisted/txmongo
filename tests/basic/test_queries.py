@@ -628,6 +628,10 @@ class TestInsertOne(SingleCollectionTest):
             {"_id": 1}
         )
 
+    @skip_for_mongodb_newer_than(
+        [4, 9], "$ in field name is only forbidden in MongoDB<5.0"
+    )
+    def test_ForbiddenFieldNames(self):
         yield self.assertFailure(self.coll.insert_one({"$": 1}), WriteError)
         yield self.coll.with_options(write_concern=WriteConcern(w=0)).insert_one(
             {"$": 1}
@@ -858,13 +862,17 @@ class TestReplaceOne(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_Failures(self):
-        yield self.assertFailure(
-            self.coll.replace_one({"x": 1}, {"x": {"$": 5}}), WriteError
-        )
-
         yield self.coll.create_index(qf.sort(qf.ASCENDING("x")), unique=True)
         yield self.assertFailure(
             self.coll.replace_one({"x": 1}, {"x": 2}), DuplicateKeyError
+        )
+
+    @skip_for_mongodb_newer_than(
+        [4, 9], "$ in field name is only forbidden in MongoDB<5.0"
+    )
+    def test_ForbiddenFieldNames(self):
+        yield self.assertFailure(
+            self.coll.replace_one({"x": 1}, {"x": {"$": 5}}), WriteError
         )
 
 
