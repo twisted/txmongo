@@ -1,7 +1,13 @@
-from pymongo.bulk import _UOP
 from pymongo.errors import (DuplicateKeyError, WriteError, WTimeoutError, WriteConcernError, OperationFailure,
-                            NotMasterError, ExecutionTimeout, CursorNotFound)
+                            ExecutionTimeout, CursorNotFound)
 from pymongo.message import _INSERT, _DELETE, _UPDATE
+
+
+try:
+    from pymongo.errors import NotPrimaryError
+except ImportError:
+    # For pymongo < 3.12
+    from pymongo.errors import NotMasterError as NotPrimaryError
 
 
 
@@ -100,7 +106,7 @@ def _merge_command(run, full_result, results):
                 idx = doc["index"] + offset
                 replacement["index"] = run.index(idx)
                 # Add the failed operation to the error document.
-                replacement[_UOP] = run.ops[idx]
+                replacement["op"] = run.ops[idx]
                 full_result["writeErrors"].append(replacement)
 
         wc_error = result.get("writeConcernError")
@@ -140,10 +146,10 @@ def _check_command_response(response, msg=None, allowable_errors=None,
             code = details.get("code")
             # Server is "not master" or "recovering"
             if code in _NOT_MASTER_CODES:
-                raise NotMasterError(errmsg, response)
+                raise NotPrimaryError(errmsg, response)
             elif ("not master" in errmsg
                   or "node is recovering" in errmsg):
-                raise NotMasterError(errmsg, response)
+                raise NotPrimaryError(errmsg, response)
 
             # Server assertion failures
             if errmsg == "db assertion failure":

@@ -4,12 +4,13 @@
 
 from bson.codec_options import DEFAULT_CODEC_OPTIONS
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
-from pymongo.uri_parser import parse_uri
 from pymongo.read_preferences import ReadPreference
+from pymongo.uri_parser import parse_uri
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import ReconnectingClientFactory, ClientFactory
 from twisted.python import log
+
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
 from txmongo.utils import timeout, get_err

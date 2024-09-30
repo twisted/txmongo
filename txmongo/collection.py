@@ -2,31 +2,33 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
+import collections.abc
 import io
 import struct
-import collections.abc
 import warnings
+
 from bson import BSON, ObjectId
 from bson.code import Code
-from bson.son import SON
 from bson.codec_options import CodecOptions
+from bson.son import SON
 from pymongo.bulk import _Bulk, _COMMANDS
+from pymongo.collection import ReturnDocument
+from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
+    validate_is_mapping, validate_boolean
 from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure
 from pymongo.message import _OP_MAP, _INSERT
 from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
     DeleteResult, BulkWriteResult
-from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
-    validate_is_mapping, validate_boolean
-from pymongo.collection import ReturnDocument
 from pymongo.write_concern import WriteConcern
+from twisted.internet import defer
+from twisted.python.compat import comparable
+
+from txmongo import filter as qf
 from txmongo.filter import _QueryFilter
 from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
     Query, Getmore, Insert, Update, Delete, KillCursors
 from txmongo.pymongo_internals import _check_write_command_response, _merge_command, _check_command_response
 from txmongo.utils import check_deadline, timeout
-from txmongo import filter as qf
-from twisted.internet import defer
-from twisted.python.compat import comparable
 
 
 @comparable
@@ -358,7 +360,6 @@ class Collection:
         return self.__real_find_with_cursor(**new_kwargs)
 
     def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0,**kwargs):
-        
         if filter is None:
             filter = SON()
 
@@ -376,6 +377,8 @@ class Collection:
         projection = self._normalize_fields_projection(projection)
 
         filter = self.__apply_find_filter(filter, sort)
+        if not isinstance(filter, BSON):
+            filter = BSON.encode(filter, codec_options=self.codec_options)
 
         as_class = kwargs.get("as_class")
         proto = self._database.connection.getprotocol()
@@ -603,7 +606,7 @@ class Collection:
         else:
             raise TypeError("TxMongo: insert takes a document or a list of documents.")
 
-        docs = [BSON.encode(d) for d in docs]
+        docs = [BSON.encode(d, codec_options=self.codec_options) for d in docs]
         insert = Insert(flags=flags, collection=str(self), documents=docs)
 
         def on_proto(proto):
@@ -654,8 +657,7 @@ class Collection:
             return InsertOneResult(inserted_id, self.write_concern.acknowledged)
         return self._insert_one(document, _deadline).addCallback(on_ok)
 
-    @staticmethod
-    def _generate_batch_commands(collname, command, docs_field, documents, ordered,
+    def _generate_batch_commands(self, collname, command, docs_field, documents, ordered,
                                  write_concern, max_bson, max_count):
         # Takes a list of documents and generates one or many `insert` commands
         # with documents list in each command is less or equal to max_bson bytes
@@ -669,7 +671,7 @@ class Collection:
                    ("writeConcern", write_concern.document)])
 
         buf = io.BytesIO()
-        buf.write(BSON.encode(msg))
+        buf.write(BSON.encode(msg, codec_options=self.codec_options))
         buf.seek(-1, io.SEEK_END)  # -1 because we don't need final NUL from partial command
         buf.write(docs_field)  # type, name and length placeholder of 'documents' array
         docs_start = buf.tell() - 4
@@ -693,7 +695,7 @@ class Collection:
         idx_offset = 0
         for doc in documents:
             key = str(idx).encode('ascii')
-            value = BSON.encode(doc)
+            value = BSON.encode(doc, codec_options=self.codec_options)
 
             enough_size = buf.tell() + len(key)+2 + len(value) - docs_start > max_bson
             enough_count = idx >= max_count
@@ -796,8 +798,8 @@ class Collection:
         if upsert:
             flags |= UPDATE_UPSERT
 
-        spec = BSON.encode(spec)
-        document = BSON.encode(document)
+        spec = BSON.encode(spec, codec_options=self.codec_options)
+        document = BSON.encode(document, codec_options=self.codec_options)
         update = Update(flags=flags, collection=str(self),
                         selector=spec, update=document)
 
@@ -959,7 +961,7 @@ class Collection:
         if single:
             flags |= DELETE_SINGLE_REMOVE
 
-        spec = BSON.encode(spec)
+        spec = BSON.encode(spec, codec_options=self.codec_options)
         delete = Delete(flags=flags, collection=str(self), selector=spec)
 
         def on_proto(proto):

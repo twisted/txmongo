@@ -16,9 +16,13 @@
 Based on pymongo driver's test_collection.py
 """
 
+import uuid
+
+from bson import UuidRepresentation, CodecOptions
 from pymongo import errors
 from twisted.internet import defer
 from twisted.trial import unittest
+
 import txmongo
 from txmongo import filter as qf
 from txmongo.collection import Collection
@@ -446,3 +450,40 @@ class TestFindSignatureCompat(unittest.TestCase):
             {"filter": {'x': 42}, "projection": {'a': 1}, "skip": 5, "limit": 6,
              "sort": qf.sort([('s', 1)])}
         )
+
+
+class TestUuid(unittest.TestCase):
+
+    def setUp(self):
+        self.conn = txmongo.MongoConnection(mongo_host, mongo_port, codec_options=CodecOptions(uuid_representation=UuidRepresentation.STANDARD))
+        self.db = self.conn.mydb
+        self.coll = self.db.conn
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.conn.drop_database(self.db)
+        yield self.conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_uuid_in_crud(self):
+        task_id = uuid.uuid4()
+        yield self.coll.insert({'task_id': task_id}, safe=True)
+
+        doc = yield self.coll.find_one(fields={"_id": 0})
+        self.assertEqual(doc, {'task_id': task_id})
+
+        doc = yield self.coll.find_one({'task_id': task_id}, fields={"_id": 0})
+        self.assertEqual(doc, {'task_id': task_id})
+
+        new = uuid.uuid4()
+        yield self.coll.update_one({'task_id': task_id}, {'$set': {'task_id': new}})
+        doc = yield self.coll.find_one()
+        self.assertEqual(doc['task_id'], new)
+
+        yield self.coll.delete_one({'task_id': new})
+        cnt = yield self.coll.count()
+        self.assertEqual(cnt, 0)
+
+    @defer.inlineCallbacks
+    def test_uuid_in_batch(self):
+        yield self.coll.batch.insert_many([{'task_id': uuid.uuid4()} for _ in range(10)])

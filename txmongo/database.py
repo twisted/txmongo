@@ -3,7 +3,7 @@
 # found in the LICENSE file.
 
 from bson.son import SON
-from bson.codec_options import DEFAULT_CODEC_OPTIONS
+
 from txmongo.collection import Collection
 from txmongo.pymongo_internals import _check_command_response
 from txmongo.utils import timeout
@@ -53,10 +53,12 @@ class Database:
 
     @timeout
     def command(self, command, value=1, check=True, allowable_errors=None,
-                codec_options=DEFAULT_CODEC_OPTIONS, _deadline=None, **kwargs):
-        """command(command, value=1, check=True, allowable_errors=None, codec_options=DEFAULT_CODEC_OPTIONS)"""
+                codec_options=None, _deadline=None, **kwargs):
+        """command(command, value=1, check=True, allowable_errors=None, codec_options=None)"""
         if isinstance(command, (bytes, str)):
             command = SON([(command, value)])
+        if codec_options is None:
+            codec_options = self.__codec_options
         options = kwargs.copy()
         command.update(options)
 
