@@ -1,24 +1,24 @@
-from typing import Union, List, Tuple, MutableMapping, Iterator, Any
+from typing import Any, Iterator, List, Tuple, Union
 
 import bson
-from bson import ObjectId, CodecOptions
+from bson import CodecOptions, ObjectId
 from bson.raw_bson import RawBSONDocument
 from pymongo import (
-    InsertOne,
-    UpdateOne,
+    DeleteMany,
     DeleteOne,
+    InsertOne,
     ReplaceOne,
     UpdateMany,
-    DeleteMany,
+    UpdateOne,
     WriteConcern,
 )
 from pymongo.common import (
     validate_is_document_type,
-    validate_ok_for_update,
     validate_ok_for_replace,
+    validate_ok_for_update,
 )
 
-from txmongo.protocol import Msg, OP_MSG_MORE_TO_COME, MongoProtocol
+from txmongo.protocol import MongoProtocol, Msg
 from txmongo.types import Document
 
 _WriteOp = Union[InsertOne, UpdateOne, UpdateMany, ReplaceOne, DeleteOne, DeleteMany]
@@ -74,7 +74,7 @@ class _Run:
     ) -> Iterator[Tuple[int, Msg]]:
         payload_arg_name = PAYLOAD_ARG_NAME[self.op_type]
         msg = Msg(
-            flag_bits=0 if write_concern.acknowledged else OP_MSG_MORE_TO_COME,
+            flag_bits=Msg.create_flag_bits(write_concern.acknowledged),
             body=bson.encode(
                 {
                     COMMAND_NAME[self.op_type]: collection_name,
