@@ -2,6 +2,8 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
+import warnings
+
 from bson.codec_options import DEFAULT_CODEC_OPTIONS
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.read_preferences import ReadPreference
@@ -118,6 +120,10 @@ class _Connection(ReconnectingClientFactory):
 
         proto.set_wire_versions(config.get("minWireVersion", 0),
                                 config.get("maxWireVersion", 0))
+
+        # MongoDB < 4.0
+        if proto.max_wire_version < 7:
+            warnings.warn("MongoDB <4.0 support will be dropped in the next version of TxMongo", DeprecationWarning)
 
         # Track the other hosts in the replica set.
         hosts = config.get("hosts")

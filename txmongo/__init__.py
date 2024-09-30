@@ -3,6 +3,9 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
+import sys
+import warnings
+
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
 from txmongo.connection import MongoConnection, MongoConnectionPool, lazyMongoConnection, \
@@ -16,3 +19,6 @@ assert MongoConnection
 assert MongoConnectionPool
 assert lazyMongoConnection
 assert lazyMongoConnectionPool
+
+if sys.version_info < (3, 8):
+    warnings.warn("Only Python 3.8+ will be supported in the next version of TxMongo", DeprecationWarning)
