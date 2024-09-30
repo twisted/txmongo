@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+import bson
 from bson import BSON
 from pymongo import InsertOne
 from pymongo.errors import BulkWriteError, OperationFailure
@@ -9,7 +10,7 @@ from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 
 from tests.utils import SingleCollectionTest
-from txmongo.protocol import Reply
+from txmongo.protocol import Msg, Reply
 
 try:
     from pymongo.errors import NotPrimaryError
@@ -275,12 +276,16 @@ class TestOperationFailure(SingleCollectionTest):
 
         def fake_send_query(*args):
             return defer.succeed(
-                {
-                    "ok": 0.0,
-                    "errmsg": "operation was interrupted",
-                    "code": 11602,
-                    "codeName": "InterruptedDueToReplStateChange",
-                }
+                Msg(
+                    body=bson.encode(
+                        {
+                            "ok": 0.0,
+                            "errmsg": "operation was interrupted",
+                            "code": 11602,
+                            "codeName": "InterruptedDueToReplStateChange",
+                        }
+                    )
+                )
             )
 
         with patch(

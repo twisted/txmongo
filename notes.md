@@ -19,9 +19,14 @@
 - Check Msg size against maxMessageSizeBytes
 - Implement missing test cases from [OP_MSG spec test plan](https://github.com/mongodb/specifications/blob/master/source/message/OP_MSG.md#test-plan)
 - Check using BSON() class. It's docstring says that using its method is slower than bson.encode/decode
-- What would we do with old style coll.update(), coll.insert(), coll.delete() methods?
+- What would we do with old style coll.update(), coll.insert(), coll.remove() methods?
   - Maybe reimplement them using *_one/many counterparts?
   - Or just remove them because they are deprecated for many years?
+- Test that new implementation of TxMongo isn't worse than the old one in terms of memory usage
+  - Check circular references by disabling gc and measuring len(gc.get_objects()) ?
+
+## Prior art
+- https://github.com/twisted/txmongo/pull/262
 
 
 ## Plan:

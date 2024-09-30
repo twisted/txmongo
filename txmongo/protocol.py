@@ -680,7 +680,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         request_id = MongoClientProtocol.send_QUERY(self, request)
         return self.__wait_for_reply_to(request_id)
 
-    def send_MSG(self, msg: Msg) -> defer.Deferred:
+    def send_MSG(self, msg: Msg) -> defer.Deferred[Msg]:
         request_id = MongoClientProtocol.send_MSG(self, msg)
         if msg.flag_bits & OP_MSG_MORE_TO_COME:
             return defer.succeed(None)
@@ -712,10 +712,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
     def handle_MSG(self, request: Msg):
         if dfr := self.__deferreds.pop(request.header.response_to, None):
-            result = bson.decode(request.body)
-            for arg_name, bsons in request.payload.items():
-                result[arg_name] = [bson.decode(b) for b in bsons]
-            dfr.callback(result)
+            dfr.callback(request)
 
     def fail(self, reason):
         log.err(str(reason))
