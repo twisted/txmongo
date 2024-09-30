@@ -43,14 +43,12 @@ from txmongo._bulk import _INSERT, _Bulk, _Run
 from txmongo.filter import _QueryFilter
 from txmongo.protocol import (
     DELETE_SINGLE_REMOVE,
+    OP_MSG_MORE_TO_COME,
     UPDATE_MULTI,
     UPDATE_UPSERT,
     Delete,
-    Getmore,
     Insert,
-    KillCursors,
     Msg,
-    Query,
     Update,
 )
 from txmongo.pymongo_internals import (
@@ -110,7 +108,7 @@ class Collection:
         self.__codec_options = codec_options
 
     def __str__(self):
-        return "%s.%s" % (str(self._database), self._collection_name)
+        return "%s.%s" % (self._database.name, self._collection_name)
 
     def __repr__(self):
         return "Collection(%s, %s)" % (self._database, self._collection_name)
@@ -119,7 +117,7 @@ class Collection:
     def full_name(self):
         """Full name of this :class:`Collection`, i.e.
         `db_name.collection_name`"""
-        return "{0}.{1}".format(str(self._database), self._collection_name)
+        return "{0}.{1}".format(self._database.name, self._collection_name)
 
     @property
     def name(self):
@@ -421,6 +419,61 @@ class Collection:
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find_with_cursor(**new_kwargs)
 
+    _MODIFIERS = {
+        "$query": "filter",
+        "$orderby": "sort",
+        "$hint": "hint",
+        "$comment": "comment",
+        "$maxScan": "maxScan",
+        "$maxTimeMS": "maxTimeMS",
+        "$max": "max",
+        "$min": "min",
+        "$returnKey": "returnKey",
+        "$showRecordId": "showRecordId",
+        "$showDiskLoc": "showRecordId",  # <= MongoDB 3.0
+    }
+
+    @classmethod
+    def _gen_find_command(
+        cls,
+        db_name: str,
+        coll_name: str,
+        filter_with_modifiers,
+        projection,
+        skip,
+        limit,
+        batch_size,
+    ):
+        cmd = {"find": coll_name}
+        if "$query" in filter_with_modifiers:
+            cmd.update(
+                [
+                    (cls._MODIFIERS[key], val) if key in cls._MODIFIERS else (key, val)
+                    for key, val in filter_with_modifiers.items()
+                ]
+            )
+        else:
+            cmd["filter"] = filter_with_modifiers
+
+        if projection:
+            cmd["projection"] = projection
+        if skip:
+            cmd["skip"] = skip
+        if limit:
+            cmd["limit"] = abs(limit)
+            if limit < 0:
+                cmd["singleBatch"] = True
+                cmd["batchSize"] = abs(limit)
+        if batch_size:
+            cmd["batchSize"] = batch_size
+
+        if "$explain" in filter_with_modifiers:
+            cmd.pop("$explain")
+            cmd = {"explain": cmd}
+
+        cmd["$db"] = db_name
+        return cmd
+
     def __real_find_with_cursor(
         self,
         filter=None,
@@ -448,75 +501,85 @@ class Collection:
         projection = self._normalize_fields_projection(projection)
 
         filter = self.__apply_find_filter(filter, sort)
-        if not isinstance(filter, BSON):
-            filter = BSON.encode(filter, codec_options=self.codec_options)
 
         as_class = kwargs.get("as_class")
+        codec_options = self.codec_options
         if as_class is not None:
             warnings.warn(
                 "as_class argument of will be removed in the next version of TxMongo. Please use document_class parameter of codec_options.",
                 DeprecationWarning,
             )
+            codec_options = codec_options.with_options(document_class=as_class)
 
-        proto = self._database.connection.getprotocol()
+        deadline = kwargs.get("_deadline")
 
-        def after_connection(protocol):
-            flags = kwargs.get("flags", 0)
+        def after_connection(proto):
+            check_deadline(deadline)
 
-            check_deadline(kwargs.pop("_deadline", None))
-
-            if batch_size and limit:
-                n_to_return = min(batch_size, limit)
-            elif batch_size:
-                n_to_return = batch_size
-            else:
-                n_to_return = limit
-
-            query = Query(
-                flags=flags,
-                collection=str(self),
-                n_to_skip=skip,
-                n_to_return=n_to_return,
-                query=filter,
-                fields=projection,
+            cmd = self._gen_find_command(
+                self.database.name,
+                self.name,
+                filter,
+                projection,
+                skip,
+                limit,
+                batch_size,
             )
 
-            deferred_query = protocol.send_QUERY(query)
-            deferred_query.addCallback(after_reply, protocol, after_reply)
-            return deferred_query
+            return proto.send_MSG(
+                Msg(body=bson.encode(cmd, codec_options=codec_options))
+            ).addCallback(after_reply, after_reply, proto)
 
         # this_func argument is just a reference to after_reply function itself.
         # after_reply can reference to itself directly but this will create a circular
         # reference between closure and function object which will add unnecessary
         # work for GC.
-        def after_reply(reply, protocol, this_func, fetched=0):
+        def after_reply(response, this_func, proto, fetched=0):
+            reply = bson.decode(response.body, codec_options=codec_options)
+            try:
+                check_deadline(deadline)
+            except Exception:
+                cursor_id = reply.get("cursor", {}).get("id")
+                if cursor_id:
+                    proto.send_MSG(
+                        Msg(
+                            flag_bits=OP_MSG_MORE_TO_COME,
+                            body=bson.encode(
+                                {
+                                    "killCursors": self.name,
+                                    "$db": self.database.name,
+                                    "cursors": [cursor_id],
+                                },
+                            ),
+                        )
+                    )
+                raise
 
-            documents = reply.documents
-            docs_count = len(documents)
+            _check_command_response(reply)
 
+            if "cursor" not in reply:
+                # For example, when we run `explain` command
+                return [reply], defer.succeed(([], None))
+
+            cursor = reply["cursor"]
+            docs_key = "firstBatch"
+            if "nextBatch" in cursor:
+                docs_key = "nextBatch"
+
+            docs_count = len(cursor[docs_key])
             if limit > 0:
                 docs_count = min(docs_count, limit - fetched)
             fetched += docs_count
+            out = cursor[docs_key][:docs_count]
 
-            options = self.codec_options
-            if as_class is not None:
-                options = options._replace(document_class=as_class)
-            out = [
-                document.decode(codec_options=options)
-                for document in documents[:docs_count]
-            ]
-
-            if reply.cursor_id:
-                # please note that this will not be the case if batch_size = 1
-                # it is documented (parameter numberToReturn for OP_QUERY)
-                # https://docs.mongodb.com/manual/reference/mongodb-wire-protocol/#wire-op-query
+            if cursor["id"]:
                 if limit == 0:
                     to_fetch = 0  # no limit
                     if batch_size:
                         to_fetch = batch_size
                 elif limit < 0:
                     # We won't actually get here because MongoDB won't
-                    # create cursor when limit < 0
+                    # create a cursor when limit < 0
                     to_fetch = None
                 else:
                     to_fetch = limit - fetched
@@ -526,23 +589,39 @@ class Collection:
                         to_fetch = min(batch_size, to_fetch)
 
                 if to_fetch is None:
-                    protocol.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
+                    # FIXME: extract this to a function
+                    proto.send_MSG(
+                        Msg(
+                            flag_bits=OP_MSG_MORE_TO_COME,
+                            body=bson.encode(
+                                {
+                                    "killCursors": self.name,
+                                    "$db": self.database.name,
+                                    "cursors": [cursor["id"]],
+                                },
+                            ),
+                        )
+                    )
                     return out, defer.succeed(([], None))
 
-                next_reply = protocol.send_GETMORE(
-                    Getmore(
-                        collection=str(self),
-                        cursor_id=reply.cursor_id,
-                        n_to_return=to_fetch,
-                    )
+                # FIXME: extract this to a function
+                get_more = {
+                    "getMore": cursor["id"],
+                    "collection": self.name,
+                    "$db": self.database.name,
+                }
+                if batch_size:
+                    get_more["batchSize"] = batch_size
+
+                next_reply = proto.send_MSG(
+                    Msg(body=bson.encode(get_more, codec_options=codec_options))
                 )
-                next_reply.addCallback(this_func, protocol, this_func, fetched)
+                next_reply.addCallback(this_func, this_func, proto, fetched)
                 return out, next_reply
 
             return out, defer.succeed(([], None))
 
-        proto.addCallback(after_connection)
-        return proto
+        return self._database.connection.getprotocol().addCallback(after_connection)
 
     @timeout
     def find_one(self, *args, **kwargs):
@@ -722,7 +801,7 @@ class Collection:
             write_concern = self._get_write_concern(safe, **kwargs)
             if write_concern.acknowledged:
                 return proto.get_last_error(
-                    str(self._database), **write_concern.document
+                    self._database.name, **write_concern.document
                 ).addCallback(lambda _: ids)
 
             return ids
@@ -750,8 +829,8 @@ class Collection:
             flag_bits=Msg.create_flag_bits(self.write_concern.acknowledged),
             body=bson.encode(
                 {
-                    "insert": self._collection_name,
-                    "$db": str(self.database),
+                    "insert": self.name,
+                    "$db": self.database.name,
                     "writeConcern": self.write_concern.document,
                 }
             ),
@@ -762,9 +841,10 @@ class Collection:
 
         proto = yield self._database.connection.getprotocol()
         check_deadline(_deadline)
-        response = yield proto.send_MSG(msg)
+        response: Optional[Msg] = yield proto.send_MSG(msg)
         if response:
-            _check_write_command_response(response)
+            reply = bson.decode(response.body, codec_options=self.codec_options)
+            _check_write_command_response(reply)
         return InsertOneResult(inserted_id, self.write_concern.acknowledged)
 
     @timeout
@@ -874,7 +954,7 @@ class Collection:
             write_concern = self._get_write_concern(safe, **kwargs)
             if write_concern.acknowledged:
                 return proto.get_last_error(
-                    str(self._database), **write_concern.document
+                    self._database.name, **write_concern.document
                 )
 
         return self._database.connection.getprotocol().addCallback(on_proto)
@@ -888,8 +968,8 @@ class Collection:
             flag_bits=Msg.create_flag_bits(self.write_concern.acknowledged),
             body=bson.encode(
                 {
-                    "update": self._collection_name,
-                    "$db": str(self.database),
+                    "update": self.name,
+                    "$db": self.database.name,
                     "writeConcern": self.write_concern.document,
                 }
             ),
@@ -911,15 +991,17 @@ class Collection:
         proto = yield self._database.connection.getprotocol()
         check_deadline(_deadline)
         response = yield proto.send_MSG(msg)
+        reply = None
         if response:
-            _check_write_command_response(response)
-            if response.get("n") and "upserted" in response:
+            reply = bson.decode(response.body, codec_options=self.codec_options)
+            _check_write_command_response(reply)
+            if reply.get("n") and "upserted" in reply:
                 # MongoDB >= 2.6.0 returns the upsert _id in an array
                 # element. Break it out for backward compatibility.
-                if "upserted" in response:
-                    response["upserted"] = response["upserted"][0]["_id"]
+                if "upserted" in reply:
+                    reply["upserted"] = reply["upserted"][0]["_id"]
 
-        return UpdateResult(response, self.write_concern.acknowledged)
+        return UpdateResult(reply, self.write_concern.acknowledged)
 
     @timeout
     def update_one(self, filter, update, upsert=False, _deadline=None):
@@ -1062,7 +1144,7 @@ class Collection:
             write_concern = self._get_write_concern(safe, **kwargs)
             if write_concern.acknowledged:
                 return proto.get_last_error(
-                    str(self._database), **write_concern.document
+                    self._database.name, **write_concern.document
                 )
 
         return self._database.connection.getprotocol().addCallback(on_proto)
@@ -1074,8 +1156,8 @@ class Collection:
         validate_is_mapping("filter", filter)
 
         body = {
-            "delete": self._collection_name,
-            "$db": str(self.database),
+            "delete": self.name,
+            "$db": self.database.name,
             "writeConcern": self.write_concern.document,
         }
 
@@ -1102,10 +1184,12 @@ class Collection:
         proto = yield self._database.connection.getprotocol()
         check_deadline(_deadline)
         response = yield proto.send_MSG(msg)
+        reply = None
         if response:
-            _check_write_command_response(response)
+            reply = bson.decode(response.body, codec_options=self.codec_options)
+            _check_write_command_response(reply)
 
-        return DeleteResult(response, self.write_concern.acknowledged)
+        return DeleteResult(reply, self.write_concern.acknowledged)
 
     @timeout
     def delete_one(
@@ -1130,9 +1214,7 @@ class Collection:
     @timeout
     def drop(self, _deadline=None):
         """drop()"""
-        return self._database.drop_collection(
-            self._collection_name, _deadline=_deadline
-        )
+        return self._database.drop_collection(self.name, _deadline=_deadline)
 
     def create_index(self, sort_fields, **kwargs):
         if not isinstance(sort_fields, qf.sort):
@@ -1158,7 +1240,7 @@ class Collection:
         index.update(kwargs)
 
         return self._database.command(
-            "createIndexes", self._collection_name, indexes=[index]
+            "createIndexes", self.name, indexes=[index]
         ).addCallback(lambda _: name)
 
     @timeout
@@ -1181,7 +1263,7 @@ class Collection:
 
         return self._database.command(
             "deleteIndexes",
-            self._collection_name,
+            self.name,
             index=name,
             allowable_errors=["ns not found"],
             _deadline=_deadline,
@@ -1223,7 +1305,7 @@ class Collection:
     @timeout
     def rename(self, new_name, _deadline=None):
         """rename(new_name)"""
-        to = "%s.%s" % (str(self._database), new_name)
+        to = "%s.%s" % (self._database.name, new_name)
         return self._database("admin").command(
             "renameCollection", str(self), to=to, _deadline=_deadline
         )
@@ -1237,7 +1319,7 @@ class Collection:
             params["query"] = filter
 
         return self._database.command(
-            "distinct", self._collection_name, _deadline=_deadline, **params
+            "distinct", self.name, _deadline=_deadline, **params
         ).addCallback(lambda result: result.get("values"))
 
     @timeout
@@ -1260,7 +1342,7 @@ class Collection:
                     return raw
                 return data
             next_reply = self._database.command(
-                "getMore", collection=self._collection_name, getMore=raw["cursor"]["id"]
+                "getMore", collection=self.name, getMore=raw["cursor"]["id"]
             )
             return next_reply.addCallback(on_ok, data)
 
@@ -1271,7 +1353,7 @@ class Collection:
 
         return self._database.command(
             "aggregate",
-            self._collection_name,
+            self.name,
             pipeline=pipeline,
             _deadline=_deadline,
             cursor=cursor,
@@ -1287,9 +1369,9 @@ class Collection:
                 return raw
             return raw.get("results")
 
-        return self._database.command(
-            "mapreduce", self._collection_name, **params
-        ).addCallback(on_ok)
+        return self._database.command("mapreduce", self.name, **params).addCallback(
+            on_ok
+        )
 
     @timeout
     def find_and_modify(self, query=None, update=None, upsert=False, **kwargs):
@@ -1327,7 +1409,7 @@ class Collection:
 
         return self._database.command(
             "findAndModify",
-            self._collection_name,
+            self.name,
             allowable_errors=[no_obj_error],
             **params,
         ).addCallback(on_ok)
@@ -1355,7 +1437,7 @@ class Collection:
 
         cmd = SON(
             [
-                ("findAndModify", self._collection_name),
+                ("findAndModify", self.name),
                 ("query", filter),
                 ("new", return_document),
             ]
@@ -1482,11 +1564,14 @@ class Collection:
             _merge_command(run, full_result, idx_offset, response)
             return response
 
+        def decode_response(response: Msg, codec_options: CodecOptions) -> dict:
+            return bson.decode(response.body, codec_options=codec_options)
+
         got_error = False
         for run in bulk.gen_runs():
             for doc_offset, msg in run.gen_messages(
-                str(self._database),
-                self._collection_name,
+                self._database.name,
+                self.name,
                 effective_write_concern,
                 proto,
                 self.codec_options,
@@ -1494,10 +1579,11 @@ class Collection:
                 check_deadline(_deadline)
                 deferred = proto.send_MSG(msg)
                 if effective_write_concern.acknowledged:
+                    deferred.addCallback(decode_response, self.codec_options)
                     if bulk.ordered:
-                        response = yield deferred
-                        accumulate_response(response, run, doc_offset)
-                        if "writeErrors" in response:
+                        reply = yield deferred
+                        accumulate_response(reply, run, doc_offset)
+                        if "writeErrors" in reply:
                             got_error = True
                             break
                     else:

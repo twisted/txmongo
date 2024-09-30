@@ -119,10 +119,6 @@ class TestMongoFilters(unittest.TestCase):
         yield self.__test_simple_filter(qf.comment(comment), "comment", comment)
 
     @defer.inlineCallbacks
-    def test_Snapshot(self):
-        yield self.__test_simple_filter(qf.snapshot(), "snapshot", True)
-
-    @defer.inlineCallbacks
     def test_Explain(self):
         result = yield self.coll.find({}, filter=qf.explain())
         self.assertTrue("executionStats" in result[0] or "nscanned" in result[0])

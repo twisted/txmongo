@@ -1,12 +1,13 @@
 # Copyright 2009-2015 The TxMongo Developers.  All rights reserved.
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
-
-from bson.son import SON
+import bson
+from twisted.internet import defer
 
 from txmongo.collection import Collection
+from txmongo.protocol import Msg
 from txmongo.pymongo_internals import _check_command_response
-from txmongo.utils import timeout
+from txmongo.utils import check_deadline, timeout
 
 
 class Database:
@@ -55,6 +56,7 @@ class Database:
         return self.__codec_options or self.__factory.codec_options
 
     @timeout
+    @defer.inlineCallbacks
     def command(
         self,
         command,
@@ -63,27 +65,30 @@ class Database:
         allowable_errors=None,
         codec_options=None,
         _deadline=None,
-        **kwargs
+        **kwargs,
     ):
         """command(command, value=1, check=True, allowable_errors=None, codec_options=None)"""
         if isinstance(command, (bytes, str)):
-            command = SON([(command, value)])
+            command = {command: value}
         if codec_options is None:
-            codec_options = self.__codec_options
+            codec_options = self.codec_options
         options = kwargs.copy()
         command.update(options)
+        command["$db"] = self.name
 
-        def on_ok(response):
-            if check:
-                msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(
-                    repr(command), ns
-                )
-                _check_command_response(response, msg, allowable_errors)
+        proto = yield self.connection.getprotocol()
+        check_deadline(_deadline)
 
-            return response
-
-        ns = self["$cmd"].with_options(codec_options=codec_options)
-        return ns.find_one(command, _deadline=_deadline).addCallback(on_ok)
+        response = yield proto.send_MSG(
+            Msg(body=bson.encode(command, codec_options=codec_options))
+        )
+        reply = bson.decode(response.body, codec_options=codec_options)
+        if check:
+            msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(
+                repr(command), self
+            )
+            _check_command_response(reply, msg, allowable_errors)
+        return reply
 
     @timeout
     def create_collection(
