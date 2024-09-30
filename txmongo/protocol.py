@@ -22,7 +22,7 @@ from collections import namedtuple
 from dataclasses import dataclass, field
 from hashlib import sha1
 from random import SystemRandom
-from typing import List, Dict
+from typing import Dict, List
 
 import bson
 from bson import BSON, SON, Binary
@@ -403,6 +403,10 @@ class Msg:
         # FIXME: MongoServerProtocol.handle assumes that message object has an opcode attribute
         #        Maybe we should refactor other messages too. Or get rid of MsgHeader dataclass.
         return self.header.opcode
+
+    @classmethod
+    def create_flag_bits(cls, not_more_to_come: bool) -> int:
+        return 0 if not_more_to_come else OP_MSG_MORE_TO_COME
 
     def size_in_bytes(self) -> int:
         """return estimated overll message length including messageLength and requestID"""

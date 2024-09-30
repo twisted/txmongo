@@ -1,5 +1,6 @@
 from functools import wraps
 from time import time
+from typing import Optional
 
 from twisted.internet import defer, reactor
 
@@ -57,7 +58,7 @@ def timeout(func):
     return _timeout
 
 
-def check_deadline(_deadline):
+def check_deadline(_deadline: Optional[float]):
     if _deadline is not None and _deadline < time():
         raise TimeExceeded(f"TxMongo: now '{time()}', deadline '{_deadline}'")
 
