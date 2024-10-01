@@ -11,18 +11,21 @@ from pymongo.read_preferences import ReadPreference
 from pymongo.uri_parser import parse_uri
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer, reactor, task
-from twisted.internet.protocol import ReconnectingClientFactory, ClientFactory
+from twisted.internet.protocol import ClientFactory, ReconnectingClientFactory
 from twisted.python import log
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Query
-from txmongo.utils import timeout, get_err
+from txmongo.utils import get_err, timeout
 
 DEFAULT_MAX_BSON_SIZE = 16777216
 DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
 
 
-_PRIMARY_READ_PREFERENCES = {ReadPreference.PRIMARY.mode, ReadPreference.PRIMARY_PREFERRED.mode}
+_PRIMARY_READ_PREFERENCES = {
+    ReadPreference.PRIMARY.mode,
+    ReadPreference.PRIMARY_PREFERRED.mode,
+}
 
 
 class _Connection(ReconnectingClientFactory):
@@ -55,10 +58,10 @@ class _Connection(ReconnectingClientFactory):
         yield proto.connectionReady()
         self.resetDelay()
 
-        uri_options = self.uri['options']
-        slaveok = uri_options.get('slaveok', False)
-        if 'readpreference' in uri_options:
-            slaveok = uri_options['readpreference'] not in _PRIMARY_READ_PREFERENCES
+        uri_options = self.uri["options"]
+        slaveok = uri_options.get("slaveok", False)
+        if "readpreference" in uri_options:
+            slaveok = uri_options["readpreference"] not in _PRIMARY_READ_PREFERENCES
 
         try:
             if not slaveok:
@@ -80,11 +83,11 @@ class _Connection(ReconnectingClientFactory):
     @defer.inlineCallbacks
     def configure(self, proto):
         """
-            Configures the protocol using the information gathered from the
-            remote Mongo instance. Such information may contain the max
-            BSON document size, replica set configuration, and the master
-            status of the instance.
-            """
+        Configures the protocol using the information gathered from the
+        remote Mongo instance. Such information may contain the max
+        BSON document size, replica set configuration, and the master
+        status of the instance.
+        """
 
         if not proto:
             defer.returnValue(None)
@@ -117,23 +120,29 @@ class _Connection(ReconnectingClientFactory):
 
         # Track max bson object size limit.
         proto.max_bson_size = config.get("maxBsonObjectSize", DEFAULT_MAX_BSON_SIZE)
-        proto.max_write_batch_size = config.get("maxWriteBatchSize", DEFAULT_MAX_WRITE_BATCH_SIZE)
+        proto.max_write_batch_size = config.get(
+            "maxWriteBatchSize", DEFAULT_MAX_WRITE_BATCH_SIZE
+        )
 
-        proto.set_wire_versions(config.get("minWireVersion", 0),
-                                config.get("maxWireVersion", 0))
+        proto.set_wire_versions(
+            config.get("minWireVersion", 0), config.get("maxWireVersion", 0)
+        )
 
         # MongoDB < 4.0
         if proto.max_wire_version < 7:
-            warnings.warn("MongoDB <4.0 support will be dropped in the next version of TxMongo", DeprecationWarning)
+            warnings.warn(
+                "MongoDB <4.0 support will be dropped in the next version of TxMongo",
+                DeprecationWarning,
+            )
 
         # Track the other hosts in the replica set.
         hosts = config.get("hosts")
         if isinstance(hosts, list) and hosts:
             for host in hosts:
-                if ':' not in host:
+                if ":" not in host:
                     host = (host, 27017)
                 else:
-                    host = host.split(':', 1)
+                    host = host.split(":", 1)
                     host[1] = int(host[1])
                     host = tuple(host)
                 if host not in self.__allnodes:
@@ -142,7 +151,7 @@ class _Connection(ReconnectingClientFactory):
         # Check if this node is the master.
         ismaster = config.get("ismaster")
         if not ismaster:
-            msg = "TxMongo: MongoDB host `%s` is not master." % config.get('me')
+            msg = "TxMongo: MongoDB host `%s` is not master." % config.get("me")
             raise AutoReconnect(msg)
 
     def clientConnectionFailed(self, connector, reason):
@@ -159,13 +168,13 @@ class _Connection(ReconnectingClientFactory):
 
     def notifyReady(self):
         """
-            Returns a deferred that will fire when the factory has created a
-            protocol that can be used to communicate with a Mongo server.
+        Returns a deferred that will fire when the factory has created a
+        protocol that can be used to communicate with a Mongo server.
 
-            Note that this will not fire until we have connected to a Mongo
-            master, unless slaveOk was specified in the Mongo URI connection
-            options.
-            """
+        Note that this will not fire until we have connected to a Mongo
+        master, unless slaveOk was specified in the Mongo URI connection
+        options.
+        """
         if self.instance:
             return defer.succeed(self.instance)
 
@@ -178,9 +187,9 @@ class _Connection(ReconnectingClientFactory):
 
     def retryNextHost(self, connector=None):
         """
-            Have this connector connect again, to the next host in the
-            configured list of hosts.
-            """
+        Have this connector connect again, to the next host in the
+        configured list of hosts.
+        """
         if not self.continueTrying:
             msg = "TxMongo: Abandoning {0} on explicit request.".format(connector)
             log.msg(msg)
@@ -226,9 +235,15 @@ class _Connection(ReconnectingClientFactory):
 
     def _auth_proto(self, proto):
         return defer.DeferredList(
-            [proto.authenticate(database, username, password, mechanism)
-             for database, (username, password, mechanism) in self.__auth_creds.items()],
-            consumeErrors=True
+            [
+                proto.authenticate(database, username, password, mechanism)
+                for database, (
+                    username,
+                    password,
+                    mechanism,
+                ) in self.__auth_creds.items()
+            ],
+            consumeErrors=True,
         )
 
     def authenticate(self, database, username, password, mechanism):
@@ -248,8 +263,15 @@ class ConnectionPool:
 
     __pinger_discovery_interval = 10
 
-    def __init__(self, uri="mongodb://127.0.0.1:27017", pool_size=1, ssl_context_factory=None,
-                 ping_interval=10, ping_timeout=10, **kwargs):
+    def __init__(
+        self,
+        uri="mongodb://127.0.0.1:27017",
+        pool_size=1,
+        ssl_context_factory=None,
+        ping_interval=10,
+        ping_timeout=10,
+        **kwargs
+    ):
         assert isinstance(uri, str)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
@@ -259,34 +281,41 @@ class ConnectionPool:
 
         self.__uri = parse_uri(uri)
 
-        wc_options = dict(self.__uri['options'])
+        wc_options = dict(self.__uri["options"])
         wc_options.update(kwargs)
         self.__write_concern = self.__parse_write_concern_options(wc_options)
 
-        self.__codec_options = kwargs.get('codec_options', CodecOptions(uuid_representation=UuidRepresentation.STANDARD))
+        self.__codec_options = kwargs.get(
+            "codec_options",
+            CodecOptions(uuid_representation=UuidRepresentation.STANDARD),
+        )
 
-        retry_delay = kwargs.get('retry_delay', 1.0)
-        max_delay = kwargs.get('max_delay', 60.0)
+        retry_delay = kwargs.get("retry_delay", 1.0)
+        max_delay = kwargs.get("max_delay", 60.0)
         self.__pool_size = pool_size
         self.__pool = [
             _Connection(self, self.__uri, i, retry_delay, max_delay)
             for i in range(pool_size)
         ]
 
-        if self.__uri['database'] and self.__uri['username'] and self.__uri['password']:
-            auth_db = self.__uri['options'].get('authsource') or self.__uri['database']
-            self.authenticate(auth_db, self.__uri['username'],
-                              self.__uri['password'],
-                              self.__uri['options'].get('authmechanism', 'DEFAULT'))
+        if self.__uri["database"] and self.__uri["username"] and self.__uri["password"]:
+            auth_db = self.__uri["options"].get("authsource") or self.__uri["database"]
+            self.authenticate(
+                auth_db,
+                self.__uri["username"],
+                self.__uri["password"],
+                self.__uri["options"].get("authmechanism", "DEFAULT"),
+            )
 
-        host, port = self.__uri['nodelist'][0]
+        host, port = self.__uri["nodelist"][0]
 
         self.ssl_context_factory = ssl_context_factory
 
-        initial_delay = kwargs.get('retry_delay', 30)
+        initial_delay = kwargs.get("retry_delay", 30)
         for factory in self.__pool:
-            factory.connector = self.__tcp_or_ssl_connect(host, port, factory,
-                                                          timeout=initial_delay)
+            factory.connector = self.__tcp_or_ssl_connect(
+                host, port, factory, timeout=initial_delay
+            )
 
         self.ping_interval = ping_interval
         self.ping_timeout = ping_timeout
@@ -296,15 +325,17 @@ class ConnectionPool:
 
     @staticmethod
     def __parse_write_concern_options(options):
-        concern = options.get('w')
-        wtimeout = options.get('wtimeout', options.get('wtimeoutms'))
-        j = options.get('j', options.get('journal'))
-        fsync = options.get('fsync')
+        concern = options.get("w")
+        wtimeout = options.get("wtimeout", options.get("wtimeoutms"))
+        j = options.get("j", options.get("journal"))
+        fsync = options.get("fsync")
         return WriteConcern(concern, wtimeout, j, fsync)
 
     def __tcp_or_ssl_connect(self, host, port, factory, **kwargs):
         if self.ssl_context_factory:
-            return reactor.connectSSL(host, port, factory, self.ssl_context_factory, **kwargs)
+            return reactor.connectSSL(
+                host, port, factory, self.ssl_context_factory, **kwargs
+            )
         else:
             return reactor.connectTCP(host, port, factory, **kwargs)
 
@@ -342,8 +373,10 @@ class ConnectionPool:
         elif isinstance(name_or_database, Database):
             db = name_or_database
         else:
-            raise TypeError("argument to drop_database() should be database name "
-                            "or database object")
+            raise TypeError(
+                "argument to drop_database() should be database name "
+                "or database object"
+            )
 
         return db.command("dropDatabase")
 
@@ -372,9 +405,11 @@ class ConnectionPool:
             raise failure.value.subFailure.value
 
         return defer.gatherResults(
-            [connection.authenticate(database, username, password, mechanism)
-             for connection in self.__pool],
-            consumeErrors=True
+            [
+                connection.authenticate(database, username, password, mechanism)
+                for connection in self.__pool
+            ],
+            consumeErrors=True,
         ).addErrback(fail)
 
     def getprotocol(self):
@@ -392,7 +427,6 @@ class ConnectionPool:
     @property
     def uri(self):
         return self.__uri
-
 
     # Pingers are persistent connections that are established to each
     # node of the replicaset to monitor their availability.
@@ -415,14 +449,20 @@ class ConnectionPool:
 
     def __discovery_nodes_to_ping(self):
         existing = set(self.__pingers)
-        peers = {conn.instance.transport.getPeer()
-                 for conn in self.__pool if conn.instance}
+        peers = {
+            conn.instance.transport.getPeer() for conn in self.__pool if conn.instance
+        }
 
         for peer in peers - existing:
-            pinger = _Pinger(self.ping_interval, self.ping_timeout,
-                             self.__on_ping_lost, self.__on_ping_fail)
-            pinger.connector = self.__tcp_or_ssl_connect(peer.host, peer.port, pinger,
-                                                         timeout=self.ping_timeout)
+            pinger = _Pinger(
+                self.ping_interval,
+                self.ping_timeout,
+                self.__on_ping_lost,
+                self.__on_ping_fail,
+            )
+            pinger.connector = self.__tcp_or_ssl_connect(
+                peer.host, peer.port, pinger, timeout=self.ping_timeout
+            )
             self.__pingers[peer] = pinger
 
         for unused_peer in existing - peers:
@@ -470,9 +510,9 @@ class _PingerProtocol(MongoProtocol):
 
         timeout_call = reactor.callLater(self.timeout, on_timeout)
 
-        self.send_QUERY(Query(collection="admin.$cmd", query={"ismaster": 1}))\
-            .addCallbacks(on_ok, on_fail)
-
+        self.send_QUERY(
+            Query(collection="admin.$cmd", query={"ismaster": 1})
+        ).addCallbacks(on_ok, on_fail)
 
     def connectionMade(self):
         MongoProtocol.connectionMade(self)
@@ -510,6 +550,7 @@ class _Pinger(ClientFactory):
 ###
 # Begin Legacy Wrapper
 ###
+
 
 class MongoConnection(ConnectionPool):
     def __init__(self, host="127.0.0.1", port=27017, pool_size=1, **kwargs):

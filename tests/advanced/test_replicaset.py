@@ -14,17 +14,18 @@
 # limitations under the License.
 
 import signal
-from bson import SON
-from pymongo.errors import OperationFailure, AutoReconnect, ConfigurationError
 from time import time
-from twisted.trial import unittest
+
+from bson import SON
+from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from twisted.internet import defer, reactor
+from twisted.trial import unittest
 
 from tests.conf import MongoConf
+from tests.mongod import create_mongod
 from txmongo.connection import ConnectionPool
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
-from tests.mongod import create_mongod
 
 
 class TestReplicaSet(unittest.TestCase):
@@ -100,7 +101,9 @@ class TestReplicaSet(unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.__mongod = [create_mongod(port=p, replset=self.rs_name) for p in self.ports]
+        self.__mongod = [
+            create_mongod(port=p, replset=self.rs_name) for p in self.ports
+        ]
         yield defer.gatherResults([mongo.start() for mongo in self.__mongod])
 
         yield defer.gatherResults([self.__check_reachable(port) for port in self.ports])

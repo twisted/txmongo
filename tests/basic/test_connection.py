@@ -13,13 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import patch
 from time import time
-from twisted.trial import unittest
+from unittest.mock import patch
+
 from twisted.internet import defer
+from twisted.trial import unittest
+
 from txmongo import connection
-from txmongo.utils import check_deadline
 from txmongo.errors import TimeExceeded
+from txmongo.utils import check_deadline
 
 mongo_host = "127.0.0.1"
 mongo_port = 27017
@@ -38,14 +40,15 @@ class TestMongoConnection(unittest.TestCase):
         yield self.unnamed_conn.disconnect()
 
     def test_GetDefaultDatabase(self):
-        self.assertEqual(self.named_conn.get_default_database().name,
-                         self.named_conn["dbname"].name)
+        self.assertEqual(
+            self.named_conn.get_default_database().name, self.named_conn["dbname"].name
+        )
         self.assertEqual(self.unnamed_conn.get_default_database(), None)
 
     def test_Misc(self):
         result = self.named_conn.getprotocols()
-        result[0].uri['nodelist'].pop()
-        self.assertTrue(len(result[0].uri['nodelist']) == 0)
+        result[0].uri["nodelist"].pop()
+        self.assertTrue(len(result[0].uri["nodelist"]) == 0)
         self.assertEqual("Connection()", repr(self.named_conn))
 
     @defer.inlineCallbacks
@@ -59,19 +62,30 @@ class TestMongoConnection(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Timeout_and_Deadline(self):
-        yield self.named_conn.db.coll.insert({'x': 42}, safe=True, timeout=10)
-        yield self.named_conn.db.coll.insert({'x': 42}, safe=True, deadline=time()+10)
+        yield self.named_conn.db.coll.insert({"x": 42}, safe=True, timeout=10)
+        yield self.named_conn.db.coll.insert({"x": 42}, safe=True, deadline=time() + 10)
 
-        self.assertRaises(TimeExceeded, self.named_conn.db.coll.insert, {'x': 42}, safe=True, deadline=time()-10)
+        self.assertRaises(
+            TimeExceeded,
+            self.named_conn.db.coll.insert,
+            {"x": 42},
+            safe=True,
+            deadline=time() - 10,
+        )
 
-        self.assertRaises(TimeExceeded, self.named_conn.db.coll.insert, {'x': 42}, safe=True, timeout=-10)
+        self.assertRaises(
+            TimeExceeded,
+            self.named_conn.db.coll.insert,
+            {"x": 42},
+            safe=True,
+            timeout=-10,
+        )
 
         def patch_deadline(_):
-            check_deadline(time()-2)
+            check_deadline(time() - 2)
 
-        with patch('txmongo.collection.check_deadline', side_effect=patch_deadline):
-            d_insert = self.named_conn.db.coll.find_one(
-                {'x': 42}, deadline=time()+2)
+        with patch("txmongo.collection.check_deadline", side_effect=patch_deadline):
+            d_insert = self.named_conn.db.coll.find_one({"x": 42}, deadline=time() + 2)
             yield self.assertFailure(d_insert, TimeExceeded)
 
 
@@ -82,7 +96,7 @@ class TestDropDatabase(unittest.TestCase):
         self.conn = connection.ConnectionPool()
         self.db = self.conn.db
         self.coll = self.db.coll
-        yield self.coll.insert({'x': 42})
+        yield self.coll.insert({"x": 42})
         yield self.assert_coll_count(1)
 
     @defer.inlineCallbacks

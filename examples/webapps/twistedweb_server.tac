@@ -18,20 +18,25 @@
 #  twistd -ny twistedweb_server.tac
 
 import _local_path
-import txmongo
+from twisted.application import internet, service
 from twisted.internet import defer
-from twisted.web import xmlrpc, server
+from twisted.web import server, xmlrpc
 from twisted.web.resource import Resource
-from twisted.application import service, internet
+
+import txmongo
+
 
 class Root(Resource):
     isLeaf = False
 
+
 class BaseHandler:
     isLeaf = True
+
     def __init__(self, db):
         self.db = db
         Resource.__init__(self)
+
 
 class IndexHandler(BaseHandler, Resource):
     def _success(self, value, request, message):
@@ -41,7 +46,7 @@ class IndexHandler(BaseHandler, Resource):
     def _failure(self, error, request, message):
         request.write(message % str(error))
         request.finish()
-        
+
     def render_GET(self, request):
         try:
             name = request.args["name"][0]
@@ -49,14 +54,14 @@ class IndexHandler(BaseHandler, Resource):
             request.setResponseCode(404, "not found")
             return ""
 
-        d = self.db.find({"name":name})
+        d = self.db.find({"name": name})
         d.addCallback(self._success, request, "result(s): %s\n")
         d.addErrback(self._failure, request, "find failed: %s\n")
         return server.NOT_DONE_YET
 
     def render_POST(self, request):
         name = request.args["name"][0]
-        self.db.insert({"name":name})
+        self.db.insert({"name": name})
         return "ok\n"
 
 

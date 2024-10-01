@@ -15,6 +15,7 @@
 
 from twisted.internet import defer
 from twisted.trial import unittest
+
 import txmongo
 
 mongo_host = "127.0.0.1"
@@ -33,15 +34,22 @@ class TestAggregate(unittest.TestCase):
     @defer.inlineCallbacks
     def test_aggregate(self):
         """Test basic aggregation functionality"""
-        yield self.coll.insert([{"oh": "hai", "lulz": 123},
-                                {"oh": "kthxbye", "lulz": 456},
-                                {"oh": "hai", "lulz": 789}, ], safe=True)
+        yield self.coll.insert(
+            [
+                {"oh": "hai", "lulz": 123},
+                {"oh": "kthxbye", "lulz": 456},
+                {"oh": "hai", "lulz": 789},
+            ],
+            safe=True,
+        )
 
-        res = yield self.coll.aggregate([
-            {"$project": {"oh": 1, "lolz": "$lulz"}},
-            {"$group": {"_id": "$oh", "many_lolz": {"$sum": "$lolz"}}},
-            {"$sort": {"_id": 1}}
-        ])
+        res = yield self.coll.aggregate(
+            [
+                {"$project": {"oh": 1, "lolz": "$lulz"}},
+                {"$group": {"_id": "$oh", "many_lolz": {"$sum": "$lolz"}}},
+                {"$sort": {"_id": 1}},
+            ]
+        )
 
         self.assertEqual(len(res), 2)
         self.assertEqual(res[0]["_id"], "hai")
@@ -67,12 +75,10 @@ class TestAggregate(unittest.TestCase):
     def test_large_batch(self):
         """Test aggregation with a large number of objects"""
         cnt = 10000
-        yield self.coll.insert([{"key": "v{}".format(i), "value": i} for i in range(cnt)])
-        group = {
-            "$group": {
-                "_id": "$key"
-            }
-        }
+        yield self.coll.insert(
+            [{"key": "v{}".format(i), "value": i} for i in range(cnt)]
+        )
+        group = {"$group": {"_id": "$key"}}
 
         # Default initial batch size (determined by the database)
         res = yield self.coll.aggregate([group])
@@ -96,9 +102,7 @@ class TestAggregate(unittest.TestCase):
         cnt = 2
         yield self.coll.insert([{"x": str(i) * 1024 * 1024} for i in range(cnt)])
 
-        group = {
-            "$group": {"_id": "$x"}
-        }
+        group = {"$group": {"_id": "$x"}}
 
         # Default initial batch size (determined by the database)
         res = yield self.coll.aggregate([group])

@@ -15,10 +15,6 @@ decoding as well as Exception types, when applicable.
 
 import base64
 import hashlib
-
-from bson import BSON, SON, Binary
-from collections import namedtuple
-from hashlib import sha1
 import hmac
 import logging
 import struct
@@ -28,11 +24,14 @@ from random import SystemRandom
 
 from bson import BSON, SON, Binary
 from pymongo import auth
-from pymongo.errors import AutoReconnect, ConnectionFailure, DuplicateKeyError, OperationFailure, \
-    CursorNotFound
-from random import SystemRandom
-import struct
-from twisted.internet import defer, protocol, error
+from pymongo.errors import (
+    AutoReconnect,
+    ConnectionFailure,
+    CursorNotFound,
+    DuplicateKeyError,
+    OperationFailure,
+)
+from twisted.internet import defer, error, protocol
 from twisted.python import failure, log
 
 from txmongo.utils import get_err
@@ -46,6 +45,7 @@ except ImportError:
 try:
     from hashlib import pbkdf2_hmac as _hi
 except ImportError:
+
     def _hi(hash_name, data, salt, iterations):
         """A simple implementation of PBKDF2-HMAC."""
         mac = hmac.HMAC(data, None, getattr(hashlib, hash_name))
@@ -59,12 +59,12 @@ except ImportError:
         from_bytes = int.from_bytes
         to_bytes = int.to_bytes
 
-        _u1 = _digest(salt + b'\x00\x00\x00\x01')
-        _ui = from_bytes(_u1, 'big')
+        _u1 = _digest(salt + b"\x00\x00\x00\x01")
+        _ui = from_bytes(_u1, "big")
         for _ in range(iterations - 1):
             _u1 = _digest(_u1)
-            _ui ^= from_bytes(_u1, 'big')
-        return to_bytes(_ui, mac.digest_size, 'big')
+            _ui ^= from_bytes(_u1, "big")
+        return to_bytes(_ui, mac.digest_size, "big")
 
 
 INT_MAX = 2147483647
@@ -86,7 +86,7 @@ OP_NAMES = {
     OP_QUERY: "QUERY",
     OP_GETMORE: "GETMORE",
     OP_DELETE: "DELETE",
-    OP_KILL_CURSORS: "KILL_CURSORS"
+    OP_KILL_CURSORS: "KILL_CURSORS",
 }
 
 DELETE_SINGLE_REMOVE = 1 << 0
@@ -112,87 +112,267 @@ INSERT_CONTINUE_ON_ERROR = 1 << 0
 Msg = namedtuple("Msg", ["len", "request_id", "response_to", "opcode", "message"])
 
 
-class KillCursors(namedtuple("KillCursors", ["len", "request_id", "response_to", "opcode",
-                                             "zero", "n_cursors", "cursors"])):
-    def __new__(cls, length=0, request_id=0, response_to=0, opcode=OP_KILL_CURSORS,
-                zero=0, n_cursors=0, cursors=None, **kwargs):
+class KillCursors(
+    namedtuple(
+        "KillCursors",
+        ["len", "request_id", "response_to", "opcode", "zero", "n_cursors", "cursors"],
+    )
+):
+    def __new__(
+        cls,
+        length=0,
+        request_id=0,
+        response_to=0,
+        opcode=OP_KILL_CURSORS,
+        zero=0,
+        n_cursors=0,
+        cursors=None,
+        **kwargs
+    ):
 
         n_cursors = len(cursors)
-        return super().__new__(cls, length, request_id, response_to,
-                                               opcode, zero, n_cursors, cursors)
+        return super().__new__(
+            cls, length, request_id, response_to, opcode, zero, n_cursors, cursors
+        )
 
 
-class Delete(namedtuple("Delete",
-                        ["len", "request_id", "response_to", "opcode", "zero", "collection",
-                         "flags", "selector"])):
-    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_DELETE,
-                zero=0, collection='', flags=0, selector=None):
-        return super().__new__(cls, len, request_id, response_to,
-                                          opcode, zero, collection,
-                                          flags, selector)
+class Delete(
+    namedtuple(
+        "Delete",
+        [
+            "len",
+            "request_id",
+            "response_to",
+            "opcode",
+            "zero",
+            "collection",
+            "flags",
+            "selector",
+        ],
+    )
+):
+    def __new__(
+        cls,
+        len=0,
+        request_id=0,
+        response_to=0,
+        opcode=OP_DELETE,
+        zero=0,
+        collection="",
+        flags=0,
+        selector=None,
+    ):
+        return super().__new__(
+            cls, len, request_id, response_to, opcode, zero, collection, flags, selector
+        )
 
 
-class Getmore(namedtuple("Getmore", ["len", "request_id", "response_to",
-                                     "opcode", "zero", "collection",
-                                     "n_to_return", "cursor_id"])):
-    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_GETMORE,
-                zero=0, collection='', n_to_return=-1, cursor_id=-1):
-        return super().__new__(cls, len, request_id, response_to,
-                                           opcode, zero, collection,
-                                           n_to_return, cursor_id)
+class Getmore(
+    namedtuple(
+        "Getmore",
+        [
+            "len",
+            "request_id",
+            "response_to",
+            "opcode",
+            "zero",
+            "collection",
+            "n_to_return",
+            "cursor_id",
+        ],
+    )
+):
+    def __new__(
+        cls,
+        len=0,
+        request_id=0,
+        response_to=0,
+        opcode=OP_GETMORE,
+        zero=0,
+        collection="",
+        n_to_return=-1,
+        cursor_id=-1,
+    ):
+        return super().__new__(
+            cls,
+            len,
+            request_id,
+            response_to,
+            opcode,
+            zero,
+            collection,
+            n_to_return,
+            cursor_id,
+        )
 
 
-class Insert(namedtuple("Insert", ["len", "request_id", "response_to",
-                                   "opcode", "flags", "collection",
-                                   "documents"])):
-    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_INSERT,
-                flags=0, collection='', documents=None):
-        return super().__new__(cls, len, request_id, response_to,
-                                          opcode, flags, collection, documents)
+class Insert(
+    namedtuple(
+        "Insert",
+        [
+            "len",
+            "request_id",
+            "response_to",
+            "opcode",
+            "flags",
+            "collection",
+            "documents",
+        ],
+    )
+):
+    def __new__(
+        cls,
+        len=0,
+        request_id=0,
+        response_to=0,
+        opcode=OP_INSERT,
+        flags=0,
+        collection="",
+        documents=None,
+    ):
+        return super().__new__(
+            cls, len, request_id, response_to, opcode, flags, collection, documents
+        )
 
 
-class Reply(namedtuple("Reply", ["len", "request_id", "response_to", "opcode",
-                                 "response_flags", "cursor_id",
-                                 "starting_from", "n_returned", "documents"])):
-    def __new__(cls, _len=0, request_id=0, response_to=0, opcode=OP_REPLY,
-                response_flags=0, cursor_id=0, starting_from=0,
-                n_returned=None, documents=None):
+class Reply(
+    namedtuple(
+        "Reply",
+        [
+            "len",
+            "request_id",
+            "response_to",
+            "opcode",
+            "response_flags",
+            "cursor_id",
+            "starting_from",
+            "n_returned",
+            "documents",
+        ],
+    )
+):
+    def __new__(
+        cls,
+        _len=0,
+        request_id=0,
+        response_to=0,
+        opcode=OP_REPLY,
+        response_flags=0,
+        cursor_id=0,
+        starting_from=0,
+        n_returned=None,
+        documents=None,
+    ):
         if documents is None:
             documents = []
         if n_returned is None:
             n_returned = len(documents)
         documents = [b if isinstance(b, BSON) else BSON.encode(b) for b in documents]
-        return super().__new__(cls, _len, request_id, response_to,
-                                         opcode, response_flags, cursor_id,
-                                         starting_from, n_returned,
-                                         documents)
+        return super().__new__(
+            cls,
+            _len,
+            request_id,
+            response_to,
+            opcode,
+            response_flags,
+            cursor_id,
+            starting_from,
+            n_returned,
+            documents,
+        )
 
 
-class Query(namedtuple("Query", ["len", "request_id", "response_to", "opcode",
-                                 "flags", "collection", "n_to_skip",
-                                 "n_to_return", "query", "fields"])):
-    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_QUERY,
-                flags=0, collection='', n_to_skip=0, n_to_return=-1,
-                query=None, fields=None):
+class Query(
+    namedtuple(
+        "Query",
+        [
+            "len",
+            "request_id",
+            "response_to",
+            "opcode",
+            "flags",
+            "collection",
+            "n_to_skip",
+            "n_to_return",
+            "query",
+            "fields",
+        ],
+    )
+):
+    def __new__(
+        cls,
+        len=0,
+        request_id=0,
+        response_to=0,
+        opcode=OP_QUERY,
+        flags=0,
+        collection="",
+        n_to_skip=0,
+        n_to_return=-1,
+        query=None,
+        fields=None,
+    ):
         if query is None:
             query = {}
         if not isinstance(query, BSON):
             query = BSON.encode(query)
         if fields is not None and not isinstance(fields, BSON):
             fields = BSON.encode(fields)
-        return super().__new__(cls, len, request_id, response_to,
-                                         opcode, flags, collection, n_to_skip,
-                                         n_to_return, query, fields)
+        return super().__new__(
+            cls,
+            len,
+            request_id,
+            response_to,
+            opcode,
+            flags,
+            collection,
+            n_to_skip,
+            n_to_return,
+            query,
+            fields,
+        )
 
 
-class Update(namedtuple("Update", ["len", "request_id", "response_to",
-                                   "opcode", "zero", "collection", "flags",
-                                   "selector", "update"])):
-    def __new__(cls, len=0, request_id=0, response_to=0, opcode=OP_UPDATE,
-                zero=0, collection='', flags=0, selector=None, update=None):
-        return super().__new__(cls, len, request_id, response_to,
-                                          opcode, zero, collection, flags,
-                                          selector, update)
+class Update(
+    namedtuple(
+        "Update",
+        [
+            "len",
+            "request_id",
+            "response_to",
+            "opcode",
+            "zero",
+            "collection",
+            "flags",
+            "selector",
+            "update",
+        ],
+    )
+):
+    def __new__(
+        cls,
+        len=0,
+        request_id=0,
+        response_to=0,
+        opcode=OP_UPDATE,
+        zero=0,
+        collection="",
+        flags=0,
+        selector=None,
+        update=None,
+    ):
+        return super().__new__(
+            cls,
+            len,
+            request_id,
+            response_to,
+            opcode,
+            zero,
+            collection,
+            flags,
+            selector,
+            update,
+        )
 
 
 class MongoClientProtocol(protocol.Protocol):
@@ -208,7 +388,7 @@ class MongoClientProtocol(protocol.Protocol):
         data_length = sum([len(chunk) for chunk in io_vector]) + 8
         data_req = struct.pack("<ii", data_length, request_id)
         io_vector.insert(0, data_req)
-        self.transport.write(b''.join(io_vector))
+        self.transport.write(b"".join(io_vector))
         return request_id
 
     def send(self, request):
@@ -225,47 +405,64 @@ class MongoClientProtocol(protocol.Protocol):
         self._send(iovec)
 
     def send_MSG(self, request):
-        iovec = [struct.pack("<ii", *request[2:4]), request.message, b'\x00']
+        iovec = [struct.pack("<ii", *request[2:4]), request.message, b"\x00"]
         return self._send(iovec)
 
     def send_UPDATE(self, request):
-        iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), b'\x00',
-                 struct.pack("<i", request.flags),
-                 request.selector,
-                 request.update]
+        iovec = [
+            struct.pack("<iii", *request[2:5]),
+            request.collection.encode("ascii"),
+            b"\x00",
+            struct.pack("<i", request.flags),
+            request.selector,
+            request.update,
+        ]
         return self._send(iovec)
 
     def send_INSERT(self, request):
-        iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), b'\x00']
+        iovec = [
+            struct.pack("<iii", *request[2:5]),
+            request.collection.encode("ascii"),
+            b"\x00",
+        ]
         iovec.extend(request.documents)
         return self._send(iovec)
 
     def send_QUERY(self, request):
-        iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), b'\x00',
-                 struct.pack("<ii", request.n_to_skip, request.n_to_return),
-                 request.query,
-                 (request.fields or b'')]
+        iovec = [
+            struct.pack("<iii", *request[2:5]),
+            request.collection.encode("ascii"),
+            b"\x00",
+            struct.pack("<ii", request.n_to_skip, request.n_to_return),
+            request.query,
+            (request.fields or b""),
+        ]
         return self._send(iovec)
 
     def send_GETMORE(self, request):
-        iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), b'\x00',
-                 struct.pack("<iq", request.n_to_return, request.cursor_id)]
+        iovec = [
+            struct.pack("<iii", *request[2:5]),
+            request.collection.encode("ascii"),
+            b"\x00",
+            struct.pack("<iq", request.n_to_return, request.cursor_id),
+        ]
         return self._send(iovec)
 
     def send_DELETE(self, request):
-        iovec = [struct.pack("<iii", *request[2:5]),
-                 request.collection.encode("ascii"), b'\x00',
-                 struct.pack("<i", request.flags),
-                 request.selector]
+        iovec = [
+            struct.pack("<iii", *request[2:5]),
+            request.collection.encode("ascii"),
+            b"\x00",
+            struct.pack("<i", request.flags),
+            request.selector,
+        ]
         return self._send(iovec)
 
     def send_KILL_CURSORS(self, request):
-        iovec = [struct.pack("<iii", *request[2:5]),
-                 struct.pack("<i", len(request.cursors))]
+        iovec = [
+            struct.pack("<iii", *request[2:5]),
+            struct.pack("<i", len(request.cursors)),
+        ]
 
         for cursor in request.cursors:
             iovec.append(struct.pack("<q", cursor))
@@ -321,6 +518,7 @@ class MongoServerProtocol(protocol.Protocol):
     def handle_KILL_CURSORS(self, request):
         pass
 
+
 connectionDone = failure.Failure(error.ConnectionDone())
 connectionDone.cleanFailure()
 
@@ -373,7 +571,9 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
     def connectionReady(self):
         if self.transport:
-            log.msg("TxMongo: connection to MongoDB established.", logLevel=logging.INFO)
+            log.msg(
+                "TxMongo: connection to MongoDB established.", logLevel=logging.INFO
+            )
             return defer.succeed(None)
         if not self.__connection_ready:
             self.__connection_ready = []
@@ -388,6 +588,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
     def __wait_for_reply_to(self, request_id):
         def on_cancel(_):
             del self.__deferreds[request_id]
+
         df = defer.Deferred(on_cancel)
         self.__deferreds[request_id] = df
         return df
@@ -419,7 +620,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
             elif request.response_flags & REPLY_CURSOR_NOT_FOUND:
                 # Inspired by pymongo handling
                 msg = "Cursor not found, cursor id: %d" % (request.cursor_id,)
-                errobj = {"ok": 0, "errmsg": msg, "code": 43}  
+                errobj = {"ok": 0, "errmsg": msg, "code": 43}
                 df.errback(CursorNotFound(msg, 43, errobj))
             else:
                 df.callback(request)
@@ -430,7 +631,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
     def get_last_error(self, db, **options):
         command = SON([("getlasterror", 1)])
-        db = "%s.$cmd" % db.split('.', 1)[0]
+        db = "%s.$cmd" % db.split(".", 1)[0]
         command.update(options)
 
         def on_reply(reply):
@@ -442,15 +643,14 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
             if err is not None:
                 if code == 11000:
-                    raise DuplicateKeyError(err, code = code)
+                    raise DuplicateKeyError(err, code=code)
                 else:
-                    raise OperationFailure(err, code = code)
+                    raise OperationFailure(err, code=code)
 
             return document
 
         query = Query(collection=db, query=command)
         return self.send_QUERY(query).addCallback(on_reply)
-
 
     def set_wire_versions(self, min_wire_version, max_wire_version):
         self.min_wire_version = min_wire_version
@@ -458,8 +658,9 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
 
     def __run_command(self, database, query):
         cmd_collection = str(database) + ".$cmd"
-        return self.send_QUERY(Query(collection=cmd_collection, query=query))\
-            .addCallback(lambda response: response.documents[0].decode())
+        return self.send_QUERY(
+            Query(collection=cmd_collection, query=query)
+        ).addCallback(lambda response: response.documents[0].decode())
 
     @defer.inlineCallbacks
     def authenticate_mongo_cr(self, database_name, username, password):
@@ -485,66 +686,90 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
     @defer.inlineCallbacks
     def authenticate_scram_sha1(self, database_name, username, password):
         # Totally stolen from pymongo.auth
-        user = username.replace('=', "=3D").replace(',', "=2C")
-        nonce = base64.standard_b64encode(str(SystemRandom().random()).encode('ascii'))[2:]
-        first_bare = "n={0},r={1}".format(user, nonce.decode()).encode('ascii')
+        user = username.replace("=", "=3D").replace(",", "=2C")
+        nonce = base64.standard_b64encode(str(SystemRandom().random()).encode("ascii"))[
+            2:
+        ]
+        first_bare = "n={0},r={1}".format(user, nonce.decode()).encode("ascii")
 
-        cmd = SON([("saslStart", 1),
-                   ("mechanism", "SCRAM-SHA-1"),
-                   ("autoAuthorize", 1),
-                   ("payload", Binary(b"n,," + first_bare))])
+        cmd = SON(
+            [
+                ("saslStart", 1),
+                ("mechanism", "SCRAM-SHA-1"),
+                ("autoAuthorize", 1),
+                ("payload", Binary(b"n,," + first_bare)),
+            ]
+        )
         result = yield self.__run_command(database_name, cmd)
 
         server_first = result["payload"]
         parsed = auth._parse_scram_response(server_first)
-        iterations = int(parsed[b'i'])
-        salt = parsed[b's']
-        rnonce = parsed[b'r']
+        iterations = int(parsed[b"i"])
+        salt = parsed[b"s"]
+        rnonce = parsed[b"r"]
         if not rnonce.startswith(nonce):
             raise MongoAuthenticationError("TxMongo: server returned an invalid nonce.")
 
         without_proof = b"c=biws,r=" + rnonce
-        salted_pass = _hi('sha1', auth._password_digest(username, password).encode("utf-8"),
-                          base64.standard_b64decode(salt),
-                          iterations)
+        salted_pass = _hi(
+            "sha1",
+            auth._password_digest(username, password).encode("utf-8"),
+            base64.standard_b64decode(salt),
+            iterations,
+        )
         client_key = hmac.HMAC(salted_pass, b"Client Key", sha1).digest()
         stored_key = sha1(client_key).digest()
-        auth_msg = b','.join((first_bare, server_first, without_proof))
+        auth_msg = b",".join((first_bare, server_first, without_proof))
         client_sig = hmac.HMAC(stored_key, auth_msg, sha1).digest()
-        client_proof = b"p=" + base64.standard_b64encode(auth._xor(client_key, client_sig))
-        client_final = b','.join((without_proof, client_proof))
+        client_proof = b"p=" + base64.standard_b64encode(
+            auth._xor(client_key, client_sig)
+        )
+        client_final = b",".join((without_proof, client_proof))
 
         server_key = hmac.HMAC(salted_pass, b"Server Key", sha1).digest()
         server_sig = base64.standard_b64encode(
-            hmac.HMAC(server_key, auth_msg, sha1).digest())
+            hmac.HMAC(server_key, auth_msg, sha1).digest()
+        )
 
-        cmd = SON([("saslContinue", 1),
-                   ("conversationId", result["conversationId"]),
-                   ("payload", Binary(client_final))])
+        cmd = SON(
+            [
+                ("saslContinue", 1),
+                ("conversationId", result["conversationId"]),
+                ("payload", Binary(client_final)),
+            ]
+        )
         result = yield self.__run_command(database_name, cmd)
 
         if not result["ok"]:
             raise MongoAuthenticationError("TxMongo: authentication failed.")
 
         parsed = auth._parse_scram_response(result["payload"])
-        if parsed[b'v'] != server_sig:
-            raise MongoAuthenticationError("TxMongo: server returned an invalid signature.")
+        if parsed[b"v"] != server_sig:
+            raise MongoAuthenticationError(
+                "TxMongo: server returned an invalid signature."
+            )
 
         # Depending on how it's configured, Cyrus SASL (which the server uses)
         # requires a third empty challenge.
         if not result["done"]:
-            cmd = SON([("saslContinue", 1),
-                       ("conversationId", result["conversationId"]),
-                       ("payload", Binary(b''))])
+            cmd = SON(
+                [
+                    ("saslContinue", 1),
+                    ("conversationId", result["conversationId"]),
+                    ("payload", Binary(b"")),
+                ]
+            )
             result = yield self.__run_command(database_name, cmd)
             if not result["done"]:
-                raise MongoAuthenticationError("TxMongo: SASL conversation failed to complete.")
+                raise MongoAuthenticationError(
+                    "TxMongo: SASL conversation failed to complete."
+                )
 
     @defer.inlineCallbacks
-    def authenticate_mongo_x509(self,  database_name, username, password):
-        query = SON([("authenticate", 1),
-                     ("mechanism", "MONGODB-X509"),
-                     ("user", username)])
+    def authenticate_mongo_x509(self, database_name, username, password):
+        query = SON(
+            [("authenticate", 1), ("mechanism", "MONGODB-X509"), ("user", username)]
+        )
         result = yield self.__run_command("$external", query)
         if not result["ok"]:
             raise MongoAuthenticationError(result["errmsg"])
@@ -572,7 +797,8 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                     auth_func = self.authenticate_mongo_cr
             else:
                 raise MongoAuthenticationError(
-                    "TxMongo: Unknown authentication mechanism: {0}".format(mechanism))
+                    "TxMongo: Unknown authentication mechanism: {0}".format(mechanism)
+                )
 
             result = yield auth_func(database_name, username, password)
             defer.returnValue(result)
@@ -584,7 +810,7 @@ class MongoDecoder:
     dataBuffer = None
 
     def __init__(self):
-        self.dataBuffer = b''
+        self.dataBuffer = b""
 
     def feed(self, data):
         self.dataBuffer += data
@@ -592,7 +818,7 @@ class MongoDecoder:
     def __next__(self):
         if len(self.dataBuffer) < 16:
             return None
-        message_length, = struct.unpack("<i", self.dataBuffer[:4])
+        (message_length,) = struct.unpack("<i", self.dataBuffer[:4])
         if len(self.dataBuffer) < message_length:
             return None
         if message_length < 16:
@@ -600,6 +826,7 @@ class MongoDecoder:
         message_data = self.dataBuffer[:message_length]
         self.dataBuffer = self.dataBuffer[message_length:]
         return self.decode(message_data)
+
     next = __next__
 
     @staticmethod
@@ -608,61 +835,74 @@ class MongoDecoder:
         header = struct.unpack("<iiii", message_data[:16])
         opcode = header[3]
         if opcode == OP_UPDATE:
-            zero, = struct.unpack("<i", message_data[16:20])
+            (zero,) = struct.unpack("<i", message_data[16:20])
             if zero != 0:
                 raise ConnectionFailure()
             name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
-            flags, = struct.unpack("<i", message_data[offset:offset + 4])
+            (flags,) = struct.unpack("<i", message_data[offset : offset + 4])
             offset += 4
-            selector_length, = struct.unpack("<i", message_data[offset:offset + 4])
-            selector = BSON(message_data[offset:offset + selector_length])
+            (selector_length,) = struct.unpack("<i", message_data[offset : offset + 4])
+            selector = BSON(message_data[offset : offset + selector_length])
             offset += selector_length
-            update_length, = struct.unpack("<i", message_data[offset:offset + 4])
-            update = BSON(message_data[offset:offset + update_length])
+            (update_length,) = struct.unpack("<i", message_data[offset : offset + 4])
+            update = BSON(message_data[offset : offset + update_length])
             return Update(*(header + (zero, name, flags, selector, update)))
         elif opcode == OP_INSERT:
-            flags, = struct.unpack("<i", message_data[16:20])
+            (flags,) = struct.unpack("<i", message_data[16:20])
             name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
             docs = []
             while offset < len(message_data):
-                document_length, = struct.unpack("<i", message_data[offset:offset + 4])
-                docdata = message_data[offset:offset + document_length]
+                (document_length,) = struct.unpack(
+                    "<i", message_data[offset : offset + 4]
+                )
+                docdata = message_data[offset : offset + document_length]
                 doc = BSON(docdata)
                 docs.append(doc)
                 offset += document_length
             return Insert(*(header + (flags, name, docs)))
         elif opcode == OP_QUERY:
-            flags, = struct.unpack("<i", message_data[16:20])
+            (flags,) = struct.unpack("<i", message_data[16:20])
             name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
-            number_to_skip, number_to_return = struct.unpack("<ii", message_data[offset:offset + 8])
+            number_to_skip, number_to_return = struct.unpack(
+                "<ii", message_data[offset : offset + 8]
+            )
             offset += 8
-            query_length, = struct.unpack("<i", message_data[offset:offset + 4])
-            query_data = message_data[offset:offset + query_length]
+            (query_length,) = struct.unpack("<i", message_data[offset : offset + 4])
+            query_data = message_data[offset : offset + query_length]
             query = BSON(query_data)
             offset += query_length
             fields = None
             if message_length > offset:
-                fields_length, = struct.unpack("<i", message_data[offset:offset + 4])
-                fields = BSON(message_data[offset:offset + fields_length])
-            return Query(*(header + (flags, name, number_to_skip, number_to_return, query, fields)))
+                (fields_length,) = struct.unpack(
+                    "<i", message_data[offset : offset + 4]
+                )
+                fields = BSON(message_data[offset : offset + fields_length])
+            return Query(
+                *(
+                    header
+                    + (flags, name, number_to_skip, number_to_return, query, fields)
+                )
+            )
         elif opcode == OP_GETMORE:
-            zero, = struct.unpack("<i", message_data[16:20])
+            (zero,) = struct.unpack("<i", message_data[16:20])
             if zero != 0:
                 raise ConnectionFailure()
             name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
-            number_to_return, cursorid = struct.unpack("<iq", message_data[offset:offset + 12])
+            number_to_return, cursorid = struct.unpack(
+                "<iq", message_data[offset : offset + 12]
+            )
             return Getmore(*(header + (zero, name, number_to_return, cursorid)))
         elif opcode == OP_DELETE:
-            zero, = struct.unpack("<i", message_data[16:20])
+            (zero,) = struct.unpack("<i", message_data[16:20])
             if zero != 0:
                 raise ConnectionFailure()
             name = message_data[20:].split(b"\x00", 1)[0]
             offset = 20 + len(name) + 1
-            flags, = struct.unpack("<i", message_data[offset:offset + 4])
+            (flags,) = struct.unpack("<i", message_data[offset : offset + 4])
             offset += 4
             selector = BSON(message_data[offset:])
             return Delete(*(header + (zero, name, flags, selector)))
@@ -673,7 +913,7 @@ class MongoDecoder:
             offset = 24
             cursor_list = []
             for i in range(cursors[1]):
-                cursor, = struct.unpack("<q", message_data[offset:offset + 8])
+                (cursor,) = struct.unpack("<q", message_data[offset : offset + 8])
                 cursor_list.append(cursor)
                 offset += 8
             return KillCursors(*(header + cursors + (cursor_list,)))
@@ -686,10 +926,12 @@ class MongoDecoder:
             docs = []
             offset = 36
             for i in range(reply[3]):
-                document_length, = struct.unpack("<i", message_data[offset:offset + 4])
+                (document_length,) = struct.unpack(
+                    "<i", message_data[offset : offset + 4]
+                )
                 if document_length > (message_length - offset):
                     raise ConnectionFailure()
-                docdata = message_data[offset:offset + document_length]
+                docdata = message_data[offset : offset + document_length]
                 doc = BSON(docdata)
                 docs.append(doc)
                 offset += document_length

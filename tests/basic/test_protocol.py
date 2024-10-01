@@ -14,14 +14,24 @@
 # limitations under the License.
 
 from bson import BSON
-from twisted.trial import unittest
 from twisted.internet import defer
+from twisted.trial import unittest
 
 from tests.utils import SingleCollectionTest
-
-from txmongo.protocol import MongoClientProtocol, MongoDecoder, Insert, Query, \
-    KillCursors, Getmore, Update, Delete, UPDATE_MULTI, UPDATE_UPSERT, \
-    DELETE_SINGLE_REMOVE, CursorNotFound
+from txmongo.protocol import (
+    DELETE_SINGLE_REMOVE,
+    UPDATE_MULTI,
+    UPDATE_UPSERT,
+    CursorNotFound,
+    Delete,
+    Getmore,
+    Insert,
+    KillCursors,
+    MongoClientProtocol,
+    MongoDecoder,
+    Query,
+    Update,
+)
 
 
 class _FakeTransport:
@@ -34,7 +44,7 @@ class _FakeTransport:
         self.data.append(data)
 
     def get_content(self):
-        return b''.join(self.data)
+        return b"".join(self.data)
 
 
 class TestMongoProtocol(unittest.TestCase):
@@ -52,16 +62,19 @@ class TestMongoProtocol(unittest.TestCase):
         for field, dec_value, req_value in zip(request._fields, decoded, request):
             # len and request_id are not filled in request object
             if field not in ("len", "request_id"):
-                if isinstance(dec_value, bytes) and \
-                   isinstance(req_value, str):
+                if isinstance(dec_value, bytes) and isinstance(req_value, str):
                     dec_value = dec_value.decode()
 
                 self.assertEqual(dec_value, req_value)
 
     def test_EncodeDecodeQuery(self):
-        request = Query(collection="coll", n_to_skip=123, n_to_return=456,
-                        query=BSON.encode({'x': 42}),
-                        fields=BSON.encode({'y': 1}))
+        request = Query(
+            collection="coll",
+            n_to_skip=123,
+            n_to_return=456,
+            query=BSON.encode({"x": 42}),
+            fields=BSON.encode({"y": 1}),
+        )
         self.__test_encode_decode(request)
 
     def test_EncodeDecodeKillCursors(self):
@@ -73,30 +86,37 @@ class TestMongoProtocol(unittest.TestCase):
         self.__test_encode_decode(request)
 
     def test_EncodeDecodeInsert(self):
-        request = Insert(collection="coll", documents=[BSON.encode({'x': 42})])
+        request = Insert(collection="coll", documents=[BSON.encode({"x": 42})])
         self.__test_encode_decode(request)
 
     def test_EncodeDecodeUpdate(self):
-        request = Update(flags=UPDATE_MULTI | UPDATE_UPSERT, collection="coll",
-                         selector=BSON.encode({'x': 42}),
-                         update=BSON.encode({"$set": {'y': 123}}))
+        request = Update(
+            flags=UPDATE_MULTI | UPDATE_UPSERT,
+            collection="coll",
+            selector=BSON.encode({"x": 42}),
+            update=BSON.encode({"$set": {"y": 123}}),
+        )
         self.__test_encode_decode(request)
 
     def test_EncodeDecodeDelete(self):
-        request = Delete(flags=DELETE_SINGLE_REMOVE, collection="coll",
-                         selector=BSON.encode({'x': 42}))
+        request = Delete(
+            flags=DELETE_SINGLE_REMOVE,
+            collection="coll",
+            selector=BSON.encode({"x": 42}),
+        )
         self.__test_encode_decode(request)
+
 
 class TestCursors(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_CursorNotFound(self):
 
-        yield self.coll.insert([{'v': i} for i in range(140)], safe=True)
+        yield self.coll.insert([{"v": i} for i in range(140)], safe=True)
 
         protocol = yield self.conn.getprotocol()
 
-        query = Query(query={},n_to_return=10,collection=str(self.coll))
+        query = Query(query={}, n_to_return=10, collection=str(self.coll))
 
         query_result = yield protocol.send_QUERY(query)
 
@@ -104,6 +124,9 @@ class TestCursors(SingleCollectionTest):
 
         yield protocol.send_KILL_CURSORS(KillCursors(cursors=[cursor_id]))
 
-        self.assertFailure(protocol.send_GETMORE(Getmore(collection = str(self.coll),cursor_id = cursor_id,n_to_return = 10)),
-                           CursorNotFound)
-
+        self.assertFailure(
+            protocol.send_GETMORE(
+                Getmore(collection=str(self.coll), cursor_id=cursor_id, n_to_return=10)
+            ),
+            CursorNotFound,
+        )

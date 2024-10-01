@@ -37,7 +37,7 @@ Quick Usage Example
         # fetch some documents
         docs = yield test.find(limit=10)
         for doc in docs:
-            print doc
+            print((doc))
 
     if __name__ == '__main__':
         example().addCallback(lambda ign: reactor.stop())

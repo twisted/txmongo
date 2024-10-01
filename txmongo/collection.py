@@ -11,23 +11,50 @@ from bson import BSON, ObjectId
 from bson.code import Code
 from bson.codec_options import CodecOptions
 from bson.son import SON
-from pymongo.bulk import _Bulk, _COMMANDS
+from pymongo.bulk import _COMMANDS, _Bulk
 from pymongo.collection import ReturnDocument
-from pymongo.common import validate_ok_for_update, validate_ok_for_replace, \
-    validate_is_mapping, validate_boolean
-from pymongo.errors import InvalidName, BulkWriteError, InvalidOperation, OperationFailure
-from pymongo.message import _OP_MAP, _INSERT
-from pymongo.results import InsertOneResult, InsertManyResult, UpdateResult, \
-    DeleteResult, BulkWriteResult
+from pymongo.common import (
+    validate_boolean,
+    validate_is_mapping,
+    validate_ok_for_replace,
+    validate_ok_for_update,
+)
+from pymongo.errors import (
+    BulkWriteError,
+    InvalidName,
+    InvalidOperation,
+    OperationFailure,
+)
+from pymongo.message import _INSERT, _OP_MAP
+from pymongo.results import (
+    BulkWriteResult,
+    DeleteResult,
+    InsertManyResult,
+    InsertOneResult,
+    UpdateResult,
+)
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 from twisted.python.compat import comparable
 
 from txmongo import filter as qf
 from txmongo.filter import _QueryFilter
-from txmongo.protocol import DELETE_SINGLE_REMOVE, UPDATE_UPSERT, UPDATE_MULTI, \
-    Query, Getmore, Insert, Update, Delete, KillCursors
-from txmongo.pymongo_internals import _check_write_command_response, _merge_command, _check_command_response
+from txmongo.protocol import (
+    DELETE_SINGLE_REMOVE,
+    UPDATE_MULTI,
+    UPDATE_UPSERT,
+    Delete,
+    Getmore,
+    Insert,
+    KillCursors,
+    Query,
+    Update,
+)
+from txmongo.pymongo_internals import (
+    _check_command_response,
+    _check_write_command_response,
+    _merge_command,
+)
 from txmongo.utils import check_deadline, timeout
 
 
@@ -56,15 +83,22 @@ class Collection:
 
         if not name or ".." in name:
             raise InvalidName("TxMongo: collection names cannot be empty.")
-        if "$" in name and not (name.startswith("oplog.$main") or
-                                name.startswith("$cmd")):
-            msg = "TxMongo: collection names must not contain '$', '{0}'".format(repr(name))
+        if "$" in name and not (
+            name.startswith("oplog.$main") or name.startswith("$cmd")
+        ):
+            msg = "TxMongo: collection names must not contain '$', '{0}'".format(
+                repr(name)
+            )
             raise InvalidName(msg)
         if name[0] == "." or name[-1] == ".":
-            msg = "TxMongo: collection names must not start or end with '.', '{0}'".format(repr(name))
+            msg = "TxMongo: collection names must not start or end with '.', '{0}'".format(
+                repr(name)
+            )
             raise InvalidName(msg)
         if "\x00" in name:
-            raise InvalidName("TxMongo: collection names must not contain the null character.")
+            raise InvalidName(
+                "TxMongo: collection names must not contain the null character."
+            )
 
         self._database = database
         self._collection_name = str(name)
@@ -81,7 +115,7 @@ class Collection:
     def full_name(self):
         """Full name of this :class:`Collection`, i.e.
         `db_name.collection_name`"""
-        return '{0}.{1}'.format(str(self._database), self._collection_name)
+        return "{0}.{1}".format(str(self._database), self._collection_name)
 
     @property
     def name(self):
@@ -96,8 +130,9 @@ class Collection:
 
     def __getitem__(self, collection_name):
         """Get a sub-collection of this collection by name."""
-        return Collection(self._database,
-                          "%s.%s" % (self._collection_name, collection_name))
+        return Collection(
+            self._database, "%s.%s" % (self._collection_name, collection_name)
+        )
 
     def __cmp__(self, other):
         if isinstance(other, Collection):
@@ -105,8 +140,10 @@ class Collection:
             def cmp(a, b):
                 return (a > b) - (a < b)
 
-            return cmp((self._database, self._collection_name),
-                       (other._database, other._collection_name))
+            return cmp(
+                (self._database, self._collection_name),
+                (other._database, other._collection_name),
+            )
         return NotImplemented
 
     def __getattr__(self, collection_name):
@@ -156,9 +193,12 @@ class Collection:
         write_concern = kwargs.get("write_concern") or self.__write_concern
         codec_options = kwargs.get("codec_options") or self.codec_options
 
-        return Collection(self._database, self._collection_name,
-                          write_concern=write_concern,
-                          codec_options=codec_options)
+        return Collection(
+            self._database,
+            self._collection_name,
+            write_concern=write_concern,
+            codec_options=codec_options,
+        )
 
     @staticmethod
     def _normalize_fields_projection(fields):
@@ -184,7 +224,7 @@ class Collection:
 
     @staticmethod
     def _gen_index_name(keys):
-        return '_'.join(["%s_%s" % item for item in keys])
+        return "_".join(["%s_%s" % item for item in keys])
 
     def _list_collections_3_0(self):
         def on_ok(response):
@@ -196,8 +236,8 @@ class Collection:
                 return None
 
         return self._database.command(
-                SON([("listCollections", 1),
-                     ("filter", {"name": self.name})])).addCallback(on_ok)
+            SON([("listCollections", 1), ("filter", {"name": self.name})])
+        ).addCallback(on_ok)
 
     @timeout
     def options(self, _deadline=None):
@@ -209,9 +249,12 @@ class Collection:
             :class:`Deferred` that called back with dictionary of options
             and their values or with empty dict if collection doesn't exist.
         """
+
         def on_3_0_fail(failure):
             failure.trap(OperationFailure)
-            return self._database.system.namespaces.find_one({"name": str(self)}, _deadline=_deadline)
+            return self._database.system.namespaces.find_one(
+                {"name": str(self)}, _deadline=_deadline
+            )
 
         def on_ok(result):
             if not result:
@@ -221,9 +264,7 @@ class Collection:
                 del options["create"]
             return options
 
-        return self._list_collections_3_0()\
-                   .addErrback(on_3_0_fail)\
-                   .addCallbacks(on_ok)
+        return self._list_collections_3_0().addErrback(on_3_0_fail).addCallbacks(on_ok)
 
     @staticmethod
     def _find_args_compat(*args, **kwargs):
@@ -235,14 +276,25 @@ class Collection:
 
         This function makes it compatible with both
         """
-        def old(spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs):
-            warnings.warn("find(), find_with_cursor() and find_one() signatures have "
-                          "changed. Please refer to documentation.", DeprecationWarning)
+
+        def old(
+            spec=None, skip=0, limit=0, fields=None, filter=None, cursor=False, **kwargs
+        ):
+            warnings.warn(
+                "find(), find_with_cursor() and find_one() signatures have "
+                "changed. Please refer to documentation.",
+                DeprecationWarning,
+            )
             return new(spec, fields, skip, limit, filter, cursor=cursor, **kwargs)
 
         def new(filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs):
-            args = {"filter": filter, "projection": projection, "skip": skip, "limit": limit,
-                    "sort": sort}
+            args = {
+                "filter": filter,
+                "projection": projection,
+                "skip": skip,
+                "limit": limit,
+                "sort": sort,
+            }
             args.update(kwargs)
             return args
 
@@ -299,7 +351,9 @@ class Collection:
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find(**new_kwargs)
 
-    def __real_find(self, filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs):
+    def __real_find(
+        self, filter=None, projection=None, skip=0, limit=0, sort=None, **kwargs
+    ):
         cursor = kwargs.pop("cursor", False)
 
         rows = []
@@ -308,8 +362,11 @@ class Collection:
             docs, dfr = result
 
             if cursor:
-                warnings.warn("find() with cursor=True is deprecated. Please use"
-                              "find_with_cursor() instead.", DeprecationWarning)
+                warnings.warn(
+                    "find() with cursor=True is deprecated. Please use"
+                    "find_with_cursor() instead.",
+                    DeprecationWarning,
+                )
                 return docs, dfr
 
             if docs:
@@ -318,8 +375,9 @@ class Collection:
             else:
                 return rows
 
-        return self.__real_find_with_cursor(filter, projection, skip, limit, sort,
-                                            **kwargs).addCallback(on_ok, on_ok)
+        return self.__real_find_with_cursor(
+            filter, projection, skip, limit, sort, **kwargs
+        ).addCallback(on_ok, on_ok)
 
     @staticmethod
     def __apply_find_filter(spec, c_filter):
@@ -329,9 +387,9 @@ class Collection:
 
             for k, v in c_filter.items():
                 if isinstance(v, (list, tuple)):
-                    spec['$' + k] = SON(v)
+                    spec["$" + k] = SON(v)
                 else:
-                    spec['$' + k] = v
+                    spec["$" + k] = v
 
         return spec
 
@@ -359,7 +417,16 @@ class Collection:
         new_kwargs = self._find_args_compat(*args, **kwargs)
         return self.__real_find_with_cursor(**new_kwargs)
 
-    def __real_find_with_cursor(self, filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0,**kwargs):
+    def __real_find_with_cursor(
+        self,
+        filter=None,
+        projection=None,
+        skip=0,
+        limit=0,
+        sort=None,
+        batch_size=0,
+        **kwargs
+    ):
         if filter is None:
             filter = SON()
 
@@ -389,15 +456,20 @@ class Collection:
             check_deadline(kwargs.pop("_deadline", None))
 
             if batch_size and limit:
-                n_to_return = min(batch_size,limit)
+                n_to_return = min(batch_size, limit)
             elif batch_size:
                 n_to_return = batch_size
             else:
                 n_to_return = limit
 
-            query = Query(flags=flags, collection=str(self),
-                          n_to_skip=skip, n_to_return=n_to_return,
-                          query=filter, fields=projection)
+            query = Query(
+                flags=flags,
+                collection=str(self),
+                n_to_skip=skip,
+                n_to_return=n_to_return,
+                query=filter,
+                fields=projection,
+            )
 
             deferred_query = protocol.send_QUERY(query)
             deferred_query.addCallback(after_reply, protocol, after_reply)
@@ -419,16 +491,19 @@ class Collection:
             options = self.codec_options
             if as_class is not None:
                 options = options._replace(document_class=as_class)
-            out = [document.decode(codec_options=options) for document in documents[:docs_count]]
+            out = [
+                document.decode(codec_options=options)
+                for document in documents[:docs_count]
+            ]
 
             if reply.cursor_id:
                 # please note that this will not be the case if batch_size = 1
                 # it is documented (parameter numberToReturn for OP_QUERY)
-                # https://docs.mongodb.com/manual/reference/mongodb-wire-protocol/#wire-op-query 
+                # https://docs.mongodb.com/manual/reference/mongodb-wire-protocol/#wire-op-query
                 if limit == 0:
                     to_fetch = 0  # no limit
                     if batch_size:
-                      to_fetch = batch_size
+                        to_fetch = batch_size
                 elif limit < 0:
                     # We won't actually get here because MongoDB won't
                     # create cursor when limit < 0
@@ -438,16 +513,19 @@ class Collection:
                     if to_fetch <= 0:
                         to_fetch = None  # close cursor
                     elif batch_size:
-                        to_fetch = min(batch_size,to_fetch)
+                        to_fetch = min(batch_size, to_fetch)
 
                 if to_fetch is None:
                     protocol.send_KILL_CURSORS(KillCursors(cursors=[reply.cursor_id]))
                     return out, defer.succeed(([], None))
 
-                next_reply = protocol.send_GETMORE(Getmore(
-                    collection=str(self), cursor_id=reply.cursor_id,
-                    n_to_return=to_fetch
-                ))
+                next_reply = protocol.send_GETMORE(
+                    Getmore(
+                        collection=str(self),
+                        cursor_id=reply.cursor_id,
+                        n_to_return=to_fetch,
+                    )
+                )
                 next_reply.addCallback(this_func, protocol, this_func, fetched)
                 return out, next_reply
 
@@ -474,8 +552,9 @@ class Collection:
             new_kwargs["filter"] = {"_id": new_kwargs["filter"]}
 
         new_kwargs["limit"] = 1
-        return self.__real_find(**new_kwargs)\
-            .addCallback(lambda result: result[0] if result else None)
+        return self.__real_find(**new_kwargs).addCallback(
+            lambda result: result[0] if result else None
+        )
 
     @timeout
     def count(self, filter=None, **kwargs):
@@ -506,9 +585,9 @@ class Collection:
                 raise TypeError("hint must be an instance of txmongo.filter.hint")
             kwargs["hint"] = SON(kwargs["hint"]["hint"])
 
-        return self._database.command("count", self._collection_name,
-                                      query=filter or SON(), **kwargs)\
-                   .addCallback(lambda result: int(result['n']))
+        return self._database.command(
+            "count", self._collection_name, query=filter or SON(), **kwargs
+        ).addCallback(lambda result: int(result["n"]))
 
     @timeout
     def group(self, keys, initial, reduce, condition=None, finalize=None, **kwargs):
@@ -533,16 +612,21 @@ class Collection:
     @timeout
     def filemd5(self, spec, **kwargs):
         if not isinstance(spec, ObjectId):
-            raise ValueError("TxMongo: filemd5 expected an objectid for its non-keyword argument.")
+            raise ValueError(
+                "TxMongo: filemd5 expected an objectid for its non-keyword argument."
+            )
 
-        return self._database.command("filemd5", spec, root=self._collection_name, **kwargs)\
-                   .addCallback(lambda result: result.get("md5"))
+        return self._database.command(
+            "filemd5", spec, root=self._collection_name, **kwargs
+        ).addCallback(lambda result: result.get("md5"))
 
     def _get_write_concern(self, safe=None, **options):
-        from_opts = WriteConcern(options.get("w"),
-                                 options.get("wtimeout"),
-                                 options.get("j"),
-                                 options.get("fsync"))
+        from_opts = WriteConcern(
+            options.get("w"),
+            options.get("wtimeout"),
+            options.get("j"),
+            options.get("fsync"),
+        )
         if from_opts.document:
             return from_opts
 
@@ -602,7 +686,9 @@ class Collection:
                     ids.append(oid)
                     doc["_id"] = oid
                 else:
-                    raise TypeError("TxMongo: insert takes a document or a list of documents.")
+                    raise TypeError(
+                        "TxMongo: insert takes a document or a list of documents."
+                    )
         else:
             raise TypeError("TxMongo: insert takes a document or a list of documents.")
 
@@ -615,8 +701,9 @@ class Collection:
 
             write_concern = self._get_write_concern(safe, **kwargs)
             if write_concern.acknowledged:
-                return proto.get_last_error(str(self._database), **write_concern.document)\
-                        .addCallback(lambda _: ids)
+                return proto.get_last_error(
+                    str(self._database), **write_concern.document
+                ).addCallback(lambda _: ids)
 
             return ids
 
@@ -624,15 +711,20 @@ class Collection:
 
     def _insert_one(self, document, _deadline):
         if self.write_concern.acknowledged:
-            command = SON([("insert", self._collection_name),
-                           ("documents", [document]),
-                           ("ordered", True),
-                           ("writeConcern", self.write_concern.document)])
+            command = SON(
+                [
+                    ("insert", self._collection_name),
+                    ("documents", [document]),
+                    ("ordered", True),
+                    ("writeConcern", self.write_concern.document),
+                ]
+            )
             return self._database.command(command, _deadline=_deadline)
         else:
             # falling back to OP_INSERT in case of unacknowledged op
-            return self.insert([document], _deadline=_deadline)\
-                .addCallback(lambda _: None)
+            return self.insert([document], _deadline=_deadline).addCallback(
+                lambda _: None
+            )
 
     @timeout
     def insert_one(self, document, _deadline=None):
@@ -655,10 +747,20 @@ class Collection:
             if response:
                 _check_write_command_response(response)
             return InsertOneResult(inserted_id, self.write_concern.acknowledged)
+
         return self._insert_one(document, _deadline).addCallback(on_ok)
 
-    def _generate_batch_commands(self, collname, command, docs_field, documents, ordered,
-                                 write_concern, max_bson, max_count):
+    def _generate_batch_commands(
+        self,
+        collname,
+        command,
+        docs_field,
+        documents,
+        ordered,
+        write_concern,
+        max_bson,
+        max_count,
+    ):
         # Takes a list of documents and generates one or many `insert` commands
         # with documents list in each command is less or equal to max_bson bytes
         # and contains less or equal documents than max_count
@@ -666,38 +768,44 @@ class Collection:
         # Manually composing command in BSON form because this way we can
         # perform costly documents serialization only once
 
-        msg = SON([(command, collname),
-                   ("ordered", ordered),
-                   ("writeConcern", write_concern.document)])
+        msg = SON(
+            [
+                (command, collname),
+                ("ordered", ordered),
+                ("writeConcern", write_concern.document),
+            ]
+        )
 
         buf = io.BytesIO()
         buf.write(BSON.encode(msg, codec_options=self.codec_options))
-        buf.seek(-1, io.SEEK_END)  # -1 because we don't need final NUL from partial command
+        buf.seek(
+            -1, io.SEEK_END
+        )  # -1 because we don't need final NUL from partial command
         buf.write(docs_field)  # type, name and length placeholder of 'documents' array
         docs_start = buf.tell() - 4
 
         def prepare_command():
             docs_end = buf.tell() + 1  # +1 for final NUL for 'documents'
-            buf.write(b'\x00\x00')  # final NULs for 'documents' and the command itself
+            buf.write(b"\x00\x00")  # final NULs for 'documents' and the command itself
             total_length = buf.tell()
 
             # writing 'documents' length
             buf.seek(docs_start)
-            buf.write(struct.pack('<i', docs_end - docs_start))
+            buf.write(struct.pack("<i", docs_end - docs_start))
 
             # writing total message length
             buf.seek(0)
-            buf.write(struct.pack('<i', total_length))
+            buf.write(struct.pack("<i", total_length))
 
             return BSON(buf.getvalue())
 
         idx = 0
         idx_offset = 0
         for doc in documents:
-            key = str(idx).encode('ascii')
+            key = str(idx).encode("ascii")
             value = BSON.encode(doc, codec_options=self.codec_options)
 
-            enough_size = buf.tell() + len(key)+2 + len(value) - docs_start > max_bson
+            enough_size = buf.tell() + len(key) + 2 + len(value) - docs_start > max_bson
             enough_count = idx >= max_count
             if enough_size or enough_count:
                 yield idx_offset, prepare_command()
@@ -707,9 +815,9 @@ class Collection:
 
                 idx_offset += idx
                 idx = 0
-                key = b'0'
+                key = b"0"
 
-            buf.write(b'\x03' + key + b'\x00')  # type and key of document
+            buf.write(b"\x03" + key + b"\x00")  # type and key of document
             buf.write(value)
 
             idx += 1
@@ -750,7 +858,9 @@ class Collection:
         return self._execute_bulk(bulk).addCallback(lambda _: result)
 
     @timeout
-    def update(self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs):
+    def update(
+        self, spec, document, upsert=False, multi=False, safe=None, flags=0, **kwargs
+    ):
         """Update document(s) in this collection
 
         *Please consider using new-style* :meth:`update_one()`, :meth:`update_many()`
@@ -800,8 +910,9 @@ class Collection:
 
         spec = BSON.encode(spec, codec_options=self.codec_options)
         document = BSON.encode(document, codec_options=self.codec_options)
-        update = Update(flags=flags, collection=str(self),
-                        selector=spec, update=document)
+        update = Update(
+            flags=flags, collection=str(self), selector=spec, update=document
+        )
 
         def on_proto(proto):
             check_deadline(kwargs.pop("_deadline", None))
@@ -809,7 +920,9 @@ class Collection:
 
             write_concern = self._get_write_concern(safe, **kwargs)
             if write_concern.acknowledged:
-                return proto.get_last_error(str(self._database), **write_concern.document)
+                return proto.get_last_error(
+                    str(self._database), **write_concern.document
+                )
 
         return self._database.connection.getprotocol().addCallback(on_proto)
 
@@ -818,12 +931,19 @@ class Collection:
         validate_boolean("upsert", upsert)
 
         if self.write_concern.acknowledged:
-            updates = [SON([('q', filter), ('u', update),
-                            ("upsert", upsert), ("multi", multi)])]
+            updates = [
+                SON(
+                    [("q", filter), ("u", update), ("upsert", upsert), ("multi", multi)]
+                )
+            ]
 
-            command = SON([("update", self._collection_name),
-                           ("updates", updates),
-                           ("writeConcern", self.write_concern.document)])
+            command = SON(
+                [
+                    ("update", self._collection_name),
+                    ("updates", updates),
+                    ("writeConcern", self.write_concern.document),
+                ]
+            )
 
             def on_ok(raw_response):
                 _check_write_command_response(raw_response)
@@ -833,11 +953,14 @@ class Collection:
                     raw_response["upserted"] = raw_response["upserted"][0]["_id"]
                 return raw_response
 
-            return self._database.command(command, _deadline=_deadline).addCallback(on_ok)
+            return self._database.command(command, _deadline=_deadline).addCallback(
+                on_ok
+            )
 
         else:
-            return self.update(filter, update, upsert=upsert, multi=multi,
-                               _deadline=_deadline).addCallback(lambda _: None)
+            return self.update(
+                filter, update, upsert=upsert, multi=multi, _deadline=_deadline
+            ).addCallback(lambda _: None)
 
     @timeout
     def update_one(self, filter, update, upsert=False, _deadline=None):
@@ -872,6 +995,7 @@ class Collection:
 
         def on_ok(raw_response):
             return UpdateResult(raw_response, self.write_concern.acknowledged)
+
         return self._update(filter, update, upsert, False, _deadline).addCallback(on_ok)
 
     @timeout
@@ -907,6 +1031,7 @@ class Collection:
 
         def on_ok(raw_response):
             return UpdateResult(raw_response, self.write_concern.acknowledged)
+
         return self._update(filter, update, upsert, True, _deadline).addCallback(on_ok)
 
     @timeout
@@ -939,12 +1064,17 @@ class Collection:
 
         def on_ok(raw_response):
             return UpdateResult(raw_response, self.write_concern.acknowledged)
-        return self._update(filter, replacement, upsert, False, _deadline).addCallback(on_ok)
+
+        return self._update(filter, replacement, upsert, False, _deadline).addCallback(
+            on_ok
+        )
 
     @timeout
     def save(self, doc, safe=None, **kwargs):
         if not isinstance(doc, dict):
-            raise TypeError("TxMongo: cannot save objects of type {0}".format(type(doc)))
+            raise TypeError(
+                "TxMongo: cannot save objects of type {0}".format(type(doc))
+            )
         oid = doc.get("_id")
         if oid:
             return self.update({"_id": oid}, doc, safe=safe, upsert=True, **kwargs)
@@ -956,7 +1086,9 @@ class Collection:
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, dict):
-            raise TypeError("TxMongo: spec must be an instance of dict, not {0}".format(type(spec)))
+            raise TypeError(
+                "TxMongo: spec must be an instance of dict, not {0}".format(type(spec))
+            )
 
         if single:
             flags |= DELETE_SINGLE_REMOVE
@@ -970,7 +1102,9 @@ class Collection:
 
             write_concern = self._get_write_concern(safe, **kwargs)
             if write_concern.acknowledged:
-                return proto.get_last_error(str(self._database), **write_concern.document)
+                return proto.get_last_error(
+                    str(self._database), **write_concern.document
+                )
 
         return self._database.connection.getprotocol().addCallback(on_proto)
 
@@ -978,38 +1112,52 @@ class Collection:
         validate_is_mapping("filter", filter)
 
         if self.write_concern.acknowledged:
-            deletes = [SON([('q', filter), ("limit", 0 if multi else 1)])]
-            command = SON([("delete", self._collection_name),
-                           ("deletes", deletes),
-                           ("writeConcern", self.write_concern.document)])
+            deletes = [SON([("q", filter), ("limit", 0 if multi else 1)])]
+            command = SON(
+                [
+                    ("delete", self._collection_name),
+                    ("deletes", deletes),
+                    ("writeConcern", self.write_concern.document),
+                ]
+            )
 
             def on_ok(raw_response):
                 _check_write_command_response(raw_response)
                 return raw_response
-            return self._database.command(command, _deadline=_deadline).addCallback(on_ok)
+
+            return self._database.command(command, _deadline=_deadline).addCallback(
+                on_ok
+            )
 
         else:
-            return self.remove(filter, single=not multi, _deadline=_deadline)\
-                .addCallback(lambda _: None)
+            return self.remove(
+                filter, single=not multi, _deadline=_deadline
+            ).addCallback(lambda _: None)
 
     @timeout
     def delete_one(self, filter, _deadline=None):
         """delete_one(filter)"""
+
         def on_ok(raw_response):
             return DeleteResult(raw_response, self.write_concern.acknowledged)
+
         return self._delete(filter, False, _deadline).addCallback(on_ok)
 
     @timeout
     def delete_many(self, filter, _deadline=None):
         """delete_many(filter)"""
+
         def on_ok(raw_response):
             return DeleteResult(raw_response, self.write_concern.acknowledged)
+
         return self._delete(filter, True, _deadline).addCallback(on_ok)
 
     @timeout
     def drop(self, _deadline=None):
         """drop()"""
-        return self._database.drop_collection(self._collection_name, _deadline=_deadline)
+        return self._database.drop_collection(
+            self._collection_name, _deadline=_deadline
+        )
 
     def create_index(self, sort_fields, **kwargs):
         if not isinstance(sort_fields, qf.sort):
@@ -1034,8 +1182,9 @@ class Collection:
 
         index.update(kwargs)
 
-        return self._database.command("createIndexes", self._collection_name, indexes=[index])\
-            .addCallback(lambda _: name)
+        return self._database.command(
+            "createIndexes", self._collection_name, indexes=[index]
+        ).addCallback(lambda _: name)
 
     @timeout
     def ensure_index(self, sort_fields, _deadline=None, **kwargs):
@@ -1051,11 +1200,17 @@ class Collection:
         elif isinstance(index_identifier, qf.sort):
             name = self._gen_index_name(index_identifier["orderby"])
         else:
-            raise TypeError("TxMongo: index_identifier must be a name or instance of filter.sort")
+            raise TypeError(
+                "TxMongo: index_identifier must be a name or instance of filter.sort"
+            )
 
-        return self._database.command("deleteIndexes", self._collection_name,
-                                      index=name, allowable_errors=["ns not found"],
-                                      _deadline=_deadline)
+        return self._database.command(
+            "deleteIndexes",
+            self._collection_name,
+            index=name,
+            allowable_errors=["ns not found"],
+            _deadline=_deadline,
+        )
 
     @timeout
     def drop_indexes(self, _deadline=None):
@@ -1066,17 +1221,21 @@ class Collection:
         def on_ok(indexes_info):
             assert indexes_info["cursor"]["id"] == 0
             return indexes_info["cursor"]["firstBatch"]
+
         codec = CodecOptions(document_class=SON)
-        return self._database.command("listIndexes", self.name, codec_options=codec)\
-                .addCallback(on_ok)
+        return self._database.command(
+            "listIndexes", self.name, codec_options=codec
+        ).addCallback(on_ok)
 
     @timeout
     def index_information(self, _deadline=None):
         """index_information()"""
+
         def on_3_0_fail(failure):
             failure.trap(OperationFailure)
-            return self._database.system.indexes.find({"ns": str(self)}, as_class=SON,
-                                                      _deadline=_deadline)
+            return self._database.system.indexes.find(
+                {"ns": str(self)}, as_class=SON, _deadline=_deadline
+            )
 
         def on_ok(raw):
             info = {}
@@ -1086,13 +1245,13 @@ class Collection:
 
         return self.__index_information_3_0().addErrback(on_3_0_fail).addCallback(on_ok)
 
-
     @timeout
     def rename(self, new_name, _deadline=None):
         """rename(new_name)"""
         to = "%s.%s" % (str(self._database), new_name)
-        return self._database("admin").command("renameCollection", str(self), to=to,
-                                               _deadline=_deadline)
+        return self._database("admin").command(
+            "renameCollection", str(self), to=to, _deadline=_deadline
+        )
 
     @timeout
     def distinct(self, key, filter=None, _deadline=None, **kwargs):
@@ -1102,11 +1261,14 @@ class Collection:
         if filter:
             params["query"] = filter
 
-        return self._database.command("distinct", self._collection_name, _deadline=_deadline,
-                                      **params).addCallback(lambda result: result.get("values"))
+        return self._database.command(
+            "distinct", self._collection_name, _deadline=_deadline, **params
+        ).addCallback(lambda result: result.get("values"))
 
     @timeout
-    def aggregate(self, pipeline, full_response=False, initial_batch_size=None, _deadline=None):
+    def aggregate(
+        self, pipeline, full_response=False, initial_batch_size=None, _deadline=None
+    ):
         """aggregate(pipeline, full_response=False)"""
 
         def on_ok(raw, data=None):
@@ -1123,8 +1285,7 @@ class Collection:
                     return raw
                 return data
             next_reply = self._database.command(
-                "getMore", collection=self._collection_name,
-                getMore=raw["cursor"]["id"]
+                "getMore", collection=self._collection_name, getMore=raw["cursor"]["id"]
             )
             return next_reply.addCallback(on_ok, data)
 
@@ -1134,20 +1295,26 @@ class Collection:
             cursor = {"batchSize": initial_batch_size}
 
         return self._database.command(
-            "aggregate", self._collection_name, pipeline=pipeline,
-            _deadline=_deadline, cursor=cursor
+            "aggregate",
+            self._collection_name,
+            pipeline=pipeline,
+            _deadline=_deadline,
+            cursor=cursor,
         ).addCallback(on_ok)
 
     @timeout
     def map_reduce(self, map, reduce, full_response=False, **kwargs):
         params = {"map": map, "reduce": reduce}
         params.update(**kwargs)
+
         def on_ok(raw):
             if full_response:
                 return raw
             return raw.get("results")
-        return self._database.command("mapreduce", self._collection_name, **params)\
-                .addCallback(on_ok)
+
+        return self._database.command(
+            "mapreduce", self._collection_name, **params
+        ).addCallback(on_ok)
 
     @timeout
     def find_and_modify(self, query=None, update=None, upsert=False, **kwargs):
@@ -1177,25 +1344,41 @@ class Collection:
                     raise ValueError("TxMongo: unexpected error '{0}'".format(result))
             return result.get("value")
 
-        return self._database.command("findAndModify", self._collection_name,
-                                      allowable_errors=[no_obj_error],
-                                      **params).addCallback(on_ok)
+        return self._database.command(
+            "findAndModify",
+            self._collection_name,
+            allowable_errors=[no_obj_error],
+            **params
+        ).addCallback(on_ok)
 
     # Distinct findAndModify utility method is needed because traditional
     # find_and_modify() accepts `sort` kwarg as dict and passes it to
     # MongoDB command without conversion. But in find_one_and_*
     # methods we want to take `filter.sort` instances
-    def _new_find_and_modify(self, filter, projection, sort, upsert=None,
-                             return_document=ReturnDocument.BEFORE, _deadline=None,
-                             **kwargs):
+    def _new_find_and_modify(
+        self,
+        filter,
+        projection,
+        sort,
+        upsert=None,
+        return_document=ReturnDocument.BEFORE,
+        _deadline=None,
+        **kwargs
+    ):
         validate_is_mapping("filter", filter)
         if not isinstance(return_document, bool):
-            raise ValueError("TxMongo: return_document must be ReturnDocument.BEFORE "
-                             "or ReturnDocument.AFTER")
+            raise ValueError(
+                "TxMongo: return_document must be ReturnDocument.BEFORE "
+                "or ReturnDocument.AFTER"
+            )
 
-        cmd = SON([("findAndModify", self._collection_name),
-                   ("query", filter),
-                   ("new", return_document)])
+        cmd = SON(
+            [
+                ("findAndModify", self._collection_name),
+                ("query", filter),
+                ("new", return_document),
+            ]
+        )
         cmd.update(kwargs)
 
         if projection is not None:
@@ -1209,31 +1392,62 @@ class Collection:
 
         no_obj_error = "No matching object found"
 
-        return self._database.command(cmd, allowable_errors=[no_obj_error], _deadline=_deadline)\
-                .addCallback(lambda result: result.get("value"))
+        return self._database.command(
+            cmd, allowable_errors=[no_obj_error], _deadline=_deadline
+        ).addCallback(lambda result: result.get("value"))
 
     @timeout
     def find_one_and_delete(self, filter, projection=None, sort=None, _deadline=None):
         """find_one_and_delete(filter, projection=None, sort=None, **kwargs)"""
-        return self._new_find_and_modify(filter, projection, sort, remove=True,
-                                         _deadline=_deadline)
+        return self._new_find_and_modify(
+            filter, projection, sort, remove=True, _deadline=_deadline
+        )
 
     @timeout
-    def find_one_and_replace(self, filter, replacement, projection=None, sort=None,
-                             upsert=False, return_document=ReturnDocument.BEFORE,
-                             _deadline=None):
+    def find_one_and_replace(
+        self,
+        filter,
+        replacement,
+        projection=None,
+        sort=None,
+        upsert=False,
+        return_document=ReturnDocument.BEFORE,
+        _deadline=None,
+    ):
         """find_one_and_replace(filter, replacement, projection=None, sort=None, upsert=False, return_document=ReturnDocument.BEFORE)"""
         validate_ok_for_replace(replacement)
-        return self._new_find_and_modify(filter, projection, sort, upsert, return_document,
-                                         update=replacement, _deadline=_deadline)
+        return self._new_find_and_modify(
+            filter,
+            projection,
+            sort,
+            upsert,
+            return_document,
+            update=replacement,
+            _deadline=_deadline,
+        )
 
     @timeout
-    def find_one_and_update(self, filter, update, projection=None, sort=None,
-                            upsert=False, return_document=ReturnDocument.BEFORE, _deadline=None):
+    def find_one_and_update(
+        self,
+        filter,
+        update,
+        projection=None,
+        sort=None,
+        upsert=False,
+        return_document=ReturnDocument.BEFORE,
+        _deadline=None,
+    ):
         """find_one_and_update(filter, update, projection=None, sort=None, upsert=False, return_document=ReturnDocument.BEFORE)"""
         validate_ok_for_update(update)
-        return self._new_find_and_modify(filter, projection, sort, upsert, return_document,
-                                         update=update, _deadline=_deadline)
+        return self._new_find_and_modify(
+            filter,
+            projection,
+            sort,
+            upsert,
+            return_document,
+            update=update,
+            _deadline=_deadline,
+        )
 
     def bulk_write(self, requests, ordered=True):
         if not isinstance(requests, collections.abc.Iterable):
@@ -1284,8 +1498,9 @@ class Collection:
             except StopIteration:
                 return defer.succeed(None)
 
-            return self._execute_batch_command(run.op_type, run.ops, bulk.ordered)\
-                .addCallback(on_cmd_result_func, run, iterate_func, on_cmd_result_func)
+            return self._execute_batch_command(
+                run.op_type, run.ops, bulk.ordered
+            ).addCallback(on_cmd_result_func, run, iterate_func, on_cmd_result_func)
 
         def on_cmd_result(result, run, iterate_func, on_cmd_result_func):
             _merge_command(run, full_result, result)
@@ -1299,13 +1514,14 @@ class Collection:
             if self.write_concern.acknowledged:
                 if full_result["writeErrors"] or full_result["writeConcernErrors"]:
                     if full_result["writeErrors"]:
-                        full_result["writeErrors"].sort(key=lambda error: error["index"])
+                        full_result["writeErrors"].sort(
+                            key=lambda error: error["index"]
+                        )
                     raise BulkWriteError(full_result)
 
             return BulkWriteResult(full_result, self.write_concern.acknowledged)
 
         return iterate(iterate, on_cmd_result).addCallback(on_all_done)
-
 
     def _execute_batch_command(self, command_type, documents, ordered):
         assert command_type in _OP_MAP
@@ -1335,12 +1551,18 @@ class Collection:
 
             actual_write_concern = self.write_concern
             if ordered and self.write_concern.acknowledged is False:
-                actual_write_concern = WriteConcern(w = 1)
+                actual_write_concern = WriteConcern(w=1)
 
-            batches = self._generate_batch_commands(self._collection_name, _COMMANDS[command_type],
-                                                    _OP_MAP[command_type], documents, ordered,
-                                                    actual_write_concern, proto.max_bson_size,
-                                                    proto.max_write_batch_size)
+            batches = self._generate_batch_commands(
+                self._collection_name,
+                _COMMANDS[command_type],
+                _OP_MAP[command_type],
+                documents,
+                ordered,
+                actual_write_concern,
+                proto.max_bson_size,
+                proto.max_write_batch_size,
+            )
 
             all_responses = []
 
@@ -1351,15 +1573,19 @@ class Collection:
                 except StopIteration:
                     return defer.succeed(None)
 
-                batch_result = proto.send_QUERY(Query(collection=cmd_collname, query=batch))
+                batch_result = proto.send_QUERY(
+                    Query(collection=cmd_collname, query=batch)
+                )
                 if self.write_concern.acknowledged or ordered:
                     batch_result.addCallback(accumulate_result, idx_offset)
                     if ordered:
+
                         def on_batch_result(result):
                             if "writeErrors" in result:
                                 return defer.succeed(None)
                             else:
                                 return iterate_func(iterate_func)
+
                         return batch_result.addCallback(on_batch_result)
                     else:
                         all_responses.append(batch_result)
@@ -1373,8 +1599,9 @@ class Collection:
                     failure.value.subFailure.raiseException()
 
                 if self.write_concern.acknowledged and not ordered:
-                    return defer.gatherResults(all_responses, consumeErrors=True)\
-                        .addErrback(on_fail)
+                    return defer.gatherResults(
+                        all_responses, consumeErrors=True
+                    ).addErrback(on_fail)
 
             return iterate(iterate).addCallback(done).addCallback(lambda _: results)
 

@@ -20,18 +20,20 @@
 #  twistd -ny cyclone_server.tac
 
 import _local_path
-import txmongo
 import cyclone.web
+from twisted.application import internet, service
 from twisted.internet import defer
-from twisted.application import service, internet
+
+import txmongo
+
 
 class IndexHandler(cyclone.web.RequestHandler):
     @defer.inlineCallbacks
     def get(self):
         name = self.get_argument("name")
         try:
-            result = yield self.settings.db.find({"name":name})
-        except Exception, e:
+            result = yield self.settings.db.find({"name": name})
+        except (Exception, e):
             self.write("find failed: %s\n" % str(e))
         else:
             self.write("result(s): %s\n" % repr(result))
@@ -39,7 +41,7 @@ class IndexHandler(cyclone.web.RequestHandler):
 
     def post(self):
         name = self.get_argument("name")
-        self.settings.db.insert({"name":name})
+        self.settings.db.insert({"name": name})
         self.write("ok\n")
 
 
@@ -66,14 +68,14 @@ class XmlrpcHandler(cyclone.web.XmlrpcRequestHandler):
 class WebMongo(cyclone.web.Application):
     def __init__(self):
         handlers = [
-            (r"/",       IndexHandler),
+            (r"/", IndexHandler),
             (r"/xmlrpc", XmlrpcHandler),
         ]
 
         mongo = txmongo.lazyMongoConnectionPool()
         settings = {
             "db": mongo.foo.test
-            #"static_path": "./static",
+            # "static_path": "./static",
         }
 
         cyclone.web.Application.__init__(self, handlers, **settings)

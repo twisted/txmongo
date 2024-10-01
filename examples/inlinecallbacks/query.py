@@ -5,8 +5,10 @@
 # found in the LICENSE file.
 
 import _local_path
-import txmongo
 from twisted.internet import defer, reactor
+
+import txmongo
+
 
 @defer.inlineCallbacks
 def example():
@@ -18,8 +20,9 @@ def example():
     # fetch some documents
     docs = yield test.find(limit=10)
     for doc in docs:
-        print doc
+        print((doc))
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     example().addCallback(lambda ign: reactor.stop())
     reactor.run()

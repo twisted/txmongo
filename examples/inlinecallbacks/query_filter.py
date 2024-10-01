@@ -5,9 +5,11 @@
 # found in the LICENSE file.
 
 import _local_path
+from twisted.internet import defer, reactor
+
 import txmongo
 import txmongo.filter
-from twisted.internet import defer, reactor
+
 
 @defer.inlineCallbacks
 def example():
@@ -18,14 +20,15 @@ def example():
 
     # create the filter
     f = txmongo.filter.sort(txmongo.filter.DESCENDING("something"))
-    #f += txmongo.filter.hint(txmongo.filter.DESCENDING("myindex"))
-    #f += txmongo.filter.explain()
+    # f += txmongo.filter.hint(txmongo.filter.DESCENDING("myindex"))
+    # f += txmongo.filter.explain()
 
     # fetch some documents
     docs = yield test.find(limit=10, filter=f)
     for n, doc in enumerate(docs):
-        print n, doc
+        print(n, doc)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     example().addCallback(lambda ign: reactor.stop())
     reactor.run()

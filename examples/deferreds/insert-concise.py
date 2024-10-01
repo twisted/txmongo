@@ -14,21 +14,21 @@ import txmongo
 
 
 def insertData(conn):
-    print "inserting data..."
+    print(("inserting data..."))
     collection = conn.foo.test
     for x in range(10000):
-        d = collection.insert({"something":x*time.time()}, safe=True)
+        d = collection.insert({"something": x * time.time()}, safe=True)
         d.addErrback(log.err)
     return d
 
 
 def processResult(result):
-    print "processing last insert ..."
-    print "last inserted id: %s" % result
+    print(("processing last insert ..."))
+    print(("last inserted id: %s" % result))
 
 
 def finish(ignore):
-    print "finishing up..."
+    print(("finishing up..."))
     reactor.stop()
 
 
@@ -41,7 +41,7 @@ def example():
     return d
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     log.startLogging(sys.stdout)
     example()
     reactor.run()

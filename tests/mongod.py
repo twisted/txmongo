@@ -14,12 +14,12 @@
 # limitations under the License.
 
 import os
+import random
+import shutil
 import string
 import tempfile
-import shutil
-import random
-from abc import abstractmethod, ABCMeta
-from typing import Union, List
+from abc import ABCMeta, abstractmethod
+from typing import List, Union
 
 from twisted.internet import defer, reactor
 from twisted.internet.error import ProcessDone
@@ -28,6 +28,7 @@ from twisted.python import failure
 
 from tests.conf import MongoConf
 from txmongo.connection import ConnectionPool
+
 
 class MongodProcess(ProcessProtocol, metaclass=ABCMeta):
     # FIXME: this message might change in future versions of MongoDB
@@ -39,13 +40,21 @@ class MongodProcess(ProcessProtocol, metaclass=ABCMeta):
     ]
 
     def __init__(
-        self, *, port=27017, auth=False, rootCreds=None, replset=None, dbpath=None, args=(),
-        tlsCertificateKeyFile=None, tlsCAFile=None
+        self,
+        *,
+        port=27017,
+        auth=False,
+        rootCreds=None,
+        replset=None,
+        dbpath=None,
+        args=(),
+        tlsCertificateKeyFile=None,
+        tlsCAFile=None,
     ):
         self._proc = None
         self._notify_waiting = []
         self._notify_stop = []
-        self._output = b''
+        self._output = b""
         self._end_reason = None
         self._configured = False
 
@@ -68,12 +77,14 @@ class MongodProcess(ProcessProtocol, metaclass=ABCMeta):
 
         args = yield defer.maybeDeferred(self.get_run_command)
 
-        if self.replset: args.extend(["--replSet", self.replset])
+        if self.replset:
+            args.extend(["--replSet", self.replset])
         args.extend(self.args)
 
         args = [arg.encode() for arg in args]
 
         from os import environ
+
         self._proc = reactor.spawnProcess(self, args[0], args, env=environ)
         yield d
 
@@ -119,7 +130,11 @@ class MongodProcess(ProcessProtocol, metaclass=ABCMeta):
 
     def processEnded(self, reason):
         self._end_reason = reason
-        defs, self._notify_stop, self._notify_waiting = self._notify_stop + self._notify_waiting, [], []
+        defs, self._notify_stop, self._notify_waiting = (
+            self._notify_stop + self._notify_waiting,
+            [],
+            [],
+        )
         for d in defs:
             if reason.check(ProcessDone):
                 d.callback(None)
@@ -134,7 +149,7 @@ class MongodProcess(ProcessProtocol, metaclass=ABCMeta):
 class ProcessOutputCollector(ProcessProtocol):
     def __init__(self, stopDeferred):
         super().__init__()
-        self._output = b''
+        self._output = b""
         self._stopDeferred = stopDeferred
 
     def outReceived(self, data: bytes) -> None:
@@ -143,21 +158,18 @@ class ProcessOutputCollector(ProcessProtocol):
     def processExited(self, reason: failure.Failure) -> None:
         self._stopDeferred.callback(self._output)
 
+
 def run_and_get_output(command: List[Union[str, bytes]]) -> bytes:
-    command = [
-        arg.encode() if isinstance(arg, str) else arg
-        for arg in command
-    ]
+    command = [arg.encode() if isinstance(arg, str) else arg for arg in command]
     stopDeferred = defer.Deferred()
     collector = ProcessOutputCollector(stopDeferred)
     reactor.spawnProcess(collector, command[0], command)
     return stopDeferred
 
 
-
 class LocalMongod(MongodProcess):
     def __init__(self, *args, **kwargs):
-        dbpath = kwargs.pop('dbpath', None)
+        dbpath = kwargs.pop("dbpath", None)
         if dbpath is None:
             dbpath = tempfile.mkdtemp()
             self._rmdbpath = True
@@ -184,15 +196,20 @@ class LocalMongod(MongodProcess):
         else:
             if self.tlsCertificateKeyFile:
                 trailing_args.extend(["--tlsMode", "requireTLS"])
-                trailing_args.extend(["--tlsCertificateKeyFile", self.tlsCertificateKeyFile])
+                trailing_args.extend(
+                    ["--tlsCertificateKeyFile", self.tlsCertificateKeyFile]
+                )
             if self.tlsCAFile:
                 trailing_args.extend(["--tlsCAFile", self.tlsCAFile])
 
         return [
             "mongod",
-            "--port", str(self.port),
-            "--dbpath", self.dbpath,
-            "--oplogSize", "1",
+            "--port",
+            str(self.port),
+            "--dbpath",
+            self.dbpath,
+            "--oplogSize",
+            "1",
             *trailing_args,
         ]
 
@@ -201,8 +218,10 @@ class LocalMongod(MongodProcess):
         if self.rootCreds:
             conn = ConnectionPool(f"mongodb://localhost:{self.port}")
             r = yield conn.admin.command(
-                "createUser", self.rootCreds[0], pwd=self.rootCreds[1],
-                roles=[{"role": "userAdminAnyDatabase", "db": "admin"}]
+                "createUser",
+                self.rootCreds[0],
+                pwd=self.rootCreds[1],
+                roles=[{"role": "userAdminAnyDatabase", "db": "admin"}],
             )
             yield conn.disconnect()
 
@@ -214,34 +233,38 @@ class LocalMongod(MongodProcess):
 
 
 class DockerMongod(MongodProcess):
-    mongodb_container_name_prefix = 'txmongo-tests-mongodb-'
+    mongodb_container_name_prefix = "txmongo-tests-mongodb-"
 
     def __init__(self, *args, **kwargs):
         self.version = kwargs.pop("version")
         self.network = kwargs.pop("network")
-        self.container_name = self.mongodb_container_name_prefix + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+        self.container_name = self.mongodb_container_name_prefix + "".join(
+            random.choices(string.ascii_uppercase + string.digits, k=10)
+        )
         super().__init__(*args, **kwargs)
 
     def get_run_command(self):
-        mongo3 = self.version.startswith('3.')
+        mongo3 = self.version.startswith("3.")
 
-        envs = [
-            '--name', self.container_name
-        ]
+        envs = ["--name", self.container_name]
 
         if self.network:
             envs.extend(
                 [
-                    '--network', self.network,
+                    "--network",
+                    self.network,
                 ]
             )
 
-
         if self.rootCreds:
-            envs.extend([
-                "-e", f"MONGO_INITDB_ROOT_USERNAME={self.rootCreds[0]}",
-                "-e", f"MONGO_INITDB_ROOT_PASSWORD={self.rootCreds[1]}",
-            ])
+            envs.extend(
+                [
+                    "-e",
+                    f"MONGO_INITDB_ROOT_USERNAME={self.rootCreds[0]}",
+                    "-e",
+                    f"MONGO_INITDB_ROOT_PASSWORD={self.rootCreds[1]}",
+                ]
+            )
 
         trailing_args = []
         if self.auth:
@@ -263,7 +286,9 @@ class DockerMongod(MongodProcess):
         else:
             if self.tlsCertificateKeyFile:
                 trailing_args.extend(["--tlsMode", "requireTLS"])
-                trailing_args.extend(["--tlsCertificateKeyFile", self.tlsCertificateKeyFile])
+                trailing_args.extend(
+                    ["--tlsCertificateKeyFile", self.tlsCertificateKeyFile]
+                )
                 binds.append([self.tlsCertificateKeyFile, self.tlsCertificateKeyFile])
             if self.tlsCAFile:
                 trailing_args.extend(["--tlsCAFile", self.tlsCAFile])
@@ -275,24 +300,27 @@ class DockerMongod(MongodProcess):
 
         return [
             "docker",
-            "run", "--rm",
-            "-p", f"{self.port}:27017",
+            "run",
+            "--rm",
+            "-p",
+            f"{self.port}:27017",
             *envs,
             *bind_args,
             *user,
             f"mongo:{self.version}",
-            "--oplogSize", "1",
+            "--oplogSize",
+            "1",
             *trailing_args,
         ]
 
     def process_is_ready(self) -> bool:
-        if b'about to fork child process' in self._output:
+        if b"about to fork child process" in self._output:
             for msg in self.success_messages:
                 index = self._output.find(msg)
                 if index == -1:
                     continue
 
-                return msg in self._output[index+1: ]
+                return msg in self._output[index + 1 :]
         else:
             return super().process_is_ready()
 
@@ -300,17 +328,13 @@ class DockerMongod(MongodProcess):
 
     @defer.inlineCallbacks
     def kill(self, signal):
-        args = [
-            "docker",
-            "kill", "-s", str(signal),
-            self.container_name
-        ]
+        args = ["docker", "kill", "-s", str(signal), self.container_name]
 
         yield run_and_get_output(args)
+
 
 def create_mongod(*args, **kwargs):
     conf = MongoConf()
     if conf.run_in_docker:
         return DockerMongod(version=conf.version, network=conf.network, *args, **kwargs)
     return LocalMongod(*args, **kwargs)
-

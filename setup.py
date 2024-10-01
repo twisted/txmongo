@@ -12,7 +12,7 @@ setup(
     packages=["txmongo", "txmongo._gridfs"],
     install_requires=["twisted>=14.0", "pymongo>=3.0, <4.9"],
     extras_require={
-        'srv': ['pymongo[srv]>=3.6'],
+        "srv": ["pymongo[srv]>=3.6"],
     },
     license="Apache License, Version 2.0",
     include_package_data=True,
@@ -32,5 +32,6 @@ setup(
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
-        "Topic :: Database"]
-    )
+        "Topic :: Database",
+    ],
+)
