@@ -44,6 +44,8 @@ from txmongo.filter import _QueryFilter
 from txmongo.protocol import (
     DELETE_SINGLE_REMOVE,
     OP_MSG_MORE_TO_COME,
+    QUERY_PARTIAL,
+    QUERY_SLAVE_OK,
     UPDATE_MULTI,
     UPDATE_UPSERT,
     Delete,
@@ -443,6 +445,7 @@ class Collection:
         skip,
         limit,
         batch_size,
+        flags: int,
     ):
         cmd = {"find": coll_name}
         if "$query" in filter_with_modifiers:
@@ -466,6 +469,11 @@ class Collection:
                 cmd["batchSize"] = abs(limit)
         if batch_size:
             cmd["batchSize"] = batch_size
+
+        if flags & QUERY_SLAVE_OK:
+            cmd["$readPreference"] = {"mode": "secondaryPreferred"}
+        if flags & QUERY_PARTIAL:
+            cmd["allowPartialResults"] = True
 
         if "$explain" in filter_with_modifiers:
             cmd.pop("$explain")
@@ -511,6 +519,7 @@ class Collection:
             )
             codec_options = codec_options.with_options(document_class=as_class)
 
+        flags = kwargs.get("flags", 0)
         deadline = kwargs.get("_deadline")
 
         def after_connection(proto):
@@ -524,6 +533,7 @@ class Collection:
                 skip,
                 limit,
                 batch_size,
+                flags,
             )
 
             return proto.send_MSG(
