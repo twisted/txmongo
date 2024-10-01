@@ -2,7 +2,6 @@ from pymongo.errors import (DuplicateKeyError, WriteError, WTimeoutError, WriteC
                             ExecutionTimeout, CursorNotFound)
 from pymongo.message import _INSERT, _DELETE, _UPDATE
 
-
 try:
     from pymongo.errors import NotPrimaryError
 except ImportError:

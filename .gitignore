@@ -6,10 +6,13 @@ build
 .download_cache
 .coverage
 venv/
+venv*/
 docs/build/
 _trial_temp/
+_trial_temp_*
 txmongo.egg-info
 .idea/
 dist/
 htmlcov/
 .tox/
+data/mongo

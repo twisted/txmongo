@@ -7,46 +7,47 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11"]
-        mongodb-version: ['4.2', '4.4']
+        python-version: ['3.8', '3.11', '3.12']
+        mongodb-version: ['3.6', '4.2', '4.4']
     steps:
-      - uses: actions/checkout@v3
-      - name: Start MongoDB (27017)
-        uses: supercharge/mongodb-github-action@1.8.0
+      - uses: actions/checkout@v4
+      - name: Start MongoDB on port 27017
+        uses: supercharge/mongodb-github-action@1.11.0
         with:
           mongodb-version: ${{ matrix.mongodb-version }}
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
-      - name: Install tox and any other packages
+          python-version: ${{ matrix.python-version }}
+      - name: Install tox
         run: pip install tox
-      - name: Run tox
-        run: tox -e basic
+      - name: Run basic tests in tox
+        run: tox -f py${{ matrix.python-version }} basic
       - name: Archive artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: code-coverage-report
+          name: code-coverage-report-${{ matrix.mongodb-version }}-${{ matrix.python-version }}
           path: htmlcov
 
   advanced:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11"]
+        python-version: ['3.8', '3.11', '3.12']
+        mongodb-version: ['4.2', '4.4']
     steps:
-      - uses: actions/checkout@v3
-      - name: Install MongoDB 4.4
+      - uses: actions/checkout@v4
+      - name: Install MongoDB ${{ matrix.mongodb-version }}
         run: |
-          wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | sudo apt-key add -
-          echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.4.list
+          wget -qO - https://www.mongodb.org/static/pgp/server-${{ matrix.mongodb-version }}.asc | sudo apt-key add -
+          echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu bionic/mongodb-org/${{ matrix.mongodb-version }} multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-${{ matrix.mongodb-version }}.list
           sudo apt-get update
-          sudo apt-get install -y --allow-downgrades mongodb-org-server=4.4.18
-      - name: Setup Python
-        uses: actions/setup-python@v4
+          sudo apt-get install -y --allow-downgrades mongodb-org-server
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: ${{ matrix.python-version }}
       - name: Install tox and any other packages
         run: pip install tox
-      - name: Run tox
-        run: tox -e advanced
+      - name: Run advanced tests in tox
+        run: tox -f py${{ matrix.python-version }} advanced
