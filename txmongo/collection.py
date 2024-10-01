@@ -50,6 +50,7 @@ from txmongo.protocol import (
     UPDATE_UPSERT,
     Delete,
     Insert,
+    MongoProtocol,
     Msg,
     Update,
 )
@@ -482,6 +483,20 @@ class Collection:
         cmd["$db"] = db_name
         return cmd
 
+    def __close_cursor_without_response(self, proto: MongoProtocol, cursor_id: int):
+        proto.send_MSG(
+            Msg(
+                flag_bits=OP_MSG_MORE_TO_COME,
+                body=bson.encode(
+                    {
+                        "killCursors": self.name,
+                        "$db": self._database.name,
+                        "cursors": [cursor_id],
+                    },
+                ),
+            )
+        )
+
     def __real_find_with_cursor(
         self,
         filter=None,
@@ -551,18 +566,8 @@ class Collection:
             except Exception:
                 cursor_id = reply.get("cursor", {}).get("id")
                 if cursor_id:
-                    proto.send_MSG(
-                        Msg(
-                            flag_bits=OP_MSG_MORE_TO_COME,
-                            body=bson.encode(
-                                {
-                                    "killCursors": self.name,
-                                    "$db": self.database.name,
-                                    "cursors": [cursor_id],
-                                },
-                            ),
-                        )
-                    )
+                    # FIXME: check if using `self` creates circular reference
+                    self.__close_cursor_without_response(proto, cursor_id)
                 raise
 
             _check_command_response(reply)
@@ -599,26 +604,15 @@ class Collection:
                         to_fetch = min(batch_size, to_fetch)
 
                 if to_fetch is None:
-                    # FIXME: extract this to a function
-                    proto.send_MSG(
-                        Msg(
-                            flag_bits=OP_MSG_MORE_TO_COME,
-                            body=bson.encode(
-                                {
-                                    "killCursors": self.name,
-                                    "$db": self.database.name,
-                                    "cursors": [cursor["id"]],
-                                },
-                            ),
-                        )
-                    )
+                    # FIXME: check if using `self` creates circular reference
+                    self.__close_cursor_without_response(proto, cursor["id"])
                     return out, defer.succeed(([], None))
 
                 # FIXME: extract this to a function
                 get_more = {
                     "getMore": cursor["id"],
-                    "collection": self.name,
                     "$db": self.database.name,
+                    "collection": self.name,
                 }
                 if batch_size:
                     get_more["batchSize"] = batch_size
