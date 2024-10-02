@@ -8,8 +8,10 @@ API Changes
 ^^^^^^^^
 
 - This is the last release that supports Python <3.8 and MongoDB <4.0
-- Methods `insert()`, `update()` and `remove()` are deprecated in favor of corresponding `*_one()`
-  and `*_many()` methods. Old methods will be removed in the next release.
+- Collection methods `insert()`, `update()` and `remove()` are deprecated in favor of
+  corresponding `*_one()` and `*_many()` methods. Old methods will be removed in the next release.
+- Collection methods `save()`, `find_and_modify() and `group()` are deprecated and will be removed
+  in the next release.
 - `as_class` argument of `find()`, `find_with_cursor()` and `find_one()` is deprecated and will
   be removed in the next release.
 
