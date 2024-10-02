@@ -448,6 +448,12 @@ class Collection:
             filter = BSON.encode(filter, codec_options=self.codec_options)
 
         as_class = kwargs.get("as_class")
+        if as_class is not None:
+            warnings.warn(
+                "as_class argument of will be removed in the next version of TxMongo. Please use document_class parameter of codec_options.",
+                DeprecationWarning,
+            )
+
         proto = self._database.connection.getprotocol()
 
         def after_connection(protocol):
@@ -591,6 +597,11 @@ class Collection:
 
     @timeout
     def group(self, keys, initial, reduce, condition=None, finalize=None, **kwargs):
+        warnings.warn(
+            "Collection.group() method will be removed in the next version of TxMongo. Please use aggregate() or map_reduce().",
+            DeprecationWarning,
+        )
+
         body = {
             "ns": self._collection_name,
             "initial": initial,
@@ -674,6 +685,11 @@ class Collection:
             :class:`Deferred` that fires with single ``_id`` field or a list of
             ``_id`` fields of inserted documents.
         """
+        warnings.warn(
+            "Collection.insert() method will be removed in the next version of TxMongo. Please use insert_one() or insert_many().",
+            DeprecationWarning,
+        )
+
         if isinstance(docs, dict):
             ids = docs.get("_id", ObjectId())
             docs["_id"] = ids
@@ -895,6 +911,10 @@ class Collection:
             :class:`Deferred` that is called back when request is sent to
             MongoDB or confirmed by MongoDB (depending on selected Write Concern).
         """
+        warnings.warn(
+            "Collection.update() method will be removed in the next version of TxMongo. Please use update_one(), update_many() or replace_one().",
+            DeprecationWarning,
+        )
 
         if not isinstance(spec, dict):
             raise TypeError("TxMongo: spec must be an instance of dict.")
@@ -1071,6 +1091,12 @@ class Collection:
 
     @timeout
     def save(self, doc, safe=None, **kwargs):
+        warnings.warn(
+            "Collection.save() method will be removed in the next version of TxMongo. "
+            "Please use insert_one() or replace_one().",
+            DeprecationWarning,
+        )
+
         if not isinstance(doc, dict):
             raise TypeError(
                 "TxMongo: cannot save objects of type {0}".format(type(doc))
@@ -1083,6 +1109,11 @@ class Collection:
 
     @timeout
     def remove(self, spec, safe=None, single=False, flags=0, **kwargs):
+        warnings.warn(
+            "Collection.remove() method will be removed in the next version of TxMongo. Please use delete_one() or delete_many().",
+            DeprecationWarning,
+        )
+
         if isinstance(spec, ObjectId):
             spec = SON(dict(_id=spec))
         if not isinstance(spec, dict):
@@ -1318,6 +1349,12 @@ class Collection:
 
     @timeout
     def find_and_modify(self, query=None, update=None, upsert=False, **kwargs):
+        warnings.warn(
+            "Collection.find_and_modify() method will be removed in the next version of TxMongo. "
+            "Please use find_one_and_update(), find_one_and_replace() or find_one_and_delete().",
+            DeprecationWarning,
+        )
+
         no_obj_error = "No matching object found"
 
         if not update and not kwargs.get("remove", None):

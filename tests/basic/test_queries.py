@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from bson import BSON, ObjectId
+from bson import BSON, CodecOptions, ObjectId
 from bson.son import SON
 from pymongo.collection import ReturnDocument
 from pymongo.errors import (
@@ -265,13 +265,28 @@ class TestMongoQueries(SingleCollectionTest):
         yield self.coll.insert({"x": 42})
 
         doc = yield self.coll.find_one({})
-        self.assertTrue(type(doc) is dict)
+        self.assertIs(type(doc), dict)
 
         class CustomDict(dict):
             pass
 
         doc = yield self.coll.find_one({}, as_class=CustomDict)
-        self.assertTrue(type(doc) is CustomDict)
+        self.assertIs(type(doc), CustomDict)
+
+    @defer.inlineCallbacks
+    def test_AsClassCodecOption(self):
+        yield self.coll.insert({"x": 42})
+
+        doc = yield self.coll.find_one()
+        self.assertIs(type(doc), dict)
+
+        class CustomDict(dict):
+            pass
+
+        doc = yield self.coll.with_options(
+            codec_options=CodecOptions(document_class=CustomDict)
+        ).find_one()
+        self.assertIs(type(doc), CustomDict)
 
     @defer.inlineCallbacks
     def test_FindOneNone(self):
