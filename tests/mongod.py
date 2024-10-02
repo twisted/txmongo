@@ -140,7 +140,6 @@ class MongodProcess(ProcessProtocol, metaclass=ABCMeta):
                 d.callback(None)
             else:
                 d.errback(reason)
-        # print(f"processEnded {self.output().decode() = }")
 
     def output(self):
         return self._output
@@ -181,13 +180,13 @@ class LocalMongod(MongodProcess):
     @defer.inlineCallbacks
     def get_run_command(self):
         version_output = yield run_and_get_output(["mongod", "--version"])
-        mongo3 = b"db version v3." in version_output
+        mongo40 = b"db version v4.0" in version_output
 
         trailing_args = []
         if self.auth:
             trailing_args.append("--auth")
 
-        if mongo3:
+        if mongo40:
             if self.tlsCertificateKeyFile:
                 trailing_args.extend(["--sslMode", "requireSSL"])
                 trailing_args.extend(["--sslPEMKeyFile", self.tlsCertificateKeyFile])
@@ -244,7 +243,7 @@ class DockerMongod(MongodProcess):
         super().__init__(*args, **kwargs)
 
     def get_run_command(self):
-        mongo3 = self.version.startswith("3.")
+        mongo40 = self.version.startswith("4.0")
 
         envs = ["--name", self.container_name]
 
@@ -275,7 +274,7 @@ class DockerMongod(MongodProcess):
         if self.dbpath:
             binds.append([self.dbpath, "/data/db"])
             user = ["--user", f"{os.getuid()}:{os.getgid()}"]
-        if mongo3:
+        if mongo40:
             if self.tlsCertificateKeyFile:
                 trailing_args.extend(["--sslMode", "requireSSL"])
                 trailing_args.extend(["--sslPEMKeyFile", self.tlsCertificateKeyFile])
