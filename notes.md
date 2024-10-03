@@ -24,7 +24,8 @@
   - Or just remove them because they are deprecated for many years?
 - Test that new implementation of TxMongo isn't worse than the old one in terms of memory usage
   - Check circular references by disabling gc and measuring len(gc.get_objects()) ?
-- Add explicit arguments for find() and deprecate its `flags` and `as_class` arguments
+- Either implement readPreference support or document `flags` parameter in `find*` methods
+- Check coverage and add tests if needed
 
 ## Prior art
 - https://github.com/twisted/txmongo/pull/262

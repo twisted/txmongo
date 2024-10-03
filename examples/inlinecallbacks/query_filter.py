@@ -24,7 +24,7 @@ def example():
     # f += txmongo.filter.explain()
 
     # fetch some documents
-    docs = yield test.find(limit=10, filter=f)
+    docs = yield test.find(limit=10, sort=f)
     for n, doc in enumerate(docs):
         print(n, doc)
 

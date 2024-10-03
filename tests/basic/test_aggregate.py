@@ -34,13 +34,12 @@ class TestAggregate(unittest.TestCase):
     @defer.inlineCallbacks
     def test_aggregate(self):
         """Test basic aggregation functionality"""
-        yield self.coll.insert(
+        yield self.coll.insert_many(
             [
                 {"oh": "hai", "lulz": 123},
                 {"oh": "kthxbye", "lulz": 456},
                 {"oh": "hai", "lulz": 789},
-            ],
-            safe=True,
+            ]
         )
 
         res = yield self.coll.aggregate(
@@ -75,7 +74,7 @@ class TestAggregate(unittest.TestCase):
     def test_large_batch(self):
         """Test aggregation with a large number of objects"""
         cnt = 10000
-        yield self.coll.insert(
+        yield self.coll.insert_many(
             [{"key": "v{}".format(i), "value": i} for i in range(cnt)]
         )
         group = {"$group": {"_id": "$key"}}
@@ -100,7 +99,7 @@ class TestAggregate(unittest.TestCase):
     def test_large_value(self):
         """Test aggregation with large objects"""
         cnt = 2
-        yield self.coll.insert([{"x": str(i) * 1024 * 1024} for i in range(cnt)])
+        yield self.coll.insert_many([{"x": str(i) * 1024 * 1024} for i in range(cnt)])
 
         group = {"$group": {"_id": "$x"}}
 

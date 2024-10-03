@@ -27,7 +27,7 @@ def example():
     fields = blacklist
 
     # fetch some documents
-    docs = yield test.find(limit=10, fields=fields)
+    docs = yield test.find(limit=10, projection=fields)
     for n, doc in enumerate(docs):
         print(n, doc)
 

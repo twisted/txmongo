@@ -18,12 +18,10 @@ def example():
     test = foo.test  # `test` collection
 
     # insert
-    yield test.insert({"foo": "bar", "name": "bla"}, safe=True)
+    yield test.insert_one({"foo": "bar", "name": "bla"})
 
     # update
-    result = yield test.update(
-        {"foo": "bar"}, {"$set": {"name": "john doe"}}, safe=True
-    )
+    result = yield test.update_one({"foo": "bar"}, {"$set": {"name": "john doe"}})
     print("result:", result)
 
 

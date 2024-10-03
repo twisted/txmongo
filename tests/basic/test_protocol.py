@@ -112,7 +112,7 @@ class TestCursors(SingleCollectionTest):
     @defer.inlineCallbacks
     def test_CursorNotFound(self):
 
-        yield self.coll.insert([{"v": i} for i in range(140)], safe=True)
+        yield self.coll.insert_many([{"v": i} for i in range(140)])
 
         protocol = yield self.conn.getprotocol()
 

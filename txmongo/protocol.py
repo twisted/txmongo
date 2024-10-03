@@ -24,7 +24,6 @@ from hashlib import sha1
 from random import SystemRandom
 from typing import Dict, List
 
-import bson
 from bson import BSON, SON, Binary
 from pymongo import auth
 from pymongo.errors import (
@@ -719,9 +718,8 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         self.transport.loseConnection()
 
     def get_last_error(self, db, **options):
-        command = SON([("getlasterror", 1)])
+        command = {"getlasterror": 1, **options}
         db = "%s.$cmd" % db.split(".", 1)[0]
-        command.update(options)
 
         def on_reply(reply):
             assert len(reply.documents) == 1
@@ -750,27 +748,6 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         return self.send_QUERY(
             Query(collection=cmd_collection, query=query)
         ).addCallback(lambda response: response.documents[0].decode())
-
-    @defer.inlineCallbacks
-    def authenticate_mongo_cr(self, database_name, username, password):
-        result = yield self.__run_command(database_name, {"getnonce": 1})
-
-        if not result["ok"]:
-            raise MongoAuthenticationError(result["errmsg"])
-
-        nonce = result["nonce"]
-
-        auth_cmd = SON(authenticate=1)
-        auth_cmd["user"] = str(username)
-        auth_cmd["nonce"] = nonce
-        auth_cmd["key"] = auth._auth_key(nonce, username, password)
-
-        result = yield self.__run_command(database_name, auth_cmd)
-
-        if not result["ok"]:
-            raise MongoAuthenticationError(result["errmsg"])
-
-        defer.returnValue(result)
 
     @defer.inlineCallbacks
     def authenticate_scram_sha1(self, database_name, username, password):
@@ -873,17 +850,12 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         yield self.__auth_lock.acquire()
 
         try:
-            if mechanism == "MONGODB-CR":
-                auth_func = self.authenticate_mongo_cr
-            elif mechanism == "SCRAM-SHA-1":
+            if mechanism == "SCRAM-SHA-1":
                 auth_func = self.authenticate_scram_sha1
             elif mechanism == "MONGODB-X509":
                 auth_func = self.authenticate_mongo_x509
             elif mechanism == "DEFAULT":
-                if self.max_wire_version >= 3:
-                    auth_func = self.authenticate_scram_sha1
-                else:
-                    auth_func = self.authenticate_mongo_cr
+                auth_func = self.authenticate_scram_sha1
             else:
                 raise MongoAuthenticationError(
                     "TxMongo: Unknown authentication mechanism: {0}".format(mechanism)

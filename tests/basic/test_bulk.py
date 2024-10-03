@@ -190,7 +190,7 @@ class TestBulkUpdate(SingleCollectionTest):
             ]
         )
 
-        docs = yield self.coll.find(fields={"_id": 0})
+        docs = yield self.coll.find(projection={"_id": 0})
         self.assertEqual(len(docs), 4)
         self.assertIn({"x": 43, "m": 1}, docs)
         self.assertIn({"y": 122, "a": "hi", "m": 1}, docs)
@@ -213,7 +213,7 @@ class TestBulkUpdate(SingleCollectionTest):
             ]
         )
 
-        docs = yield self.coll.find(fields={"_id": 0})
+        docs = yield self.coll.find(projection={"_id": 0})
         self.assertEqual(len(docs), 4)
         self.assertIn({"j": 5}, docs)
         self.assertIn({"y": 123}, docs)

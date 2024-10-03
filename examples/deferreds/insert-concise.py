@@ -17,7 +17,7 @@ def insertData(conn):
     print(("inserting data..."))
     collection = conn.foo.test
     for x in range(10000):
-        d = collection.insert({"something": x * time.time()}, safe=True)
+        d = collection.insert_one({"something": x * time.time()})
         d.addErrback(log.err)
     return d
 

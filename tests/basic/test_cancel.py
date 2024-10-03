@@ -125,15 +125,15 @@ class TestCancelIntegrated(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_remove(self):
-        # Lets test cancellation of some dangerous operation for the peace
+        # Let's test cancellation of some dangerous operation for the peace
         # of mind. NB: remove can be cancelled only because ConnectionPool
         # is not connected yet.
         for i in range(10):
             self.coll.insert_one({"x": i})
 
-        d1 = self.coll.remove({"x": {"$lt": 3}})
-        d2 = self.coll.remove({"x": {"$gte": 3, "$lt": 6}})
-        d3 = self.coll.remove({"x": {"$gte": 6, "$lt": 9}})
+        d1 = self.coll.delete_many({"x": {"$lt": 3}})
+        d2 = self.coll.delete_many({"x": {"$gte": 3, "$lt": 6}})
+        d3 = self.coll.delete_many({"x": {"$gte": 6, "$lt": 9}})
 
         d2.cancel()
 
@@ -152,7 +152,7 @@ class TestCancelIntegrated(unittest.TestCase):
 
         yield self.coll.count()
 
-        d = self.coll.insert({"x": 42})
+        d = self.coll.insert_one({"x": 42})
         d.cancel()
 
         yield _delay(1)

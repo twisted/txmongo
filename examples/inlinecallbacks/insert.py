@@ -19,9 +19,11 @@ def example():
     test = foo.test  # `test` collection
 
     # insert some data
-    for x in range(10000):
-        result = yield test.insert({"something": x * time.time()}, safe=True)
-        print(result)
+    for x in range(1000):
+        result = yield test.insert_one({"something": x * time.time()})
+
+    # but much more effective like this:
+    result = yield test.insert_many({"something": x * time.time()} for x in range(1000))
 
 
 if __name__ == "__main__":

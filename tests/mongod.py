@@ -114,7 +114,6 @@ class MongodProcess(ProcessProtocol, metaclass=ABCMeta):
 
     @defer.inlineCallbacks
     def childDataReceived(self, child_fd: int, data: bytes):
-
         self._output += data
         if self._configured:
             return

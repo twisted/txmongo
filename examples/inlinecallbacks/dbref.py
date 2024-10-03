@@ -19,10 +19,10 @@ def example():
     test = foo.test  # `test` collection
 
     doc_a = {"username": "foo", "password": "bar"}
-    result = yield test.insert(doc_a, safe=True)
+    result = yield test.insert_one(doc_a)
 
     doc_b = {"settings": "foobar", "owner": DBRef(test, result)}
-    yield test.insert(doc_b, safe=True)
+    yield test.insert_one(doc_b)
 
     doc = yield test.find_one({"settings": "foobar"})
     print("doc is:", doc)

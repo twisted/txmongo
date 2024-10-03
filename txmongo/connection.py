@@ -134,10 +134,8 @@ class _Connection(ReconnectingClientFactory):
 
         # MongoDB < 4.0
         if proto.max_wire_version < 7:
-            warnings.warn(
-                "MongoDB <4.0 support will be dropped in the next version of TxMongo",
-                DeprecationWarning,
-            )
+            warnings.warn("TxMongo: MongoDB version <4.0 is not supported")
+            raise ConfigurationError("TxMongo: MongoDB version <4.0 is not supported")
 
         # Track the other hosts in the replica set.
         hosts = config.get("hosts")
@@ -285,8 +283,7 @@ class ConnectionPool:
 
         self.__uri = parse_uri(uri)
 
-        wc_options = dict(self.__uri["options"])
-        wc_options.update(kwargs)
+        wc_options = {**self.__uri["options"], **kwargs}
         self.__write_concern = self.__parse_write_concern_options(wc_options)
 
         self.__codec_options = kwargs.get(

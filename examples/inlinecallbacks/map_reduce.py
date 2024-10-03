@@ -3,15 +3,15 @@
 # Copyright 2009-2014 The txmongo authors.  All rights reserved.
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
-
-import _local_path
-from twisted.internet import defer, reactor
+from twisted.internet import defer
+from twisted.internet.task import react
 
 import txmongo
 
 
+@react
 @defer.inlineCallbacks
-def example():
+def example(reactor):
     mongo = yield txmongo.MongoConnection()
 
     foo = mongo.foo  # `foo` database
@@ -27,13 +27,10 @@ def example():
         ]
     )
 
-    # Read more about the aggregation pipeline in MongoDB's docs
-    pipeline = [{"$group": {"_id": "$src", "content_list": {"$push": "$content"}}}]
-    result = yield test.aggregate(pipeline)
+    result = yield test.map_reduce(
+        "function () { emit(this.src, 1) }",
+        "function (key, values) { return Array.sum(values) }",
+        out={"inline": 1},
+    )
 
-    print(("result:", result))
-
-
-if __name__ == "__main__":
-    example().addCallback(lambda ign: reactor.stop())
-    reactor.run()
+    print("result:", result)

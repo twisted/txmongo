@@ -182,7 +182,7 @@ class GridFS(object):
             raise NoFile("no version %d for filename %r" % (version, filename))
 
         return self.__files.find(
-            query, filter=filter.sort(myorder), limit=1, skip=skip
+            query, sort=filter.sort(myorder), limit=1, skip=skip
         ).addCallback(ok)
 
     def count(self, filename):
@@ -223,7 +223,7 @@ class GridFS(object):
             return GridOut(self.__collection, doc)
 
         return self.__files.find_one(
-            {"filename": filename}, filter=filter.sort(DESCENDING("uploadDate"))
+            {"filename": filename}, sort=filter.sort(DESCENDING("uploadDate"))
         ).addCallback(ok)
 
     # TODO add optional safe mode for chunk removal?
@@ -245,8 +245,8 @@ class GridFS(object):
         """
         return defer.DeferredList(
             [
-                self.__files.remove({"_id": file_id}, safe=True),
-                self.__chunks.remove({"files_id": file_id}),
+                self.__files.delete_one({"_id": file_id}),
+                self.__chunks.delete_many({"files_id": file_id}),
             ]
         )
 

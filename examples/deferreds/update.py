@@ -17,7 +17,7 @@ import txmongo
 def updateData(ignored, conn):
     print("updating data...")
     collection = conn.foo.test
-    d = collection.update({"foo": "bar"}, {"$set": {"name": "jane doe"}}, safe=True)
+    d = collection.update_one({"foo": "bar"}, {"$set": {"name": "jane doe"}})
     d.addErrback(log.err)
     return d
 
@@ -25,7 +25,7 @@ def updateData(ignored, conn):
 def insertData(conn):
     print("inserting data...")
     collection = conn.foo.test
-    d = collection.insert({"foo": "bar", "name": "john doe"}, safe=True)
+    d = collection.insert_one({"foo": "bar", "name": "john doe"})
     d.addErrback(log.err)
     d.addCallback(updateData, conn)
     return d
