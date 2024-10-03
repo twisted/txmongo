@@ -26,6 +26,8 @@
   - Check circular references by disabling gc and measuring len(gc.get_objects()) ?
 - Either implement readPreference support or document `flags` parameter in `find*` methods
 - Check coverage and add tests if needed
+- ismaster is deprecated, we should use hello command instead. But it seems to be supported
+  even in 8.0, so it isn't urgent.
 
 ## Prior art
 - https://github.com/twisted/txmongo/pull/262

@@ -15,8 +15,8 @@ from twisted.internet.protocol import ClientFactory, ReconnectingClientFactory
 from twisted.python import log
 
 from txmongo.database import Database
-from txmongo.protocol import MongoProtocol, Query
-from txmongo.utils import get_err, timeout
+from txmongo.protocol import MongoProtocol
+from txmongo.utils import get_err
 
 DEFAULT_MAX_BSON_SIZE = 16777216
 DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
@@ -75,12 +75,6 @@ class _Connection(ReconnectingClientFactory):
         except Exception as e:
             proto.fail(e)
 
-    @staticmethod
-    @timeout
-    def __send_ismaster(proto, **kwargs):
-        query = Query(collection="admin.$cmd", query={"ismaster": 1})
-        return proto.send_QUERY(query)
-
     @defer.inlineCallbacks
     def configure(self, proto: MongoProtocol):
         """
@@ -93,17 +87,9 @@ class _Connection(ReconnectingClientFactory):
         if not proto:
             defer.returnValue(None)
 
-        reply = yield self.__send_ismaster(proto, timeout=self.initialDelay)
-
         # Handle the reply from the "ismaster" query. The reply contains
         # configuration information about the peer.
-
-        # Make sure we got a result document.
-        if len(reply.documents) != 1:
-            raise OperationFailure("TxMongo: invalid document length.")
-
-        # Get the configuration document from the reply.
-        config = reply.documents[0].decode()
+        config = yield proto.send_op_query_command("admin", {"ismaster": 1})
 
         # Make sure the command was successful.
         if not config.get("ok"):
@@ -272,7 +258,7 @@ class ConnectionPool:
         ssl_context_factory=None,
         ping_interval=10,
         ping_timeout=10,
-        **kwargs
+        **kwargs,
     ):
         assert isinstance(uri, str)
         assert isinstance(pool_size, int)
@@ -511,9 +497,9 @@ class _PingerProtocol(MongoProtocol):
 
         timeout_call = reactor.callLater(self.timeout, on_timeout)
 
-        self.send_QUERY(
-            Query(collection="admin.$cmd", query={"ismaster": 1})
-        ).addCallbacks(on_ok, on_fail)
+        self.send_op_query_command("admin", {"ismaster": 1}).addCallbacks(
+            on_ok, on_fail
+        )
 
     def connectionMade(self):
         MongoProtocol.connectionMade(self)
