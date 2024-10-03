@@ -72,14 +72,13 @@ class Database:
             command = {command: value}
         if codec_options is None:
             codec_options = self.codec_options
-        options = kwargs.copy()
-        command.update(options)
+        command.update(kwargs.copy())
         command["$db"] = self.name
 
         proto = yield self.connection.getprotocol()
         check_deadline(_deadline)
 
-        reply = yield proto.send_simple_MSG(command, codec_options)
+        reply = yield proto.send_simple_msg(command, codec_options)
         if check:
             msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(
                 repr(command), self

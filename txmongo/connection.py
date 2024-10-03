@@ -16,7 +16,7 @@ from twisted.python import log
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol
-from txmongo.utils import get_err
+from txmongo.utils import get_err, timeout
 
 DEFAULT_MAX_BSON_SIZE = 16777216
 DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
@@ -75,6 +75,11 @@ class _Connection(ReconnectingClientFactory):
         except Exception as e:
             proto.fail(e)
 
+    @staticmethod
+    @timeout
+    def __send_ismaster(proto, _deadline):
+        return proto.send_op_query_command("admin", {"ismaster": 1})
+
     @defer.inlineCallbacks
     def configure(self, proto: MongoProtocol):
         """
@@ -85,11 +90,11 @@ class _Connection(ReconnectingClientFactory):
         """
 
         if not proto:
-            defer.returnValue(None)
+            return None
 
         # Handle the reply from the "ismaster" query. The reply contains
         # configuration information about the peer.
-        config = yield proto.send_op_query_command("admin", {"ismaster": 1})
+        config = yield self.__send_ismaster(proto, timeout=self.initialDelay)
 
         # Make sure the command was successful.
         if not config.get("ok"):

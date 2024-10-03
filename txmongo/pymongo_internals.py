@@ -1,28 +1,17 @@
-from typing import Mapping, Any, Optional, MutableMapping
+from typing import Any, Mapping, MutableMapping, Optional
 
 from pymongo.errors import (
     CursorNotFound,
     DuplicateKeyError,
     ExecutionTimeout,
+    NotPrimaryError,
     OperationFailure,
     WriteConcernError,
     WriteError,
     WTimeoutError,
 )
 
-from txmongo._bulk import (
-    _Run,
-    _INSERT,
-    _UPDATE,
-    _DELETE,
-)
-
-try:
-    from pymongo.errors import NotPrimaryError
-except ImportError:
-    # For pymongo < 3.12
-    from pymongo.errors import NotMasterError as NotPrimaryError
-
+from txmongo._bulk import _DELETE, _INSERT, _UPDATE, _Run
 
 # Copied from pymongo/helpers.py:32 at commit d7d94b2776098dba32686ddf3ada1f201172daaf
 

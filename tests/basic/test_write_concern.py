@@ -36,7 +36,7 @@ class TestWriteConcern(unittest.TestCase):
     @contextmanager
     def assert_called_with_write_concern(self, write_concern: WriteConcern):
         with patch.object(
-            MongoProtocol, "send_MSG", side_effect=MongoProtocol.send_MSG, autospec=True
+            MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
         ) as mock:
             yield
 

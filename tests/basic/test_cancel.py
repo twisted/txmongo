@@ -1,6 +1,7 @@
 import struct
 from unittest.mock import Mock
 
+import bson
 from pymongo.uri_parser import parse_uri
 from twisted.internet import defer, reactor
 from twisted.test import proto_helpers
@@ -42,16 +43,12 @@ class TestCancelParts(unittest.TestCase):
         proto = MongoProtocol()
         proto.makeConnection(tr)
 
-        d = proto.send_QUERY(Query(query={"x": 42}))
+        d = proto.send_query(Query(query=bson.encode({"x": 42})))
         d.cancel()
 
         with AssertCallbackNotCalled(d):
-            reply = Reply(response_to=1, documents=[{"x": 42}])
-            reply_bin = struct.pack("<iiiiqii", 1, *reply[2:8]) + b"".join(
-                reply.documents
-            )
-            reply_bin = struct.pack("<i", len(reply_bin) + 4) + reply_bin
-            proto.dataReceived(reply_bin)
+            reply = Reply(response_to=1, documents=[bson.encode({"x": 42})])
+            proto.dataReceived(reply.encode(1))
 
         self.failureResultOf(d, defer.CancelledError)
 

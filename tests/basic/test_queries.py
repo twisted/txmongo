@@ -12,8 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from unittest.mock import patch
 
-from bson import BSON, CodecOptions, ObjectId
+import bson
+from bson import CodecOptions, ObjectId
 from bson.son import SON
 from pymongo.collection import ReturnDocument
 from pymongo.errors import (
@@ -30,12 +32,11 @@ from pymongo.results import (
 )
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
-from twisted.trial import unittest
 
 import txmongo.filter as qf
 from tests.basic.utils import skip_for_mongodb_newer_than, skip_for_mongodb_older_than
 from tests.utils import SingleCollectionTest
-from txmongo.protocol import MongoClientProtocol
+from txmongo.protocol import MongoProtocol
 
 
 class _CallCounter:
@@ -150,7 +151,7 @@ class TestMongoQueries(SingleCollectionTest):
     @defer.inlineCallbacks
     def test_CursorClosing(self):
         # Calculate number of objects in 4mb batch
-        obj_count_4mb = 4 * 1024**2 // len(BSON.encode(self.__make_big_object())) + 1
+        obj_count_4mb = 4 * 1024**2 // len(bson.encode(self.__make_big_object())) + 1
 
         first_batch = 5
         yield self.coll.insert_many(
@@ -165,7 +166,7 @@ class TestMongoQueries(SingleCollectionTest):
     @defer.inlineCallbacks
     def test_CursorClosingWithCursor(self):
         # Calculate number of objects in 4mb batch
-        obj_count_4mb = 4 * 1024**2 // len(BSON.encode(self.__make_big_object())) + 1
+        obj_count_4mb = 4 * 1024**2 // len(bson.encode(self.__make_big_object())) + 1
 
         first_batch = 5
         yield self.coll.insert_many(
@@ -181,33 +182,6 @@ class TestMongoQueries(SingleCollectionTest):
         self.assertEqual(len(result), 5)
 
         yield self.__check_no_open_cursors()
-
-    @defer.inlineCallbacks
-    def test_GetMoreCount(self):
-        counter = _CallCounter(MongoClientProtocol.send_GETMORE)
-        self.patch(MongoClientProtocol, "send_GETMORE", counter)
-
-        yield self.coll.insert_many([{"x": 42} for _ in range(20)])
-        result = yield self.coll.find({}, limit=10)
-
-        self.assertEqual(len(result), 10)
-        self.assertEqual(counter.call_count, 0)
-
-    @defer.inlineCallbacks
-    def test_GetMoreCountWithCursor(self):
-        counter = _CallCounter(MongoClientProtocol.send_GETMORE)
-        self.patch(MongoClientProtocol, "send_GETMORE", counter)
-
-        yield self.coll.insert_many([{"x": 42} for _ in range(20)])
-
-        result = []
-        docs, dfr = yield self.coll.find_with_cursor({}, limit=5)
-        while docs:
-            result.extend(docs)
-            docs, dfr = yield dfr
-
-        self.assertEqual(len(result), 5)
-        self.assertEqual(counter.call_count, 0)
 
     @defer.inlineCallbacks
     def test_AsClassCodecOption(self):
@@ -636,8 +610,23 @@ class TestInsertMany(SingleCollectionTest):
         self.assertEqual(result.inserted_ids, list(range(5)))
         found = yield self.coll.find()
         self.assertEqual(len(found), 5)
-        total_size = sum(len(BSON.encode(doc)) for doc in found)
+        total_size = sum(len(bson.encode(doc)) for doc in found)
         self.assertGreater(total_size, 40 * 1024**2)
+
+    @defer.inlineCallbacks
+    def test_small_and_huge(self):
+        small = {"x": 42}
+        huge = {"y": "a" * (16 * 1024 * 1024 - 100)}
+
+        # This call will trigger ismaster which we don't want to include in call count
+        yield self.coll.count()
+
+        with patch.object(
+            MongoProtocol, "_send", side_effect=MongoProtocol._send, autospec=True
+        ) as mock:
+            result = yield self.coll.insert_many([small, huge])
+        mock.assert_called_once()
+        self.assertEqual(len(result.inserted_ids), 2)
 
 
 class TestUpdateOne(SingleCollectionTest):
