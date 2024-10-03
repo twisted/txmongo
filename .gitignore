@@ -10,6 +10,7 @@ venv*/
 docs/build/
 _trial_temp/
 _trial_temp_*
+_trial_temp-*
 txmongo.egg-info
 .idea/
 dist/
