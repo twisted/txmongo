@@ -480,16 +480,15 @@ class Collection:
                 flags,
             )
 
-            return proto.send_MSG(
-                Msg(body=bson.encode(cmd, codec_options=codec_options))
-            ).addCallback(after_reply, after_reply, proto)
+            return proto.send_simple_MSG(cmd, codec_options).addCallback(
+                after_reply, after_reply, proto
+            )
 
         # this_func argument is just a reference to after_reply function itself.
         # after_reply can reference to itself directly but this will create a circular
         # reference between closure and function object which will add unnecessary
         # work for GC.
-        def after_reply(response, this_func, proto, fetched=0):
-            reply = bson.decode(response.body, codec_options=codec_options)
+        def after_reply(reply, this_func, proto, fetched=0):
             try:
                 check_deadline(_deadline)
             except Exception:
@@ -546,9 +545,7 @@ class Collection:
                 if batch_size:
                     get_more["batchSize"] = batch_size
 
-                next_reply = proto.send_MSG(
-                    Msg(body=bson.encode(get_more, codec_options=codec_options))
-                )
+                next_reply = proto.send_simple_MSG(get_more, codec_options)
                 next_reply.addCallback(this_func, this_func, proto, fetched)
                 return out, next_reply
 

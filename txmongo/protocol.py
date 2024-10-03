@@ -24,7 +24,8 @@ from hashlib import sha1
 from random import SystemRandom
 from typing import Dict, List
 
-from bson import BSON, SON, Binary
+import bson
+from bson import BSON, SON, Binary, CodecOptions
 from pymongo import auth
 from pymongo.errors import (
     AutoReconnect,
@@ -34,6 +35,7 @@ from pymongo.errors import (
     OperationFailure,
 )
 from twisted.internet import defer, error, protocol
+from twisted.internet.defer import inlineCallbacks
 from twisted.python import failure, log
 
 from txmongo.utils import get_err
@@ -685,6 +687,18 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
             return defer.succeed(None)
         return self.__wait_for_reply_to(request_id)
 
+    def send_simple_MSG(
+        self, body: dict, codec_options: CodecOptions
+    ) -> defer.Deferred[dict]:
+        def on_response(response: Msg):
+            reply = bson.decode(response.body, codec_options)
+            for key, bin_docs in msg.payload.items():
+                reply[key] = [bson.decode(doc, codec_options) for doc in bin_docs]
+            return reply
+
+        msg = Msg(body=bson.encode(body, codec_options=codec_options))
+        return self.send_MSG(msg).addCallback(on_response)
+
     def handle_REPLY(self, request):
         if request.response_to in self.__deferreds:
             df = self.__deferreds.pop(request.response_to)
@@ -717,33 +731,11 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         log.err(str(reason))
         self.transport.loseConnection()
 
-    def get_last_error(self, db, **options):
-        command = {"getlasterror": 1, **options}
-        db = "%s.$cmd" % db.split(".", 1)[0]
-
-        def on_reply(reply):
-            assert len(reply.documents) == 1
-
-            document = reply.documents[0].decode()
-            err = get_err(document, None)
-            code = document.get("code", None)
-
-            if err is not None:
-                if code == 11000:
-                    raise DuplicateKeyError(err, code=code)
-                else:
-                    raise OperationFailure(err, code=code)
-
-            return document
-
-        query = Query(collection=db, query=command)
-        return self.send_QUERY(query).addCallback(on_reply)
-
     def set_wire_versions(self, min_wire_version, max_wire_version):
         self.min_wire_version = min_wire_version
         self.max_wire_version = max_wire_version
 
-    def __run_command(self, database, query):
+    def send_op_query_command(self, database, query):
         cmd_collection = str(database) + ".$cmd"
         return self.send_QUERY(
             Query(collection=cmd_collection, query=query)
@@ -766,7 +758,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 ("payload", Binary(b"n,," + first_bare)),
             ]
         )
-        result = yield self.__run_command(database_name, cmd)
+        result = yield self.send_op_query_command(database_name, cmd)
 
         server_first = result["payload"]
         parsed = auth._parse_scram_response(server_first)
@@ -804,7 +796,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                 ("payload", Binary(client_final)),
             ]
         )
-        result = yield self.__run_command(database_name, cmd)
+        result = yield self.send_op_query_command(database_name, cmd)
 
         if not result["ok"]:
             raise MongoAuthenticationError("TxMongo: authentication failed.")
@@ -825,7 +817,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
                     ("payload", Binary(b"")),
                 ]
             )
-            result = yield self.__run_command(database_name, cmd)
+            result = yield self.send_op_query_command(database_name, cmd)
             if not result["done"]:
                 raise MongoAuthenticationError(
                     "TxMongo: SASL conversation failed to complete."
@@ -836,7 +828,7 @@ class MongoProtocol(MongoServerProtocol, MongoClientProtocol):
         query = SON(
             [("authenticate", 1), ("mechanism", "MONGODB-X509"), ("user", username)]
         )
-        result = yield self.__run_command("$external", query)
+        result = yield self.send_op_query_command("$external", query)
         if not result["ok"]:
             raise MongoAuthenticationError(result["errmsg"])
         defer.returnValue(result)
