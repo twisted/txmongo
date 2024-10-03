@@ -17,7 +17,7 @@ def example():
     foo = mongo.foo  # `foo` database
     test = foo.test  # `test` collection
 
-    result = yield test.drop(safe=True)
+    result = yield test.drop()
     print(result)
 
 

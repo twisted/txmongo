@@ -93,7 +93,7 @@ class TestMongoObjects(unittest.TestCase):
 
         # insert
         doc = {"foo": "bar", "items": [1, 2, 3]}
-        yield test.insert(doc, safe=True)
+        yield test.insert_one(doc)
         result = yield test.find_one(doc)
         self.assertEqual("_id" in result, True)
         self.assertEqual(result["foo"], "bar")
@@ -101,19 +101,19 @@ class TestMongoObjects(unittest.TestCase):
 
         # insert preserves object id
         doc.update({"_id": objectid.ObjectId()})
-        yield test.insert(doc, safe=True)
+        yield test.insert_one(doc)
         result = yield test.find_one(doc)
         self.assertEqual(result.get("_id"), doc.get("_id"))
         self.assertEqual(result["foo"], "bar")
         self.assertEqual(result["items"], [1, 2, 3])
 
         # update
-        yield test.update({"_id": result["_id"]}, {"$set": {"one": "two"}}, safe=True)
+        yield test.update_one({"_id": result["_id"]}, {"$set": {"one": "two"}})
         result = yield test.find_one({"_id": result["_id"]})
         self.assertEqual(result["one"], "two")
 
         # delete
-        yield test.remove(result["_id"], safe=True)
+        yield test.delete_one({"_id": result["_id"]})
 
         # disconnect
         yield conn.disconnect()
@@ -128,7 +128,7 @@ class TestMongoObjects(unittest.TestCase):
 
         # insert with specific timestamp
         doc1 = {"_id": objectid.ObjectId(), "ts": timestamp.Timestamp(1, 2)}
-        yield test.insert(doc1, safe=True)
+        yield test.insert_one(doc1)
 
         result = yield test.find_one(doc1)
         self.assertEqual(result.get("ts").time, 1)
@@ -136,18 +136,18 @@ class TestMongoObjects(unittest.TestCase):
 
         # insert with specific timestamp
         doc2 = {"_id": objectid.ObjectId(), "ts": timestamp.Timestamp(2, 1)}
-        yield test.insert(doc2, safe=True)
+        yield test.insert_one(doc2)
 
         # the objects come back sorted by ts correctly.
         # (test that we stored inc/time in the right fields)
-        result = yield test.find(filter=qf.sort(qf.ASCENDING("ts")))
+        result = yield test.find(sort=qf.sort(qf.ASCENDING("ts")))
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["_id"], doc1["_id"])
         self.assertEqual(result[1]["_id"], doc2["_id"])
 
         # insert with null timestamp
         doc3 = {"_id": objectid.ObjectId(), "ts": timestamp.Timestamp(0, 0)}
-        yield test.insert(doc3, safe=True)
+        yield test.insert_one(doc3)
 
         # time field loaded correctly
         result = yield test.find_one(doc3["_id"])
@@ -155,9 +155,8 @@ class TestMongoObjects(unittest.TestCase):
         self.assertTrue(now - 2 <= result["ts"].time <= now)
 
         # delete
-        yield test.remove(doc1["_id"], safe=True)
-        yield test.remove(doc2["_id"], safe=True)
-        yield test.remove(doc3["_id"], safe=True)
+        for doc in [doc1, doc2, doc3]:
+            yield test.delete_one({"_id": doc["_id"]})
 
         # disconnect
         yield conn.disconnect()

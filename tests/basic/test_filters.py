@@ -31,7 +31,7 @@ class TestMongoFilters(unittest.TestCase):
         self.conn = txmongo.MongoConnection(mongo_host, mongo_port)
         self.db = self.conn.mydb
         self.coll = self.db.mycol
-        yield self.coll.insert({"x": 42})
+        yield self.coll.insert_one({"x": 42})
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -43,22 +43,22 @@ class TestMongoFilters(unittest.TestCase):
     def test_Hint(self):
         # find() should fail with 'bad hint' if hint specifier works correctly
         self.assertFailure(
-            self.coll.find({}, filter=qf.hint([("x", 1)])), OperationFailure
+            self.coll.find({}, sort=qf.hint([("x", 1)])), OperationFailure
         )
 
         # create index and test it is honoured
         yield self.coll.create_index(qf.sort(qf.ASCENDING("x")), name="test_index")
-        found_1 = yield self.coll.find({}, filter=qf.hint([("x", 1)]))
-        found_2 = yield self.coll.find({}, filter=qf.hint(qf.ASCENDING("x")))
-        found_3 = yield self.coll.find({}, filter=qf.hint("test_index"))
+        found_1 = yield self.coll.find({}, sort=qf.hint([("x", 1)]))
+        found_2 = yield self.coll.find({}, sort=qf.hint(qf.ASCENDING("x")))
+        found_3 = yield self.coll.find({}, sort=qf.hint("test_index"))
         self.assertTrue(found_1 == found_2 == found_3)
 
         # find() should fail with 'bad hint' if hint specifier works correctly
         self.assertFailure(
-            self.coll.find({}, filter=qf.hint(["test_index", 1])), OperationFailure
+            self.coll.find({}, sort=qf.hint(["test_index", 1])), OperationFailure
         )
         self.assertFailure(
-            self.coll.find({}, filter=qf.hint(qf.ASCENDING("test_index"))),
+            self.coll.find({}, sort=qf.hint(qf.ASCENDING("test_index"))),
             OperationFailure,
         )
 
@@ -98,7 +98,7 @@ class TestMongoFilters(unittest.TestCase):
         # Checking that `optionname` appears in profiler log with specified value
 
         yield self.db.command("profile", 2)
-        yield self.coll.find({}, filter=filter)
+        yield self.coll.find({}, sort=filter)
         yield self.db.command("profile", 0)
 
         if (yield self.__3_6_or_higher()):
@@ -120,7 +120,7 @@ class TestMongoFilters(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Explain(self):
-        result = yield self.coll.find({}, filter=qf.explain())
+        result = yield self.coll.find({}, sort=qf.explain())
         self.assertTrue("executionStats" in result[0] or "nscanned" in result[0])
 
     @defer.inlineCallbacks
@@ -133,9 +133,7 @@ class TestMongoFilters(unittest.TestCase):
         comment = "hello world"
 
         yield self.db.command("profile", 2)
-        yield self.coll.find(
-            {}, filter=qf.sort(qf.ASCENDING("x")) + qf.comment(comment)
-        )
+        yield self.coll.find({}, sort=qf.sort(qf.ASCENDING("x")) + qf.comment(comment))
         yield self.db.command("profile", 0)
 
         if (yield self.__3_6_or_higher()):

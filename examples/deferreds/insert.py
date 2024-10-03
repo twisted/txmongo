@@ -34,7 +34,7 @@ def insertData(coll):
     # the success or failure of each deferred result
     deferreds = []
     for x in range(10000):
-        d = coll.insert({"something": x * time.time()}, safe=True)
+        d = coll.insert_one({"something": x * time.time()})
         deferreds.append(d)
     return defer.DeferredList(deferreds)
 

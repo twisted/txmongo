@@ -61,7 +61,7 @@ class IndexHandler(BaseHandler, Resource):
 
     def render_POST(self, request):
         name = request.args["name"][0]
-        self.db.insert({"name": name})
+        self.db.insert_one({"name": name})
         return "ok\n"
 
 
@@ -80,12 +80,12 @@ class XmlrpcHandler(BaseHandler, xmlrpc.XMLRPC):
 
     @defer.inlineCallbacks
     def xmlrpc_insert(self, doc):
-        result = yield self.db.insert(doc, safe=True)
+        result = yield self.db.insert_one(doc)
         defer.returnValue(repr(result))
 
     @defer.inlineCallbacks
     def xmlrpc_update(self, spec, doc):
-        result = yield self.db.update(spec, doc, safe=True)
+        result = yield self.db.update_one(spec, doc)
         defer.returnValue(repr(result))
 
 

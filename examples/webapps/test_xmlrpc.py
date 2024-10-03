@@ -17,6 +17,6 @@
 import xmlrpclib
 
 srv = xmlrpclib.Server("http://localhost:8888/xmlrpc")
-print("insert:", srv.insert({"name": "foobar"}))
-print("update:", srv.update({"name": "foo"}, {"name": "oof"}))
+print("insert:", srv.insert_one({"name": "foobar"}))
+print("update:", srv.update_one({"name": "foo"}, {"name": "oof"}))
 print("find:", srv.find({"name": "oof"}))

@@ -177,7 +177,7 @@ class GridIn:
             self._position += len(data)
 
         # Continue writing after the insert completes (non-blocking)
-        return self._chunks.insert(chunk).addCallback(ok)
+        return self._chunks.insert_one(chunk).addCallback(ok)
 
     def __flush_buffer(self):
         """Flush the buffer contents out to a chunk."""
@@ -195,7 +195,7 @@ class GridIn:
             self._file["md5"] = md5
             self._file["length"] = self._position
             self._file["uploadDate"] = datetime.datetime.utcnow()
-            return self._coll.files.insert(self._file)
+            return self._coll.files.insert_one(self._file)
 
         return (
             self.__flush_buffer()

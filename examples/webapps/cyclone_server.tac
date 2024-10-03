@@ -33,7 +33,7 @@ class IndexHandler(cyclone.web.RequestHandler):
         name = self.get_argument("name")
         try:
             result = yield self.settings.db.find({"name": name})
-        except (Exception, e):
+        except Exception as e:
             self.write("find failed: %s\n" % str(e))
         else:
             self.write("result(s): %s\n" % repr(result))
@@ -41,7 +41,7 @@ class IndexHandler(cyclone.web.RequestHandler):
 
     def post(self):
         name = self.get_argument("name")
-        self.settings.db.insert({"name": name})
+        self.settings.db.insert_one({"name": name})
         self.write("ok\n")
 
 
@@ -55,13 +55,13 @@ class XmlrpcHandler(cyclone.web.XmlrpcRequestHandler):
     @defer.inlineCallbacks
     @cyclone.web.asynchronous
     def xmlrpc_insert(self, doc):
-        result = yield self.settings.db.insert(doc, safe=True)
+        result = yield self.settings.db.insert_one(doc)
         defer.returnValue(repr(result))
 
     @defer.inlineCallbacks
     @cyclone.web.asynchronous
     def xmlrpc_update(self, spec, doc):
-        result = yield self.settings.db.update(spec, doc, safe=True)
+        result = yield self.settings.db.update_one(spec, doc)
         defer.returnValue(repr(result))
 
 

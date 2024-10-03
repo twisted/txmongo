@@ -12,13 +12,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import copy
+from contextlib import contextmanager
+from unittest import SkipTest
 from unittest.mock import patch
 
+import bson
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 from twisted.trial import unittest
 
+from txmongo import MongoProtocol
 from txmongo.collection import Collection
 from txmongo.connection import ConnectionPool, MongoConnection
 from txmongo.database import Database
@@ -29,8 +33,17 @@ mongo_port = 27017
 
 class TestWriteConcern(unittest.TestCase):
 
-    def mock_gle(self):
-        return patch("txmongo.protocol.MongoProtocol.get_last_error")
+    @contextmanager
+    def assert_called_with_write_concern(self, write_concern: WriteConcern):
+        with patch.object(
+            MongoProtocol, "send_MSG", side_effect=MongoProtocol.send_MSG, autospec=True
+        ) as mock:
+            yield
+
+            mock.assert_called_once()
+            msg = mock.call_args[0][1]
+            cmd = bson.decode(msg.body)
+            self.assertEqual(cmd["writeConcern"], write_concern.document)
 
     @defer.inlineCallbacks
     def test_Priority(self):
@@ -41,98 +54,54 @@ class TestWriteConcern(unittest.TestCase):
         conn = MongoConnection(mongo_host, mongo_port, w=1, wtimeout=500)
 
         try:
-            with self.mock_gle() as mock:
-                yield conn.mydb.mycol.insert({"x": 42})
-                mock.assert_called_once_with("mydb", w=1, wtimeout=500)
+            with self.assert_called_with_write_concern(WriteConcern(w=1, wtimeout=500)):
+                yield conn.mydb.mycol.insert_one({"x": 42})
 
             db_w0 = Database(conn, "mydb", write_concern=WriteConcern(w=0))
-            with self.mock_gle() as mock:
-                yield db_w0.mycol.insert({"x": 42})
-                self.assertFalse(mock.called)
+            with self.assert_called_with_write_concern(WriteConcern(w=0)):
+                yield db_w0.mycol.insert_one({"x": 42})
 
-            coll = Collection(db_w0, "mycol", write_concern=WriteConcern(w=2))
-            with self.mock_gle() as mock:
-                yield coll.insert({"x": 42})
-                mock.assert_called_once_with("mydb", w=2)
+            coll = Collection(
+                db_w0, "mycol", write_concern=WriteConcern(w=1, wtimeout=700)
+            )
+            with self.assert_called_with_write_concern(WriteConcern(w=1, wtimeout=700)):
+                yield coll.insert_one({"x": 42})
 
-            with self.mock_gle() as mock:
-                yield coll.insert({"x": 42}, j=True)
-                mock.assert_called_once_with("mydb", j=True)
+            with self.assert_called_with_write_concern(WriteConcern(j=True)):
+                yield coll.with_options(write_concern=WriteConcern(j=True)).insert_one(
+                    {"x": 42}
+                )
 
         finally:
             yield conn.mydb.mycol.drop()
             yield conn.disconnect()
 
     @defer.inlineCallbacks
-    def test_Safe(self):
-        conn = MongoConnection(mongo_host, mongo_port, w=1, wtimeout=500)
-        coll = conn.mydb.mycol
-
-        try:
-            with self.mock_gle() as mock:
-                yield coll.insert({"x": 42})
-                mock.assert_called_once_with("mydb", w=1, wtimeout=500)
-
-            with self.mock_gle() as mock:
-                yield coll.insert({"x": 42}, safe=False)
-                self.assertFalse(mock.called)
-
-            with self.mock_gle() as mock:
-                yield coll.insert({"x": 42}, safe=True)
-                mock.assert_called_once_with("mydb", w=1, wtimeout=500)
-        finally:
-            yield coll.drop()
-            yield conn.disconnect()
-
-    @defer.inlineCallbacks
-    def test_SafeWithDefaultW0(self):
-        conn = MongoConnection(mongo_host, mongo_port, w=0)
-        coll = conn.mydb.mycol
-
-        try:
-            with self.mock_gle() as mock:
-                yield coll.insert({"x": 42})
-                self.assertFalse(mock.called)
-
-            with self.mock_gle() as mock:
-                yield coll.insert({"x": 42}, safe=False)
-                self.assertFalse(mock.called)
-
-            with self.mock_gle() as mock:
-                yield coll.insert({"x": 42}, safe=True)
-                mock.assert_called_once_with("mydb")
-        finally:
-            yield coll.drop()
-            yield conn.disconnect()
-
-    @defer.inlineCallbacks
-    def __test_operation(self, coll, method, *args):
-        with self.mock_gle() as mock:
-            yield getattr(coll, method)(*args)
-            self.assertFalse(mock.called)
-
-        with self.mock_gle() as mock:
-            yield getattr(coll, method)(*args, safe=True)
-            mock.assert_called_once_with("mydb")
-
-        with self.mock_gle() as mock:
-            yield getattr(coll, method)(*args, safe=False)
-            self.assertFalse(mock.called)
-
-        with self.mock_gle() as mock:
-            yield getattr(coll, method)(*args, w=1)
-            mock.assert_called_once_with("mydb", w=1)
-
-    @defer.inlineCallbacks
     def test_AllOperations(self):
-        conn = MongoConnection(mongo_host, mongo_port, w=0)
+        # Test that all listed methods pass write concern to the server
+
+        conn = MongoConnection(mongo_host, mongo_port, w=1)
         coll = conn.mydb.mycol
 
+        methods = [
+            (Collection.insert_one, {"x": 42}),
+            (Collection.insert_many, [{"x": 42}]),
+            (Collection.update_one, {}, {"$set": {"x": 42}}),
+            (Collection.update_many, {}, {"$set": {"x": 42}}),
+            (Collection.replace_one, {}, {"x": 42}),
+            (Collection.delete_one, {}),
+            (Collection.delete_many, {}),
+        ]
+
         try:
-            yield self.__test_operation(coll, "insert", {"x": 42})
-            yield self.__test_operation(coll, "update", {}, {"x": 42})
-            yield self.__test_operation(coll, "save", {"x": 42})
-            yield self.__test_operation(coll, "remove", {})
+            for method, *args in methods:
+                with self.assert_called_with_write_concern(WriteConcern(w=1)):
+                    yield method(coll, *copy.deepcopy(args))
+                with self.assert_called_with_write_concern(WriteConcern(w=1, j=True)):
+                    yield method(
+                        coll.with_options(write_concern=WriteConcern(w=1, j=True)),
+                        *copy.deepcopy(args),
+                    )
         finally:
             yield coll.drop()
             yield conn.disconnect()
@@ -140,14 +109,17 @@ class TestWriteConcern(unittest.TestCase):
     @defer.inlineCallbacks
     def test_ConnectionUrlParams(self):
         conn = ConnectionPool(
-            "mongodb://{0}:{1}/?w=2&journal=true".format(mongo_host, mongo_port)
+            "mongodb://{0}:{1}/?w=1&journal=true&wtimeoutms=700".format(
+                mongo_host, mongo_port
+            )
         )
         coll = conn.mydb.mycol
 
         try:
-            with self.mock_gle() as mock:
-                yield coll.insert({"x": 42})
-                mock.assert_called_once_with("mydb", w=2, j=True)
+            with self.assert_called_with_write_concern(
+                WriteConcern(w=1, j=True, wtimeout=700)
+            ):
+                yield coll.insert_one({"x": 42})
         finally:
             yield coll.drop()
             yield conn.disconnect()

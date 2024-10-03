@@ -62,22 +62,20 @@ class TestMongoConnection(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_Timeout_and_Deadline(self):
-        yield self.named_conn.db.coll.insert({"x": 42}, safe=True, timeout=10)
-        yield self.named_conn.db.coll.insert({"x": 42}, safe=True, deadline=time() + 10)
+        yield self.named_conn.db.coll.insert_one({"x": 42}, timeout=10)
+        yield self.named_conn.db.coll.insert_one({"x": 42}, deadline=time() + 10)
 
         self.assertRaises(
             TimeExceeded,
-            self.named_conn.db.coll.insert,
+            self.named_conn.db.coll.insert_one,
             {"x": 42},
-            safe=True,
             deadline=time() - 10,
         )
 
         self.assertRaises(
             TimeExceeded,
-            self.named_conn.db.coll.insert,
+            self.named_conn.db.coll.insert_one,
             {"x": 42},
-            safe=True,
             timeout=-10,
         )
 
@@ -96,7 +94,7 @@ class TestDropDatabase(unittest.TestCase):
         self.conn = connection.ConnectionPool()
         self.db = self.conn.db
         self.coll = self.db.coll
-        yield self.coll.insert({"x": 42})
+        yield self.coll.insert_one({"x": 42})
         yield self.assert_coll_count(1)
 
     @defer.inlineCallbacks

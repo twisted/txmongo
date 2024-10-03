@@ -152,7 +152,7 @@ class TestReplicaSet(unittest.TestCase):
         conn = ConnectionPool(self.master_uri)
         try:
             coll = conn.db.coll
-            yield coll.insert({"x": 42}, safe=True)
+            yield coll.insert_one({"x": 42})
             result = yield coll.find_one()
             self.assertEqual(result["x"], 42)
         finally:
@@ -170,8 +170,7 @@ class TestReplicaSet(unittest.TestCase):
             server_status = yield conn.admin.command("serverStatus")
             _version = [int(part) for part in server_status["version"].split(".")]
 
-            expected_error = AutoReconnect if _version > [4, 2] else OperationFailure
-            yield self.assertFailure(conn.db.coll.insert({"x": 42}), expected_error)
+            yield self.assertFailure(conn.db.coll.insert_one({"x": 42}), AutoReconnect)
         finally:
             yield conn.disconnect()
 
@@ -193,7 +192,7 @@ class TestReplicaSet(unittest.TestCase):
         try:
             conn = ConnectionPool(self.master_with_guaranteed_write, max_delay=5)
 
-            yield conn.db.coll.insert({"x": 42}, safe=True)
+            yield conn.db.coll.insert_one({"x": 42})
 
             self.__mongod[0].kill(signal.SIGSTOP)
 
@@ -228,7 +227,7 @@ class TestReplicaSet(unittest.TestCase):
                 self.master_with_guaranteed_write, retry_delay=3, max_delay=5
             )
 
-            yield conn.db.coll.insert({"x": 42}, safe=True)
+            yield conn.db.coll.insert_one({"x": 42})
 
             yield self.__mongod[0].kill(signal.SIGSTOP)
             yield self.__sleep(0.2)
@@ -254,7 +253,7 @@ class TestReplicaSet(unittest.TestCase):
                 self.master_with_guaranteed_write, retry_delay=3, max_delay=5
             )
 
-            yield conn.db.coll.insert({"x": 42}, safe=True)
+            yield conn.db.coll.insert_one({"x": 42})
 
             yield self.__mongod[0].kill(signal.SIGSTOP)
             yield self.__sleep(0.2)
@@ -280,13 +279,13 @@ class TestReplicaSet(unittest.TestCase):
                 self.master_with_guaranteed_write, retry_delay=3, max_delay=5
             )
 
-            yield conn.db.coll.insert({"x": 42}, safe=True)
+            yield conn.db.coll.insert_one({"x": 42})
 
             yield self.__mongod[0].kill(signal.SIGSTOP)
 
             while True:
                 try:
-                    yield conn.db.coll.insert({"y": 42}, safe=True, timeout=2)
+                    yield conn.db.coll.insert_one({"y": 42}, timeout=2)
                     self.fail("TimeExceeded not raised!")
                 except TimeExceeded:
                     break  # this is what we should have returned
@@ -316,7 +315,7 @@ class TestReplicaSet(unittest.TestCase):
 
         @defer.inlineCallbacks
         def do_query():
-            yield conn.db.coll.insert({"x": 42})
+            yield conn.db.coll.insert_one({"x": 42})
             raise Exception("You shall not pass!")
 
         yield defer.DeferredList(
