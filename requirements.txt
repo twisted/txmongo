@@ -1,4 +1,4 @@
 Twisted~=24.7.0
-pymongo>=3.0,<4.9
+pymongo>=3.12,<4.9
 setuptools~=71.1.0
 -e .

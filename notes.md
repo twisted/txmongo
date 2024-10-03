@@ -14,20 +14,24 @@
 ## TODO
 - Check what are the other packages listed in tox.ini. Do we really need them?
   - Can the pinning versions of these packages reduce tox startup time?
-- Do we need OP_COMPRESSED?
-- Check if we need to block connection in case of MORE_TO_COME in response as RFC says
+- ~~Do we need OP_COMPRESSED?~~
+  - Not now, it can be done in additional PR
+- ~~Check if we need to block connection in case of MORE_TO_COME in response as RFC says~~
+  - No, because we don't use EXHAUST_ALLOWED flag yet
 - ~~Check Msg size against maxMessageSizeBytes~~
-- Implement missing test cases from [OP_MSG spec test plan](https://github.com/mongodb/specifications/blob/master/source/message/OP_MSG.md#test-plan)
-- Check using BSON() class. It's docstring says that using its method is slower than bson.encode/decode
-- What would we do with old style coll.update(), coll.insert(), coll.remove() methods?
-  - Maybe reimplement them using *_one/many counterparts?
-  - Or just remove them because they are deprecated for many years?
+- ~~Implement missing test cases from [OP_MSG spec test plan](https://github.com/mongodb/specifications/blob/master/source/message/OP_MSG.md#test-plan)~~
+- ~~Check using BSON() class. It's docstring says that using its method is slower than bson.encode/decode~~
+- ~~What would we do with old style coll.update(), coll.insert(), coll.remove() methods?~~
+  - ~~Maybe reimplement them using *_one/many counterparts?~~
+  - ~~Or just remove them because they are deprecated for many years?~~ Removed
 - Test that new implementation of TxMongo isn't worse than the old one in terms of memory usage
   - Check circular references by disabling gc and measuring len(gc.get_objects()) ?
 - Either implement readPreference support or document `flags` parameter in `find*` methods
 - Check coverage and add tests if needed
-- ismaster is deprecated, we should use hello command instead. But it seems to be supported
-  even in 8.0, so it isn't urgent.
+- ~~ismaster is deprecated, we should use hello command instead. But it seems to be supported
+  even in 8.0, so it isn't urgent.~~
+  - Not now
+- If we bump pymongo version to 3.12, we can remove conditional imports of NotPrimaryError
 
 ## Prior art
 - https://github.com/twisted/txmongo/pull/262
@@ -38,8 +42,8 @@
 - ~~Запускать тесты в Github Actions против разных версий twisted~~
 - ~~Добавить в тесты pymongo 3.12, 3.13, и пару последних веток 4.x~~
 - ~~Починить остальные несовместимости с pymongo 4~~
-- Реализовать поддержку OP_MSG-протокола (*)
-- Выпилить все старые протоколы, кроме OP_MSG (*)
+- ~~Реализовать поддержку OP_MSG-протокола (*)~~
+- ~~Выпилить все старые протоколы, кроме OP_MSG (*)~~
 - Добавить тесты против MongoDB 5.0+ (*)
 - Дропнуть совместимость с MongoDB <3.6 (*)
 

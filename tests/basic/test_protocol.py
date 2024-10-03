@@ -13,24 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from bson import BSON
-from twisted.internet import defer
+import bson
+from bson import ObjectId
 from twisted.trial import unittest
 
-from tests.utils import SingleCollectionTest
 from txmongo.protocol import (
-    DELETE_SINGLE_REMOVE,
-    UPDATE_MULTI,
-    UPDATE_UPSERT,
-    CursorNotFound,
-    Delete,
-    Getmore,
-    Insert,
-    KillCursors,
-    MongoClientProtocol,
+    OP_MSG_MORE_TO_COME,
     MongoDecoder,
+    MongoSenderProtocol,
+    Msg,
     Query,
-    Update,
+    Reply,
 )
 
 
@@ -48,85 +41,76 @@ class _FakeTransport:
 
 
 class TestMongoProtocol(unittest.TestCase):
-
-    def __test_encode_decode(self, request):
-        proto = MongoClientProtocol()
+    def _encode_decode(self, request):
+        proto = MongoSenderProtocol()
         proto.transport = _FakeTransport()
 
-        proto.send(request)
+        proto._send(request)
 
         decoder = MongoDecoder()
         decoder.feed(proto.transport.get_content())
-        decoded = next(decoder)
-
-        for field, dec_value, req_value in zip(request._fields, decoded, request):
-            # len and request_id are not filled in request object
-            if field not in ("len", "request_id"):
-                if isinstance(dec_value, bytes) and isinstance(req_value, str):
-                    dec_value = dec_value.decode()
-
-                self.assertEqual(dec_value, req_value)
+        return next(decoder)
 
     def test_EncodeDecodeQuery(self):
         request = Query(
             collection="coll",
             n_to_skip=123,
             n_to_return=456,
-            query=BSON.encode({"x": 42}),
-            fields=BSON.encode({"y": 1}),
+            query=bson.encode({"x": 42}),
+            fields=bson.encode({"y": 1}),
         )
-        self.__test_encode_decode(request)
 
-    def test_EncodeDecodeKillCursors(self):
-        request = KillCursors(cursors=[0x12345678, 0x87654321])
-        self.__test_encode_decode(request)
+        decoded = self._encode_decode(request)
 
-    def test_EncodeDecodeGetmore(self):
-        request = Getmore(collection="coll", cursor_id=0x12345678, n_to_return=5)
-        self.__test_encode_decode(request)
+        self.assertEqual(decoded.response_to, request.response_to)
+        self.assertEqual(decoded.flags, request.flags)
+        self.assertEqual(decoded.collection, request.collection)
+        self.assertEqual(decoded.n_to_skip, request.n_to_skip)
+        self.assertEqual(decoded.n_to_return, request.n_to_return)
+        self.assertEqual(decoded.query, request.query)
+        self.assertEqual(decoded.fields, request.fields)
 
-    def test_EncodeDecodeInsert(self):
-        request = Insert(collection="coll", documents=[BSON.encode({"x": 42})])
-        self.__test_encode_decode(request)
-
-    def test_EncodeDecodeUpdate(self):
-        request = Update(
-            flags=UPDATE_MULTI | UPDATE_UPSERT,
-            collection="coll",
-            selector=BSON.encode({"x": 42}),
-            update=BSON.encode({"$set": {"y": 123}}),
+    def test_EncodeDecodeReply(self):
+        request = Reply(
+            response_flags=123,
+            cursor_id=456,
+            starting_from=789,
+            documents=[bson.encode({"a": 1}), bson.encode({"b": 2})],
         )
-        self.__test_encode_decode(request)
 
-    def test_EncodeDecodeDelete(self):
-        request = Delete(
-            flags=DELETE_SINGLE_REMOVE,
-            collection="coll",
-            selector=BSON.encode({"x": 42}),
+        decoded = self._encode_decode(request)
+
+        self.assertEqual(decoded.response_to, request.response_to)
+        self.assertEqual(decoded.response_flags, request.response_flags)
+        self.assertEqual(decoded.cursor_id, request.cursor_id)
+        self.assertEqual(decoded.starting_from, request.starting_from)
+        self.assertEqual(decoded.documents, request.documents)
+
+    def test_EncodeDecodeMsg(self):
+        request = Msg(
+            response_to=123,
+            flag_bits=OP_MSG_MORE_TO_COME,
+            body=bson.encode({"a": 1, "$db": "dbname"}),
+            payload={
+                "documents": [
+                    bson.encode({"a": 1}),
+                    bson.encode({"a": 2}),
+                ],
+                "updates": [
+                    bson.encode({"$set": {"z": 1}}),
+                    bson.encode({"$set": {"z": 2}}),
+                ],
+                "deletes": [
+                    bson.encode({"_id": ObjectId()}),
+                    bson.encode({"_id": ObjectId()}),
+                ],
+            },
         )
-        self.__test_encode_decode(request)
 
+        decoded = self._encode_decode(request)
 
-class TestCursors(SingleCollectionTest):
-
-    @defer.inlineCallbacks
-    def test_CursorNotFound(self):
-
-        yield self.coll.insert_many([{"v": i} for i in range(140)])
-
-        protocol = yield self.conn.getprotocol()
-
-        query = Query(query={}, n_to_return=10, collection=str(self.coll))
-
-        query_result = yield protocol.send_QUERY(query)
-
-        cursor_id = query_result.cursor_id
-
-        yield protocol.send_KILL_CURSORS(KillCursors(cursors=[cursor_id]))
-
-        self.assertFailure(
-            protocol.send_GETMORE(
-                Getmore(collection=str(self.coll), cursor_id=cursor_id, n_to_return=10)
-            ),
-            CursorNotFound,
-        )
+        self.assertEqual(decoded.response_to, request.response_to)
+        self.assertEqual(decoded.opcode(), request.opcode())
+        self.assertEqual(decoded.flag_bits, request.flag_bits)
+        self.assertEqual(decoded.body, request.body)
+        self.assertEqual(decoded.payload, request.payload)

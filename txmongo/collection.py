@@ -420,7 +420,7 @@ class Collection:
         return cmd
 
     def __close_cursor_without_response(self, proto: MongoProtocol, cursor_id: int):
-        proto.send_MSG(
+        proto.send_msg(
             Msg(
                 flag_bits=OP_MSG_MORE_TO_COME,
                 body=bson.encode(
@@ -480,7 +480,7 @@ class Collection:
                 flags,
             )
 
-            return proto.send_simple_MSG(cmd, codec_options).addCallback(
+            return proto.send_simple_msg(cmd, codec_options).addCallback(
                 after_reply, after_reply, proto
             )
 
@@ -545,7 +545,7 @@ class Collection:
                 if batch_size:
                     get_more["batchSize"] = batch_size
 
-                next_reply = proto.send_simple_MSG(get_more, codec_options)
+                next_reply = proto.send_simple_msg(get_more, codec_options)
                 next_reply.addCallback(this_func, this_func, proto, fetched)
                 return out, next_reply
 
@@ -663,7 +663,7 @@ class Collection:
 
         proto = yield self._database.connection.getprotocol()
         check_deadline(_deadline)
-        response: Optional[Msg] = yield proto.send_MSG(msg)
+        response: Optional[Msg] = yield proto.send_msg(msg)
         if response:
             reply = bson.decode(response.body, codec_options=self.codec_options)
             _check_command_response(reply)
@@ -737,7 +737,7 @@ class Collection:
 
         proto = yield self._database.connection.getprotocol()
         check_deadline(_deadline)
-        response = yield proto.send_MSG(msg)
+        response = yield proto.send_msg(msg)
         reply = None
         if response:
             reply = bson.decode(response.body, codec_options=self.codec_options)
@@ -884,7 +884,7 @@ class Collection:
 
         proto = yield self._database.connection.getprotocol()
         check_deadline(_deadline)
-        response = yield proto.send_MSG(msg)
+        response = yield proto.send_msg(msg)
         reply = None
         if response:
             reply = bson.decode(response.body, codec_options=self.codec_options)
@@ -1223,7 +1223,7 @@ class Collection:
                 self.codec_options,
             ):
                 check_deadline(_deadline)
-                deferred = proto.send_MSG(msg)
+                deferred = proto.send_msg(msg)
                 if effective_write_concern.acknowledged:
                     deferred.addCallback(decode_response, self.codec_options)
                     if bulk.ordered:

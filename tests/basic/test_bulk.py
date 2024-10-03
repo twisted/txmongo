@@ -1,9 +1,8 @@
 from unittest.mock import patch
 
 import bson
-from bson import BSON
 from pymongo import InsertOne
-from pymongo.errors import BulkWriteError, OperationFailure
+from pymongo.errors import BulkWriteError, NotPrimaryError, OperationFailure
 from pymongo.operations import DeleteOne, ReplaceOne, UpdateMany, UpdateOne
 from pymongo.results import BulkWriteResult
 from pymongo.write_concern import WriteConcern
@@ -11,12 +10,6 @@ from twisted.internet import defer
 
 from tests.utils import SingleCollectionTest
 from txmongo.protocol import Msg, Reply
-
-try:
-    from pymongo.errors import NotPrimaryError
-except ImportError:
-    # For pymongo < 3.12
-    from pymongo.errors import NotMasterError as NotPrimaryError
 
 
 class TestArgsValidation(SingleCollectionTest):
@@ -264,7 +257,7 @@ class TestHuge(SingleCollectionTest):
         self.assertEqual((yield self.coll.count()), 5)
 
         docs = yield self.coll.find()
-        total_size = sum(len(BSON.encode(doc)) for doc in docs)
+        total_size = sum(len(bson.encode(doc)) for doc in docs)
         self.assertGreater(total_size, 40 * 1024**2)
 
 
@@ -289,7 +282,7 @@ class TestOperationFailure(SingleCollectionTest):
             )
 
         with patch(
-            "txmongo.protocol.MongoProtocol.send_MSG", side_effect=fake_send_query
+            "txmongo.protocol.MongoProtocol.send_msg", side_effect=fake_send_query
         ):
             yield self.assertFailure(
                 self.coll.bulk_write(
