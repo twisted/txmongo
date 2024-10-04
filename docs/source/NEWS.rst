@@ -1,11 +1,11 @@
 Changelog
 =========
 
-Release 24.0.0 (2024-10-01)
+Release 24.0.0 (2024-10-04)
 ---------------------------
 
 API Changes
-^^^^^^^^
+^^^^^^^^^^^
 
 - This is the last release that supports Python <3.8 and MongoDB <4.0
 - Collection methods `insert()`, `update()` and `remove()` are deprecated in favor of
@@ -14,14 +14,6 @@ API Changes
   in the next release.
 - `as_class` argument of `find()`, `find_with_cursor()` and `find_one()` is deprecated and will
   be removed in the next release.
-
-
-Release UPCOMING (yyyy-mm-dd)
------------------------------
-
-API Changes
-^^^^^^^^^^^
-
 - PyMongo 4+ is now supported. If you will migrate from PyMongo 3 to PyMongo 4, please be sure
   to check their PyMongo's guide because newer version has a number of incompatible changes.
 
