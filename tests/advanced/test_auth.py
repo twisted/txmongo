@@ -23,6 +23,7 @@ from twisted.internet import defer, ssl
 from twisted.internet.defer import TimeoutError
 from twisted.trial import unittest
 
+from tests.basic.utils import only_for_mongodb_older_than
 from tests.conf import MongoConf
 from tests.mongod import create_mongod
 from txmongo import connection
@@ -208,6 +209,11 @@ class TestMongoAuth(unittest.TestCase, MongoAuth):
 
     @defer.inlineCallbacks
     def test_AuthOnTwoDBsParallel(self):
+        if self.ismaster["maxWireVersion"] >= 17:
+            raise unittest.SkipTest(
+                "MongoDB>=6.0 doesn't allow multiple authentication"
+            )
+
         conn = self.__get_connection()
 
         try:
@@ -233,6 +239,11 @@ class TestMongoAuth(unittest.TestCase, MongoAuth):
 
     @defer.inlineCallbacks
     def test_AuthOnTwoDBsSequential(self):
+        if self.ismaster["maxWireVersion"] >= 17:
+            raise unittest.SkipTest(
+                "MongoDB>=6.0 doesn't allow multiple authentication"
+            )
+
         conn = self.__get_connection()
 
         try:

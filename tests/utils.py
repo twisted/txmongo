@@ -1,5 +1,3 @@
-import os
-
 from twisted.internet import defer
 from twisted.trial import unittest
 
@@ -19,7 +17,3 @@ class SingleCollectionTest(unittest.TestCase):
     def tearDown(self):
         yield self.coll.drop()
         yield self.conn.disconnect()
-
-
-def onGithub():
-    return os.getenv("GITHUB_ACTIONS") == "true"

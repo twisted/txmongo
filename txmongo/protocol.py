@@ -636,7 +636,7 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
                 ]
             )
             result = yield self.send_op_query_command(database_name, cmd)
-            if not result["done"]:
+            if not (result["ok"] and result["done"]):
                 raise MongoAuthenticationError(
                     "TxMongo: SASL conversation failed to complete."
                 )

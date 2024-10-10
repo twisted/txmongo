@@ -24,7 +24,7 @@ from twisted.internet import defer
 from twisted.trial import unittest
 
 import txmongo
-from tests.basic.utils import skip_for_mongodb_newer_than
+from tests.basic.utils import only_for_mongodb_older_than
 from txmongo import filter as qf
 from txmongo.collection import Collection
 
@@ -227,8 +227,8 @@ class TestIndexInfo(unittest.TestCase):
         self.assertEqual(index_info[ix]["key"], {"_fts": "text", "_ftsx": 1})
         self.assertEqual(index_info[ix]["weights"], {"title": 100, "summary": 20})
 
-    @skip_for_mongodb_newer_than(
-        [4, 9], "`GeoHaystack` indexes cannot be created in version >= 4.9"
+    @only_for_mongodb_older_than(
+        [5, 0], "`GeoHaystack` indexes cannot be created in version >= 5.0"
     )
     @defer.inlineCallbacks
     def test_index_haystack(self):
