@@ -34,7 +34,30 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.8', '3.12']
-        mongodb-version: ['4.2', '4.4', '5.0', '8.0']
+        mongodb-version: ['4.4', '5.0', '8.0']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MongoDB ${{ matrix.mongodb-version }}
+        run: |
+          wget -qO - https://www.mongodb.org/static/pgp/server-${{ matrix.mongodb-version }}.asc | sudo apt-key add -
+          echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/${{ matrix.mongodb-version }} multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-${{ matrix.mongodb-version }}.list
+          sudo apt-get update
+          sudo apt-get install -y --allow-downgrades mongodb-org-server
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install tox and any other packages
+        run: pip install tox
+      - name: Run advanced tests in tox
+        run: tox -f py${{ matrix.python-version }} advanced
+
+  advanced_4_2:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.12']
+        mongodb-version: ['4.2']
     steps:
       - uses: actions/checkout@v4
       - name: Install MongoDB ${{ matrix.mongodb-version }}
