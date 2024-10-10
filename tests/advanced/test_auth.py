@@ -100,16 +100,21 @@ class TestMongoAuth(unittest.TestCase, MongoAuth):
     @defer.inlineCallbacks
     def clean(self):
         try:
+            for login, password, db in [
+                (self.login1, self.password1, self.db1),
+                (self.login2, self.password2, self.db2),
+            ]:
+                conn = self.__get_connection()
+                yield conn[db].authenticate(login, password)
+                yield conn[db][self.coll].drop()
+                yield conn.disconnect()
+
             conn = self.__get_connection()
             yield conn["admin"].authenticate(self.ua_login, self.ua_password)
-            yield conn[self.db1].authenticate(self.login1, self.password1)
-            yield conn[self.db2].authenticate(self.login2, self.password2)
-
-            yield conn[self.db1][self.coll].drop()
-            yield conn[self.db2][self.coll].drop()
             yield conn[self.db1].command("dropUser", self.login1)
             yield conn[self.db2].command("dropUser", self.login2)
             yield conn.disconnect()
+
         finally:
             yield self.__mongod.stop()
 
