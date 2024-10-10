@@ -5,7 +5,7 @@ from twisted.internet.defer import inlineCallbacks
 from twisted.trial import unittest
 
 
-def skip_for_mongodb_version(
+def only_for_mongodb_version(
     version_predicate: Callable[[List[int]], bool], message: str
 ):
     # Can only be used as a method decorator
@@ -19,7 +19,7 @@ def skip_for_mongodb_version(
             version = [int(part) for part in server_status["version"].split(".")]
             # Strip minor number to allow comparison like `version <= 4.0`
             version = version[:2]
-            if version_predicate(version):
+            if not version_predicate(version):
                 raise unittest.SkipTest(message)
 
             yield function(self, *args, **kwargs)
@@ -29,9 +29,9 @@ def skip_for_mongodb_version(
     return decorator
 
 
-def skip_for_mongodb_older_than(version: List[int], message: str):
-    return skip_for_mongodb_version(lambda v: v < version, message)
+def only_for_mongodb_starting_from(version: List[int], message: str):
+    return only_for_mongodb_version(lambda v: v >= version, message)
 
 
-def skip_for_mongodb_newer_than(version: List[int], message: str):
-    return skip_for_mongodb_version(lambda v: v > version, message)
+def only_for_mongodb_older_than(version: List[int], message: str):
+    return only_for_mongodb_version(lambda v: v < version, message)

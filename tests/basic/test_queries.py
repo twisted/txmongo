@@ -34,7 +34,10 @@ from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 
 import txmongo.filter as qf
-from tests.basic.utils import skip_for_mongodb_newer_than, skip_for_mongodb_older_than
+from tests.basic.utils import (
+    only_for_mongodb_older_than,
+    only_for_mongodb_starting_from,
+)
 from tests.utils import SingleCollectionTest
 from txmongo.protocol import MongoProtocol
 
@@ -493,8 +496,8 @@ class TestInsertOne(SingleCollectionTest):
             {"_id": 1}
         )
 
-    @skip_for_mongodb_newer_than(
-        [4, 9], "$ in field name is only forbidden in MongoDB<5.0"
+    @only_for_mongodb_older_than(
+        [5, 0], "$ in field name is only forbidden in MongoDB<5.0"
     )
     def test_ForbiddenFieldNames(self):
         yield self.assertFailure(self.coll.insert_one({"$": 1}), WriteError)
@@ -751,8 +754,8 @@ class TestReplaceOne(SingleCollectionTest):
             self.coll.replace_one({"x": 1}, {"x": 2}), DuplicateKeyError
         )
 
-    @skip_for_mongodb_newer_than(
-        [4, 9], "$ in field name is only forbidden in MongoDB<5.0"
+    @only_for_mongodb_older_than(
+        [5, 0], "$ in field name is only forbidden in MongoDB<5.0"
     )
     def test_ForbiddenFieldNames(self):
         yield self.assertFailure(
@@ -865,7 +868,7 @@ class TestDeleteOne(SingleCollectionTest):
         self.assertRaises(TypeError, self.coll.delete_one, 123)
         self.assertRaises(TypeError, self.coll.delete_one, ObjectId())
 
-    @skip_for_mongodb_older_than([5, 0], "`let` is only supported by MongoDB >= 5.0")
+    @only_for_mongodb_starting_from([5, 0], "`let` is only supported by MongoDB >= 5.0")
     @defer.inlineCallbacks
     def test_Let(self):
         yield self.coll.insert_many(
@@ -924,7 +927,7 @@ class TestDeleteMany(SingleCollectionTest):
         yield self.coll.insert_many([{"x": 1}, {"x": 1}])
         yield self.assertFailure(self.coll.delete_many({"x": {"$": 1}}), WriteError)
 
-    @skip_for_mongodb_older_than([5, 0], "`let` is only supported by MongoDB >= 5.0")
+    @only_for_mongodb_starting_from([5, 0], "`let` is only supported by MongoDB >= 5.0")
     @defer.inlineCallbacks
     def test_Let(self):
         yield self.coll.insert_many(
