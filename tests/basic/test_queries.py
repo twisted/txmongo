@@ -206,6 +206,18 @@ class TestMongoQueries(SingleCollectionTest):
         doc = yield self.coll.find_one()
         self.assertEqual(doc, None)
 
+    @defer.inlineCallbacks
+    def test_AllowPartialResults(self):
+        with patch.object(
+            MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
+        ) as mock:
+            doc = yield self.coll.find_one(allow_partial_results=True)
+
+            mock.assert_called_once()
+            msg = mock.call_args[0][1]
+            cmd = bson.decode(msg.body)
+            self.assertEqual(cmd["allowPartialResults"], True)
+
 
 class TestMongoQueriesEdgeCases(SingleCollectionTest):
 

@@ -251,10 +251,12 @@ class Collection:
         skip=0,
         limit=0,
         sort=None,
+        *,
+        allow_partial_results: bool = False,
         flags=0,
         _deadline=None,
     ):
-        """find(filter=None, projection=None, skip=0, limit=0, sort=None)
+        """find(filter=None, projection=None, skip=0, limit=0, sort=None, allow_partial_results=False)
 
         Find documents in a collection.
 
@@ -286,14 +288,35 @@ class Collection:
             query filter. You can specify ordering, indexing hints and other query
             parameters with this argument. See :mod:`txmongo.filter` for details.
 
+        :param allow_partial_results:
+            if True, mongos will return partial results if some shards are down
+            instead of returning an error
+
         :returns: an instance of :class:`Deferred` that called back with a list with
             all documents found.
         """
-        return self.__real_find(
-            filter, projection, skip, limit, sort, flags, _deadline=_deadline
+        return self._find(
+            filter,
+            projection,
+            skip,
+            limit,
+            sort,
+            allow_partial_results,
+            flags,
+            _deadline=_deadline,
         )
 
-    def __real_find(self, filter, projection, skip, limit, sort, flags, _deadline):
+    def _find(
+        self,
+        filter,
+        projection,
+        skip,
+        limit,
+        sort,
+        allow_partial_results,
+        flags,
+        _deadline,
+    ):
         rows = []
 
         def on_ok(result, this_func):
@@ -306,7 +329,15 @@ class Collection:
                 return rows
 
         return self.__find_with_cursor(
-            filter, projection, skip, limit, sort, flags=flags, _deadline=_deadline
+            filter,
+            projection,
+            skip,
+            limit,
+            sort,
+            0,
+            allow_partial_results,
+            flags=flags,
+            _deadline=_deadline,
         ).addCallback(on_ok, on_ok)
 
     @staticmethod
@@ -332,10 +363,12 @@ class Collection:
         limit=0,
         sort=None,
         batch_size=0,
+        *,
+        allow_partial_results: bool = False,
         flags=0,
         _deadline=None,
     ):
-        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0)
+        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0, allow_partial_results=False)
 
         Find documents in a collection and return them in one batch at a time.
 
@@ -355,7 +388,15 @@ class Collection:
                         docs, dfr = yield dfr
         """
         return self.__find_with_cursor(
-            filter, projection, skip, limit, sort, batch_size, flags, _deadline
+            filter,
+            projection,
+            skip,
+            limit,
+            sort,
+            batch_size,
+            allow_partial_results,
+            flags,
+            _deadline,
         )
 
     _MODIFIERS = {
@@ -382,6 +423,7 @@ class Collection:
         skip,
         limit,
         batch_size,
+        allow_partial_results,
         flags: int,
     ):
         cmd = {"find": coll_name}
@@ -409,7 +451,7 @@ class Collection:
 
         if flags & QUERY_SLAVE_OK:
             cmd["$readPreference"] = {"mode": "secondaryPreferred"}
-        if flags & QUERY_PARTIAL:
+        if allow_partial_results or flags & QUERY_PARTIAL:
             cmd["allowPartialResults"] = True
 
         if "$explain" in filter_with_modifiers:
@@ -435,14 +477,15 @@ class Collection:
 
     def __find_with_cursor(
         self,
-        filter=None,
-        projection=None,
-        skip=0,
-        limit=0,
-        sort=None,
-        batch_size=0,
-        flags=0,
-        _deadline=None,
+        filter,
+        projection,
+        skip,
+        limit,
+        sort,
+        batch_size,
+        allow_partial_results,
+        flags,
+        _deadline,
     ):
         if filter is None:
             filter = SON()
@@ -477,6 +520,7 @@ class Collection:
                 skip,
                 limit,
                 batch_size,
+                allow_partial_results,
                 flags,
             )
 
@@ -555,9 +599,17 @@ class Collection:
 
     @timeout
     def find_one(
-        self, filter=None, projection=None, skip=0, sort=None, flags=0, _deadline=None
+        self,
+        filter=None,
+        projection=None,
+        skip=0,
+        sort=None,
+        *,
+        allow_partial_results=False,
+        flags=0,
+        _deadline=None,
     ):
-        """find_one(filter=None, projection=None, skip=0, sort=None)
+        """find_one(filter=None, projection=None, skip=0, sort=None, allow_partial_results=False)
 
         Get a single document from the collection.
 
@@ -571,12 +623,13 @@ class Collection:
         if isinstance(filter, ObjectId):
             filter = {"_id": filter}
 
-        return self.__real_find(
+        return self._find(
             filter,
             projection,
             skip,
             limit=1,
             sort=sort,
+            allow_partial_results=allow_partial_results,
             flags=flags,
             _deadline=_deadline,
         ).addCallback(lambda result: result[0] if result else None)
