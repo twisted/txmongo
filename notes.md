@@ -24,14 +24,15 @@
 - ~~What would we do with old style coll.update(), coll.insert(), coll.remove() methods?~~
   - ~~Maybe reimplement them using *_one/many counterparts?~~
   - ~~Or just remove them because they are deprecated for many years?~~ Removed
-- Test that new implementation of TxMongo isn't worse than the old one in terms of memory usage
-  - Check circular references by disabling gc and measuring len(gc.get_objects()) ?
-- Either implement readPreference support or document `flags` parameter in `find*` methods
+~~- Test that new implementation of TxMongo isn't worse than the old one in terms of memory usage~~
+  ~~- Check circular references by disabling gc and measuring len(gc.get_objects()) ?~~
+~~- Either implement readPreference support or document `flags` parameter in `find*` methods~~
+  - Add allow_partial_results flag to NEWS.rst
 - Check coverage and add tests if needed
 - ~~ismaster is deprecated, we should use hello command instead. But it seems to be supported
   even in 8.0, so it isn't urgent.~~
   - Not now
-- If we bump pymongo version to 3.12, we can remove conditional imports of NotPrimaryError
+~~- If we bump pymongo version to 3.12, we can remove conditional imports of NotPrimaryError~~
 
 ## Prior art
 - https://github.com/twisted/txmongo/pull/262
