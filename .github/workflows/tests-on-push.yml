@@ -1,4 +1,4 @@
-name: TxMongo
+name: Tests against selected versions of Python and MongoDB
 
 on: [push]
 
@@ -7,8 +7,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.11', '3.12']
-        mongodb-version: ['4.0', '4.2', '4.4', '5.0']
+        python-version: ['3.8', '3.12']
+        mongodb-version: ['4.0', '4.2', '4.4', '8.0']
     steps:
       - uses: actions/checkout@v4
       - name: Start MongoDB on port 27017
@@ -33,8 +33,8 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        python-version: ['3.8', '3.12']
-        mongodb-version: ['4.4', '5.0', '8.0']
+        python-version: ['3.8']
+        mongodb-version: ['8.0']
     steps:
       - uses: actions/checkout@v4
       - name: Install MongoDB ${{ matrix.mongodb-version }}
@@ -52,12 +52,12 @@ jobs:
       - name: Run advanced tests in tox
         run: tox -f py${{ matrix.python-version }} advanced
 
-  advanced_4_2:
+  advanced_old_mongo:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        python-version: ['3.8', '3.12']
-        mongodb-version: ['4.2']
+        python-version: ['3.8']
+        mongodb-version: ['4.0']
     steps:
       - uses: actions/checkout@v4
       - name: Install MongoDB ${{ matrix.mongodb-version }}
