@@ -64,7 +64,7 @@ jobs:
       - name: Install MongoDB ${{ matrix.mongodb-version }}
         run: |
           wget -qO - https://www.mongodb.org/static/pgp/server-${{ matrix.mongodb-version }}.asc | sudo apt-key add -
-          echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu bionic/mongodb-org/${{ matrix.mongodb-version }} multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-${{ matrix.mongodb-version }}.list
+          echo "deb [ trusted=yes arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu bionic/mongodb-org/${{ matrix.mongodb-version }} multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-${{ matrix.mongodb-version }}.list
           sudo apt-get update
           sudo apt-get install -y --allow-downgrades mongodb-org-server
       - name: Set up Python ${{ matrix.python-version }}
