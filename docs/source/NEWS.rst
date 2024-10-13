@@ -1,6 +1,27 @@
 Changelog
 =========
 
+Release 24.1.0 (yyyy-mm-dd)
+---------------------------
+
+Features
+^^^^^^^^
+
+- TxMongo now supports MongoDB 4.0–8.0
+
+API Changes
+^^^^^^^^^^^
+
+- TxMongo now requires Python 3.8+, PyMongo 3.12+ and MongoDB 4.0+.
+- Some deprecated API methods have been removed:
+  - Collection methods `insert()`, `update()` and `remove()`
+  - Collection methods `save()`, `find_and_modify()` and `group()`
+  - `as_class` argument of `find()`, `find_with_cursor()` and `find_one()`
+  - old-style parameters of `find*()` methods: `spec`, `fields`, `cursor`
+- `find()`, `find_one()` and `find_with_cursor()` now supports `allow_partial_results` argument.
+
+
+
 Release 24.0.0 (2024-10-04)
 ---------------------------
 
