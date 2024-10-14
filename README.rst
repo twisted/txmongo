@@ -1,7 +1,7 @@
 TxMongo
 =======
-.. image:: https://travis-ci.org/twisted/txmongo.png?branch=master
-    :target: https://travis-ci.org/twisted/txmongo
+.. image:: https://github.com/twisted/txmongo/actions/workflows/tests-on-push.yml/badge.svg
+    :target: https://github.com/twisted/txmongo/actions/workflows/tests-on-push.yml
 
 .. image:: https://coveralls.io/repos/twisted/txmongo/badge.svg?branch=master
     :target: https://coveralls.io/r/twisted/txmongo?branch=master
@@ -20,7 +20,7 @@ protocol on non-blocking sockets. The API derives from the original PyMongo.
 Compatibility
 -------------
 Python 3.8+
-MongoDB 2.6+
+MongoDB 4.0+
 
 Installing
 ----------
