@@ -21,6 +21,7 @@ from pymongo.collection import ReturnDocument
 from pymongo.errors import (
     BulkWriteError,
     DuplicateKeyError,
+    InvalidOperation,
     OperationFailure,
     WriteError,
 )
@@ -563,6 +564,10 @@ class TestInsertMany(SingleCollectionTest):
 
     def test_InvalidArg(self):
         self.assertRaises(TypeError, self.coll.insert_many, {"x": 42})
+
+    @defer.inlineCallbacks
+    def test_NoEmpty(self):
+        yield self.assertFailure(self.coll.insert_many([]), InvalidOperation)
 
     @defer.inlineCallbacks
     def test_Acknowledged(self):
