@@ -18,6 +18,7 @@ import hashlib
 import hmac
 import logging
 import struct
+import warnings
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
 from hashlib import sha1
@@ -28,6 +29,7 @@ import bson
 from bson import SON, Binary, CodecOptions
 from pymongo.errors import (
     AutoReconnect,
+    ConfigurationError,
     ConnectionFailure,
     CursorNotFound,
     NotPrimaryError,
@@ -65,6 +67,11 @@ except ImportError:
             _u1 = _digest(_u1)
             _ui ^= from_bytes(_u1, "big")
         return to_bytes(_ui, mac.digest_size, "big")
+
+
+DEFAULT_MAX_BSON_SIZE = 16777216
+DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
+DEFAULT_MAX_MESSAGE_SIZE = 48000000
 
 
 INT_MAX = 2147483647
@@ -435,6 +442,25 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
 
         self.__auth_lock = defer.DeferredLock()
 
+    def init_from_hello_response(self, config: dict) -> None:
+        """`config` is a dict from server hello response"""
+        # Track max bson object size limit.
+        self.max_bson_size = config.get("maxBsonObjectSize", DEFAULT_MAX_BSON_SIZE)
+        self.max_write_batch_size = config.get(
+            "maxWriteBatchSize", DEFAULT_MAX_WRITE_BATCH_SIZE
+        )
+        self.max_message_size = config.get(
+            "maxMessageSizeBytes", DEFAULT_MAX_MESSAGE_SIZE
+        )
+        self.set_wire_versions(
+            config.get("minWireVersion", 0), config.get("maxWireVersion", 0)
+        )
+
+        # MongoDB < 4.0
+        if self.max_wire_version < 7:
+            warnings.warn("TxMongo: MongoDB version <4.0 is not supported")
+            raise ConfigurationError("TxMongo: MongoDB version <4.0 is not supported")
+
     def inflight(self):
         return len(self.__deferreds)
 
@@ -558,7 +584,7 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
         self.min_wire_version = min_wire_version
         self.max_wire_version = max_wire_version
 
-    def send_op_query_command(self, database, query):
+    def send_op_query_command(self, database, query) -> defer.Deferred[dict]:
         cmd_collection = str(database) + ".$cmd"
         return self.send_query(
             Query(collection=cmd_collection, query=bson.encode(query))
