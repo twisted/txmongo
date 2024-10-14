@@ -18,11 +18,6 @@ from txmongo.database import Database
 from txmongo.protocol import MongoProtocol
 from txmongo.utils import get_err, timeout
 
-DEFAULT_MAX_BSON_SIZE = 16777216
-DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
-DEFAULT_MAX_MESSAGE_SIZE = 48000000
-
-
 _PRIMARY_READ_PREFERENCES = {
     ReadPreference.PRIMARY.mode,
     ReadPreference.PRIMARY_PREFERRED.mode,
@@ -77,7 +72,7 @@ class _Connection(ReconnectingClientFactory):
 
     @staticmethod
     @timeout
-    def __send_ismaster(proto, _deadline):
+    def __send_ismaster(proto, _deadline) -> defer.Deferred[dict]:
         return proto.send_op_query_command("admin", {"ismaster": 1})
 
     @defer.inlineCallbacks
@@ -110,23 +105,7 @@ class _Connection(ReconnectingClientFactory):
             msg = "TxMongo: Mongo instance does not match requested replicaSet."
             raise ConfigurationError(msg)
 
-        # FIXME: move this initialization to MongoProtocol class
-        # Track max bson object size limit.
-        proto.max_bson_size = config.get("maxBsonObjectSize", DEFAULT_MAX_BSON_SIZE)
-        proto.max_write_batch_size = config.get(
-            "maxWriteBatchSize", DEFAULT_MAX_WRITE_BATCH_SIZE
-        )
-        proto.max_message_size = config.get(
-            "maxMessageSizeBytes", DEFAULT_MAX_MESSAGE_SIZE
-        )
-        proto.set_wire_versions(
-            config.get("minWireVersion", 0), config.get("maxWireVersion", 0)
-        )
-
-        # MongoDB < 4.0
-        if proto.max_wire_version < 7:
-            warnings.warn("TxMongo: MongoDB version <4.0 is not supported")
-            raise ConfigurationError("TxMongo: MongoDB version <4.0 is not supported")
+        proto.init_from_hello_response(config)
 
         # Track the other hosts in the replica set.
         hosts = config.get("hosts")
