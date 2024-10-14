@@ -26,7 +26,6 @@ from typing import Dict, List
 
 import bson
 from bson import SON, Binary, CodecOptions
-from pymongo import auth
 from pymongo.errors import (
     AutoReconnect,
     ConnectionFailure,
@@ -36,6 +35,12 @@ from pymongo.errors import (
 )
 from twisted.internet import defer, error, protocol
 from twisted.python import failure, log
+
+try:
+    from pymongo.synchronous import auth
+except ImportError:
+    # For pymongo <= 4.8
+    from pymongo import auth
 
 try:
     from hashlib import pbkdf2_hmac as _hi
