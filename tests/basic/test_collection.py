@@ -77,6 +77,7 @@ class TestIndexInfo(unittest.TestCase):
         self.assertRaises(TypeError, self.db.test.find, skip="test")
         self.assertRaises(TypeError, self.db.test.find, limit="test")
         self.assertRaises(TypeError, self.db.test.find, sort="test")
+        self.assertRaises(TypeError, self.db.test.find, skip="test")
         self.assertRaises(TypeError, self.db.test.insert_many, [1])
         self.assertRaises(TypeError, self.db.test.insert_one, 1)
         self.assertRaises(TypeError, self.db.test.update_one, 1, 1)

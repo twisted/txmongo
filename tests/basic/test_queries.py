@@ -39,6 +39,7 @@ from tests.basic.utils import (
     only_for_mongodb_starting_from,
 )
 from tests.utils import SingleCollectionTest
+from txmongo.errors import TimeExceeded
 from txmongo.protocol import MongoProtocol
 
 
@@ -92,6 +93,8 @@ class TestMongoQueries(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_FindWithCursorBatchsize(self):
+        self.assertRaises(TypeError, self.coll.find_with_cursor, batch_size="string")
+
         yield self.coll.insert_many([{"v": i} for i in range(140)])
 
         docs, d = yield self.coll.find_with_cursor(batch_size=50)
@@ -187,6 +190,40 @@ class TestMongoQueries(SingleCollectionTest):
         yield self.__check_no_open_cursors()
 
     @defer.inlineCallbacks
+    def test_CursorClosingWithTimeout(self):
+        yield self.coll.insert_many({"x": x} for x in range(10))
+
+        # This $where will wait for 100ms for every object returned.
+        # So the first batch will take 500ms to return and the second one
+        # should fail with TimeExceeded.
+        # We also check that find_with_cursor will properly close the cursor in this case
+        # NB: $where is deprecated and this test may fail in future versions of MongoDB
+        batch1, dfr = yield self.coll.find_with_cursor(
+            {"$where": "sleep(100); true"}, batch_size=5, timeout=0.8
+        )
+        with patch.object(
+            MongoProtocol,
+            "send_msg",
+            side_effect=MongoProtocol.send_msg,
+            autospec=True,
+        ) as mock:
+            with self.assertRaises(TimeExceeded):
+                yield dfr
+
+        self.assertTrue(
+            any(
+                [
+                    "killCursors" in bson.decode(args[0][1].body)
+                    for args in mock.call_args_list
+                ]
+            )
+        )
+
+        self.assertEqual(len(batch1), 5)
+
+        yield self.__check_no_open_cursors()
+
+    @defer.inlineCallbacks
     def test_AsClassCodecOption(self):
         yield self.coll.insert_one({"x": 42})
 
@@ -211,7 +248,7 @@ class TestMongoQueries(SingleCollectionTest):
         with patch.object(
             MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
         ) as mock:
-            doc = yield self.coll.find_one(allow_partial_results=True)
+            yield self.coll.find_one(allow_partial_results=True)
 
             mock.assert_called_once()
             msg = mock.call_args[0][1]
