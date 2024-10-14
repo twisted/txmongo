@@ -538,7 +538,6 @@ class Collection:
             except Exception:
                 cursor_id = reply.get("cursor", {}).get("id")
                 if cursor_id:
-                    # FIXME: check if using `self` creates circular reference
                     self.__close_cursor_without_response(proto, cursor_id)
                 raise
 
@@ -576,11 +575,9 @@ class Collection:
                         to_fetch = min(batch_size, to_fetch)
 
                 if to_fetch is None:
-                    # FIXME: check if using `self` creates circular reference
                     self.__close_cursor_without_response(proto, cursor["id"])
                     return out, defer.succeed(([], None))
 
-                # FIXME: extract this to a function
                 get_more = {
                     "getMore": cursor["id"],
                     "$db": self.database.name,
