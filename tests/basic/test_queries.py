@@ -253,6 +253,41 @@ class TestMongoQueries(SingleCollectionTest):
             cmd = bson.decode(msg.body)
             self.assertEqual(cmd["allowPartialResults"], True)
 
+    async def test_find_iterate_batches(self):
+        await self.coll.insert_many([{"a": i} for i in range(100)])
+
+        all_batches_len = 0
+        async for batch in self.coll.find_iterate_batches(batch_size=10):
+            batch_len = len(batch)
+            self.assertEqual(batch_len, 10)
+            all_batches_len += batch_len
+
+        self.assertEqual(all_batches_len, 100)
+
+    async def test_find_iterate(self):
+        await self.coll.insert_many([{"b": i} for i in range(50)])
+
+        sum_of_doc, doc_count = 0, 0
+        async for doc in self.coll.find_iterate():
+            sum_of_doc += doc["b"]
+            doc_count += 1
+
+        self.assertEqual(sum_of_doc, 1225)
+        self.assertEqual(doc_count, 50)
+
+    async def test_find_iterate_close_cursor(self):
+        await self.coll.insert_many([{"c": i} for i in range(50)])
+
+        doc_count = 0
+        async for doc in self.coll.find_iterate():
+            doc_count += 1
+            if doc_count == 25:
+                break
+
+        self.assertEqual(doc_count, 25)
+
+        yield self.__check_no_open_cursors()
+
 
 class TestMongoQueriesEdgeCases(SingleCollectionTest):
 
