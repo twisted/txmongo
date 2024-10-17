@@ -309,12 +309,10 @@ class Collection:
     ):
         rows = []
 
-        def on_ok(result, this_func):
-            docs, dfr = result
-
-            if docs:
-                rows.extend(docs)
-                return dfr.addCallback(this_func, this_func)
+        def on_ok(result: QueryIterator, this_func):
+            if result and result.current_results:
+                rows.extend(result.current_results)
+                return result.get_more().addCallback(this_func, this_func)
             else:
                 return rows
 
@@ -377,6 +375,15 @@ class Collection:
                             do_something(doc)
                         docs, dfr = yield dfr
         """
+
+        def on_ok(result: QueryIterator, this_func):
+            if result:
+                return result.current_results, result.get_more().addCallback(
+                    this_func, this_func
+                )
+            else:
+                return [], None
+
         return self.__find_with_cursor(
             filter,
             projection,
@@ -387,7 +394,104 @@ class Collection:
             allow_partial_results,
             flags,
             _deadline,
+        ).addCallback(on_ok, on_ok)
+
+    @timeout
+    async def find_iterate_batches(
+        self,
+        filter=None,
+        projection=None,
+        skip=0,
+        limit=0,
+        sort=None,
+        batch_size=0,
+        *,
+        allow_partial_results: bool = False,
+        flags=0,
+        _deadline=None,
+    ):
+        """find_iterate_batches(filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0, allow_partial_results=False)
+
+        Find documents in a collection and return them in one batch at a time.
+
+        Arguments are the same as for :meth:`find()`.
+
+        This is asynchronous generator that you can use with `async for`.
+
+        ::
+            @defer.inlineCallbacks
+            async def query():
+                async for batch in coll.find_iterate_batches(query):
+                    for doc in batch:
+                        print(doc)
+        """
+
+        iterator = await self.__find_with_cursor(
+            filter,
+            projection,
+            skip,
+            limit,
+            sort,
+            batch_size,
+            allow_partial_results,
+            flags,
+            _deadline,
         )
+        try:
+            while True:
+                if iterator.current_results:
+                    yield iterator.current_results
+
+                if iterator.exhausted:
+                    break
+
+                iterator = await iterator.get_more()
+        finally:
+            if not iterator.exhausted:
+                iterator.stop()
+
+    @timeout
+    async def find_iterate(
+        self,
+        filter=None,
+        projection=None,
+        skip=0,
+        limit=0,
+        sort=None,
+        batch_size=0,
+        *,
+        allow_partial_results: bool = False,
+        flags=0,
+        _deadline=None,
+    ):
+        """find_iterate(filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0, allow_partial_results=False)
+
+        Find documents in a collection and return them asynchronously loading new batches from MongoDB as necessary.
+
+        Arguments are the same as for :meth:`find()`.
+
+        This is asynchronous generator that you can use with `async for`.
+
+        ::
+            @defer.inlineCallbacks
+            async def query():
+                async for doc in coll.find_iterate(query):
+                    print(doc)
+        """
+
+        async for batch in self.find_iterate_batches(
+            filter=filter,
+            projection=projection,
+            skip=skip,
+            limit=limit,
+            sort=sort,
+            batch_size=batch_size,
+            allow_partial_results=allow_partial_results,
+            flags=flags,
+            _deadline=_deadline,
+        ):
+            for doc in batch:
+                yield doc
 
     _MODIFIERS = {
         "$query": "filter",
@@ -534,7 +638,7 @@ class Collection:
 
             if "cursor" not in reply:
                 # For example, when we run `explain` command
-                return [reply], defer.succeed(([], None))
+                return QueryIterator([reply], False, lambda: defer.succeed(None), None)
 
             cursor = reply["cursor"]
             docs_key = "firstBatch"
@@ -565,7 +669,7 @@ class Collection:
 
                 if to_fetch is None:
                     self.__close_cursor_without_response(proto, cursor["id"])
-                    return out, defer.succeed(([], None))
+                    return QueryIterator(out, True, lambda: defer.succeed(None), None)
 
                 get_more = {
                     "getMore": cursor["id"],
@@ -575,13 +679,18 @@ class Collection:
                 if batch_size:
                     get_more["batchSize"] = batch_size
 
-                next_reply = proto.send_msg(
+                return QueryIterator(
+                    out,
+                    False,
+                    lambda: proto.send_msg(
                     Msg.create(get_more, codec_options=codec_options), codec_options
+                ).addCallback(
+                        this_func, this_func, proto, fetched
+                    ),
+                    lambda: self.__close_cursor_without_response(proto, cursor["id"]),
                 )
-                next_reply.addCallback(this_func, this_func, proto, fetched)
-                return out, next_reply
 
-            return out, defer.succeed(([], None))
+            return QueryIterator(out, True, lambda: defer.succeed(None), None)
 
         return self._database.connection.getprotocol().addCallback(after_connection)
 
