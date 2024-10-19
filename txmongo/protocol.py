@@ -758,9 +758,9 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
             self.__auth_lock.release()
 
 
-@dataclass
-class QueryIterator:
-    current_results: list
-    exhausted: bool
-    get_more: Callable[[], Optional[defer.Deferred]]
-    stop: Optional[Callable[[], Optional[defer.Deferred]]]
+# @dataclass
+# class QueryIterator:
+#     current_results: list
+#     exhausted: bool
+#     get_more: Callable[[], Optional[defer.Deferred]]
+#     stop: Optional[Callable[[], Optional[defer.Deferred]]]

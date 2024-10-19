@@ -59,6 +59,17 @@ class TestMongoQueries(SingleCollectionTest):
     timeout = 15
 
     @defer.inlineCallbacks
+    def test_find_return_type(self):
+        dfr = self.coll.find()
+        dfr_one = self.coll.find_one()
+        try:
+            self.assertIsInstance(dfr, defer.Deferred)
+            self.assertIsInstance(dfr_one, defer.Deferred)
+        finally:
+            yield dfr
+            yield dfr_one
+
+    @defer.inlineCallbacks
     def test_SingleCursorIteration(self):
         yield self.coll.insert_many([{"v": i} for i in range(10)])
         res = yield self.coll.find()
@@ -257,7 +268,7 @@ class TestMongoQueries(SingleCollectionTest):
         await self.coll.insert_many([{"a": i} for i in range(100)])
 
         all_batches_len = 0
-        async for batch in self.coll.find_iterate_batches(batch_size=10):
+        async for batch in self.coll.find_with_cursor_v2(batch_size=10).batches():
             batch_len = len(batch)
             self.assertEqual(batch_len, 10)
             all_batches_len += batch_len
@@ -268,7 +279,7 @@ class TestMongoQueries(SingleCollectionTest):
         await self.coll.insert_many([{"b": i} for i in range(50)])
 
         sum_of_doc, doc_count = 0, 0
-        async for doc in self.coll.find_iterate():
+        async for doc in self.coll.find_with_cursor_v2(batch_size=10):
             sum_of_doc += doc["b"]
             doc_count += 1
 
@@ -279,7 +290,7 @@ class TestMongoQueries(SingleCollectionTest):
         await self.coll.insert_many([{"c": i} for i in range(50)])
 
         doc_count = 0
-        async for doc in self.coll.find_iterate():
+        async for doc in self.coll.find_with_cursor_v2(batch_size=10):
             doc_count += 1
             if doc_count == 25:
                 break
