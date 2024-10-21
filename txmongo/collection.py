@@ -38,13 +38,35 @@ from txmongo.pymongo_internals import _check_write_command_response, _merge_comm
 from txmongo.types import Document
 from txmongo.utils import check_deadline, timeout
 
+_DEFERRED_METHODS = frozenset(
+    {
+        "addCallback",
+        "addCallbacks",
+        "addErrback",
+        "addBoth",
+        "called",
+        "paused",
+        "addTimeout",
+        "chainDeferred",
+        "callback",
+        "errback",
+        "pause",
+        "unpause",
+        "cancel",
+        "send",
+        "asFuture",
+    }
+)
 
-class Cursor:
+
+class Cursor(Deferred):
     cursor_id: Optional[int] = None
     exhausted: bool = False
 
     next_batch_deferreds: Optional[List[Deferred]] = None
     _current_loading_op: Optional[defer.Deferred] = None
+
+    _find_deferred: Optional[Deferred] = None
 
     def __init__(
         self,
@@ -53,10 +75,36 @@ class Cursor:
         batch_size: int,
         timeout: Optional[float],
     ):
+        super().__init__()
         self.collection = collection
         self.command = command
         self.batch_size = batch_size
-        self.timeout = timeout
+        self._timeout = timeout
+
+    @inlineCallbacks
+    def _old_style_find(self):
+        result = []
+        try:
+            while not self.exhausted:
+                batch = yield self.next_batch(timeout=self._timeout)
+                if not batch:
+                    continue
+                result.extend(batch)
+            return result
+        finally:
+            self.close()
+
+    def _make_old_style_find_call(self):
+        if self._find_deferred:
+            return
+        self._find_deferred = self._old_style_find()
+
+    def __getattribute__(self, item):
+        if item in _DEFERRED_METHODS:
+            self._make_old_style_find_call()
+            value = getattr(self._find_deferred, item)
+            return value
+        return super().__getattribute__(item)
 
     def _after_connection(self, proto: MongoProtocol, _deadline: Optional[float]):
         return proto.send_simple_msg(
@@ -138,7 +186,7 @@ class Cursor:
     async def batches(self):
         try:
             while not self.exhausted:
-                batch = await self.next_batch(timeout=self.timeout)
+                batch = await self.next_batch(timeout=self._timeout)
                 if not batch:
                     continue
                 yield batch
@@ -345,7 +393,7 @@ class Collection:
             {"listCollections": 1, "filter": {"name": self.name}}
         ).addCallback(on_ok)
 
-    @timeout
+    # @timeout
     def find(
         self,
         filter=None,
@@ -356,7 +404,7 @@ class Collection:
         *,
         allow_partial_results: bool = False,
         flags=0,
-        _deadline=None,
+        timeout: Optional[float] = None,
     ):
         """find(filter=None, projection=None, skip=0, limit=0, sort=None, allow_partial_results=False)
 
@@ -397,15 +445,15 @@ class Collection:
         :returns: an instance of :class:`Deferred` that called back with a list with
             all documents found.
         """
-        return self._find(
+        return self.find_with_cursor_v2(
             filter,
             projection,
             skip,
             limit,
             sort,
-            allow_partial_results,
-            flags,
-            _deadline=_deadline,
+            allow_partial_results=allow_partial_results,
+            flags=flags,
+            timeout=timeout,
         )
 
     def _find(
