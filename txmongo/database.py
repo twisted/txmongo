@@ -77,9 +77,7 @@ class Database:
         proto = yield self.connection.getprotocol()
         check_deadline(_deadline)
 
-        reply = yield proto.send_simple_msg(
-            command, codec_options, flag_bits=0, check=False
-        )
+        reply = yield proto.send_simple_msg(command, codec_options)
         if check:
             msg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(
                 repr(command), self

@@ -538,7 +538,7 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
                 )
 
     def send_simple_msg(
-        self, body: dict, codec_options: CodecOptions, flag_bits: int, check=True
+        self, body: dict, codec_options: CodecOptions
     ) -> defer.Deferred[dict]:
         """Send simple OP_MSG without extracted payload and return parsed response."""
 
@@ -548,17 +548,21 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
                 reply[key] = []
                 for doc in bin_docs:
                     answer = bson.decode(doc, codec_options)
-                    if check:
-                        if master_error := self._check_master(answer):
-                            reply[key].append(master_error)
-                            break
+                    # if check:
+                    #     if master_error := self._check_master(answer):
+                    #         reply[key].append(master_error)
+                    #         break
                     reply[key].append(answer)
             return reply
 
-        msg = Msg(
-            flag_bits=flag_bits, body=bson.encode(body, codec_options=codec_options)
-        )
-        return self.send_msg(msg).addCallback(on_response)
+        def on_response_v1(response: Msg):
+            reply = bson.decode(response.body, codec_options)
+            for key, bin_docs in msg.payload.items():
+                reply[key] = [bson.decode(doc, codec_options) for doc in bin_docs]
+            return reply
+
+        msg = Msg(body=bson.encode(body, codec_options=codec_options))
+        return self.send_msg(msg).addCallback(on_response_v1)
 
     def handle(self, request: BaseMessage):
         if isinstance(request, Reply):
