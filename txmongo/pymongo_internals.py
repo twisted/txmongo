@@ -12,40 +12,7 @@ from pymongo.errors import (
 )
 
 from txmongo._bulk import _DELETE, _INSERT, _UPDATE, _Run
-
-# Copied from pymongo/helpers.py:32 at commit d7d94b2776098dba32686ddf3ada1f201172daaf
-
-# From the SDAM spec, the "node is shutting down" codes.
-_SHUTDOWN_CODES = frozenset(
-    [
-        11600,  # InterruptedAtShutdown
-        91,  # ShutdownInProgress
-    ]
-)
-# From the SDAM spec, the "not master" error codes are combined with the
-# "node is recovering" error codes (of which the "node is shutting down"
-# errors are a subset).
-_NOT_MASTER_CODES = (
-    frozenset(
-        [
-            10107,  # NotMaster
-            13435,  # NotMasterNoSlaveOk
-            11602,  # InterruptedDueToReplStateChange
-            13436,  # NotMasterOrSecondary
-            189,  # PrimarySteppedDown
-        ]
-    )
-    | _SHUTDOWN_CODES
-)
-# From the retryable writes spec.
-_RETRYABLE_ERROR_CODES = _NOT_MASTER_CODES | frozenset(
-    [
-        7,  # HostNotFound
-        6,  # HostUnreachable
-        89,  # NetworkTimeout
-        9001,  # SocketException
-    ]
-)
+from txmongo.pymongo_errors import _NOT_MASTER_CODES
 
 
 # Copied from pymongo/helpers.py:193 at commit 47b0d8ebfd6cefca80c1e4521b47aec7cf8f529d

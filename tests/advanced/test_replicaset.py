@@ -17,7 +17,12 @@ import signal
 from time import time
 
 from bson import SON
-from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
+from pymongo.errors import (
+    AutoReconnect,
+    ConfigurationError,
+    NotPrimaryError,
+    OperationFailure,
+)
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
 
@@ -346,3 +351,24 @@ class TestReplicaSet(unittest.TestCase):
         finally:
             self.__mongod[0].kill(signal.SIGCONT)
             yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_close_connection_after_primary_step_down(self):
+        try:
+            conn = ConnectionPool(self.master_with_guaranteed_write)
+
+            yield conn.db.coll.insert_one({"x": 42})
+
+            while True:
+                try:
+                    yield conn.db.coll.find_one()
+                    yield self.__sleep(1)
+                    yield conn.admin.command(
+                        SON([("replSetStepDown", 86400), ("force", 1)])
+                    )
+                except NotPrimaryError:
+                    break  # this is what we should have returned
+
+        finally:
+            yield conn.disconnect()
+            self.flushLoggedErrors(NotPrimaryError)

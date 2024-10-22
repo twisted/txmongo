@@ -38,6 +38,8 @@ from pymongo.errors import (
 from twisted.internet import defer, error, protocol
 from twisted.python import failure, log
 
+from txmongo.pymongo_errors import _NOT_MASTER_CODES
+
 try:
     from pymongo.synchronous import auth
 except ImportError:
@@ -527,18 +529,35 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
             return defer.succeed(None)
         return self.__wait_for_reply_to(request_id)
 
+    def _check_master(self, answer: dict):
+        if answer.get("ok") == 0:
+            if answer.get("code", -1) in _NOT_MASTER_CODES:
+                self.transport.loseConnection()
+                return NotPrimaryError(
+                    "TxMongo: " + answer.get("errmsg", "Unknown error")
+                )
+
     def send_simple_msg(
-        self, body: dict, codec_options: CodecOptions
+        self, body: dict, codec_options: CodecOptions, flag_bits: int, check=True
     ) -> defer.Deferred[dict]:
         """Send simple OP_MSG without extracted payload and return parsed response."""
 
         def on_response(response: Msg):
             reply = bson.decode(response.body, codec_options)
             for key, bin_docs in msg.payload.items():
-                reply[key] = [bson.decode(doc, codec_options) for doc in bin_docs]
+                reply[key] = []
+                for doc in bin_docs:
+                    answer = bson.decode(doc, codec_options)
+                    if check:
+                        if master_error := self._check_master(answer):
+                            reply[key].append(master_error)
+                            break
+                    reply[key].append(answer)
             return reply
 
-        msg = Msg(body=bson.encode(body, codec_options=codec_options))
+        msg = Msg(
+            flag_bits=flag_bits, body=bson.encode(body, codec_options=codec_options)
+        )
         return self.send_msg(msg).addCallback(on_response)
 
     def handle(self, request: BaseMessage):
@@ -552,7 +571,7 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
                 logLevel=logging.WARNING,
             )
 
-    def handle_reply(self, request):
+    def handle_reply(self, request: Reply):
         if request.response_to in self.__deferreds:
             df = self.__deferreds.pop(request.response_to)
             if request.response_flags & REPLY_QUERY_FAILURE:
@@ -560,7 +579,8 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
                 code = doc.get("code")
                 msg = "TxMongo: " + doc.get("$err", "Unknown error")
                 fail_conn = False
-                if code == 13435:
+
+                if code in _NOT_MASTER_CODES:
                     err = NotPrimaryError(msg)
                     fail_conn = True
                 else:
@@ -576,9 +596,13 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
             else:
                 df.callback(request)
 
-    def handle_msg(self, request: Msg):
-        if dfr := self.__deferreds.pop(request.response_to, None):
-            dfr.callback(request)
+    def handle_msg(self, msg: Msg):
+        if dfr := self.__deferreds.pop(msg.response_to, None):
+            answer = bson.decode(msg.body)
+            if master_error := self._check_master(answer):
+                dfr.errback(master_error)
+            else:
+                dfr.callback(msg)
 
     def set_wire_versions(self, min_wire_version, max_wire_version):
         self.min_wire_version = min_wire_version
