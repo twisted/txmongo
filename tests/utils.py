@@ -21,6 +21,6 @@ class SingleCollectionTest(unittest.TestCase):
                 yield self.coll.drop()
                 break
             except AutoReconnect:
-                yield self.coll.drop()
+                pass
 
         yield self.conn.disconnect()
