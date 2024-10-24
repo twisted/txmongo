@@ -12,7 +12,7 @@ Features
 API Changes
 ^^^^^^^^^^^
 
-- TxMongo now requires Python 3.8+, PyMongo 3.12+ and MongoDB 4.0+.
+- TxMongo now requires Python 3.8+, Twisted 21.7+, PyMongo 3.12+ and MongoDB 4.0+.
 - Some deprecated API methods have been removed:
   - Collection methods `insert()`, `update()` and `remove()`
   - Collection methods `save()`, `find_and_modify()` and `group()`
