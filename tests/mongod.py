@@ -96,7 +96,7 @@ class MongodProcess(ProcessProtocol, metaclass=ABCMeta):
             if self._proc and self._proc.pid:
                 d = defer.Deferred()
                 self._notify_stop.append(d)
-                self._proc.signalProcess("INT")
+                self.kill("INT")
                 return d
             else:
                 return defer.fail("Not started yet")
