@@ -1,3 +1,4 @@
+from pymongo.errors import AutoReconnect
 from twisted.internet import defer
 from twisted.trial import unittest
 
@@ -15,5 +16,11 @@ class SingleCollectionTest(unittest.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.coll.drop()
+        while True:
+            try:
+                yield self.coll.drop()
+                break
+            except AutoReconnect:
+                yield self.coll.drop()
+
         yield self.conn.disconnect()
