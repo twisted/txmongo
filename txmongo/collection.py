@@ -71,7 +71,7 @@ class Cursor(Deferred):
     def __init__(
         self,
         collection: "Collection",
-        command: dict,
+        command: Msg,
         batch_size: int,
         timeout: Optional[float],
     ):
@@ -107,9 +107,9 @@ class Cursor(Deferred):
         return super().__getattribute__(item)
 
     def _after_connection(self, proto: MongoProtocol, _deadline: Optional[float]):
-        return proto.send_simple_msg(
-            self.command, self.collection.codec_options
-        ).addCallback(self._after_reply, _deadline)
+        return proto.send_msg(self.command, self.collection.codec_options).addCallback(
+            self._after_reply, _deadline
+        )
 
     def _get_more(self, proto: MongoProtocol, _deadline: Optional[float]):
         get_more = {
@@ -120,13 +120,13 @@ class Cursor(Deferred):
         if self.batch_size:
             get_more["batchSize"] = self.batch_size
 
-        return proto.send_simple_msg(
-            get_more, self.collection.codec_options
+        return proto.send_msg(
+            Msg.create(get_more, codec_options=self.collection.codec_options),
+            self.collection.codec_options,
         ).addCallback(self._after_reply, _deadline)
 
     def _after_reply(self, reply: dict, _deadline: Optional[float]):
         check_deadline(_deadline)
-        _check_command_response(reply)
 
         if "cursor" not in reply:
             # For example, when we run `explain` command
@@ -393,7 +393,6 @@ class Collection:
             {"listCollections": 1, "filter": {"name": self.name}}
         ).addCallback(on_ok)
 
-    # @timeout
     def find(
         self,
         filter=None,
@@ -402,6 +401,7 @@ class Collection:
         limit=0,
         sort=None,
         *,
+        batch_size=0,
         allow_partial_results: bool = False,
         flags=0,
         timeout: Optional[float] = None,
@@ -445,70 +445,17 @@ class Collection:
         :returns: an instance of :class:`Deferred` that called back with a list with
             all documents found.
         """
-        return self.find_with_cursor_v2(
+        return self._find_with_cursor_v2(
             filter,
             projection,
             skip,
             limit,
             sort,
+            batch_size=batch_size,
             allow_partial_results=allow_partial_results,
             flags=flags,
             timeout=timeout,
         )
-
-    def _find(
-        self,
-        filter,
-        projection,
-        skip,
-        limit,
-        sort,
-        allow_partial_results,
-        flags,
-        _deadline,
-    ):
-        # rows = []
-        #
-        # def on_ok(result: QueryIterator, this_func):
-        #     if result and result.current_results:
-        #         rows.extend(result.current_results)
-        #         return result.get_more().addCallback(this_func, this_func)
-        #     else:
-        #         return rows
-        #
-        # return self.__find_with_cursor(
-        #     filter,
-        #     projection,
-        #     skip,
-        #     limit,
-        #     sort,
-        #     0,
-        #     allow_partial_results,
-        #     flags=flags,
-        #     _deadline=_deadline,
-        # ).addCallback(on_ok, on_ok)
-
-        cursor = self.find_with_cursor_v2(
-            filter,
-            projection,
-            skip,
-            limit,
-            sort,
-            allow_partial_results=allow_partial_results,
-            flags=flags,
-        )
-        rows = []
-
-        def on_batch(batch, this_func):
-            rows.extend(batch)
-            if not cursor.exhausted:
-                return cursor.next_batch(deadline=_deadline).addCallback(
-                    this_func, this_func
-                )
-            else:
-                return rows
-
-        return cursor.next_batch(deadline=_deadline).addCallback(on_batch, on_batch)
 
     @staticmethod
     def __apply_find_filter(spec, c_filter):
@@ -558,27 +505,7 @@ class Collection:
                         docs, dfr = yield dfr
         """
 
-        # def on_ok(result: QueryIterator, this_func):
-        #     if result:
-        #         return result.current_results, result.get_more().addCallback(
-        #             this_func, this_func
-        #         )
-        #     else:
-        #         return [], None
-        #
-        # return self.__find_with_cursor(
-        #     filter,
-        #     projection,
-        #     skip,
-        #     limit,
-        #     sort,
-        #     batch_size,
-        #     allow_partial_results,
-        #     flags,
-        #     _deadline,
-        # ).addCallback(on_ok, on_ok)
-
-        cursor = self.find_with_cursor_v2(
+        cursor = self._find_with_cursor_v2(
             filter,
             projection,
             skip,
@@ -599,7 +526,7 @@ class Collection:
 
         return cursor.next_batch(deadline=_deadline).addCallback(on_batch, on_batch)
 
-    def find_with_cursor_v2(
+    def _find_with_cursor_v2(
         self,
         filter=None,
         projection=None,
@@ -722,128 +649,6 @@ class Collection:
             )
         )
 
-    # def __find_with_cursor(
-    #     self,
-    #     filter,
-    #     projection,
-    #     skip,
-    #     limit,
-    #     sort,
-    #     batch_size,
-    #     allow_partial_results,
-    #     flags,
-    #     _deadline,
-    # ):
-    #     if filter is None:
-    #         filter = SON()
-    #
-    #     if not isinstance(filter, dict):
-    #         raise TypeError("TxMongo: filter must be an instance of dict.")
-    #     if not isinstance(projection, (dict, list)) and projection is not None:
-    #         raise TypeError("TxMongo: projection must be an instance of dict or list.")
-    #     if not isinstance(skip, int):
-    #         raise TypeError("TxMongo: skip must be an instance of int.")
-    #     if not isinstance(limit, int):
-    #         raise TypeError("TxMongo: limit must be an instance of int.")
-    #     if not isinstance(batch_size, int):
-    #         raise TypeError("TxMongo: batch_size must be an instance of int.")
-    #     if sort:
-    #         validate_is_mapping("sort", sort)
-    #
-    #     projection = self._normalize_fields_projection(projection)
-    #
-    #     filter = self.__apply_find_filter(filter, sort)
-    #
-    #     codec_options = self.codec_options
-    #
-    #     def after_connection(proto):
-    #         check_deadline(_deadline)
-    #
-    #         cmd = self._gen_find_command(
-    #             self.database.name,
-    #             self.name,
-    #             filter,
-    #             projection,
-    #             skip,
-    #             limit,
-    #             batch_size,
-    #             allow_partial_results,
-    #             flags,
-    #         )
-    #
-    #         return proto.send_msg(cmd, codec_options).addCallback(
-    #             after_reply, after_reply, proto
-    #         )
-    #
-    #     # this_func argument is just a reference to after_reply function itself.
-    #     # after_reply can reference to itself directly but this will create a circular
-    #     # reference between closure and function object which will add unnecessary
-    #     # work for GC.
-    #     def after_reply(reply: dict, this_func, proto, fetched=0):
-    #         try:
-    #             check_deadline(_deadline)
-    #         except Exception:
-    #             cursor_id = reply.get("cursor", {}).get("id")
-    #             if cursor_id:
-    #                 self.__close_cursor_without_response(proto, cursor_id)
-    #             raise
-    #
-    #         if "cursor" not in reply:
-    #             # For example, when we run `explain` command
-    #             return QueryIterator([reply], False, lambda: defer.succeed(None), None)
-    #
-    #         cursor = reply["cursor"]
-    #         docs_key = "firstBatch"
-    #         if "nextBatch" in cursor:
-    #             docs_key = "nextBatch"
-    #
-    #         docs_count = len(cursor[docs_key])
-    #         if limit > 0:
-    #             docs_count = min(docs_count, limit - fetched)
-    #         fetched += docs_count
-    #         out = cursor[docs_key][:docs_count]
-    #
-    #         if cursor["id"]:
-    #             if limit == 0:
-    #                 to_fetch = 0  # no limit
-    #                 if batch_size:
-    #                     to_fetch = batch_size
-    #             elif limit < 0:
-    #                 # We won't actually get here because MongoDB won't
-    #                 # create a cursor when limit < 0
-    #                 to_fetch = None
-    #             else:
-    #                 to_fetch = limit - fetched
-    #                 if to_fetch <= 0:
-    #                     to_fetch = None  # close cursor
-    #                 elif batch_size:
-    #                     to_fetch = min(batch_size, to_fetch)
-    #
-    #             if to_fetch is None:
-    #                 self.__close_cursor_without_response(proto, cursor["id"])
-    #                 return QueryIterator(out, True, lambda: defer.succeed(None), None)
-    #
-    #             get_more = {
-    #                 "getMore": cursor["id"],
-    #                 "$db": self.database.name,
-    #                 "collection": self.name,
-    #             }
-    #             if batch_size:
-    #                 get_more["batchSize"] = batch_size
-    #
-    #             return QueryIterator(
-    #                 out,
-    #                 False,
-    #                 lambda: proto.send_msg(Msg.create(get_more, codec_options=codec_options), codec_options).addCallback(
-    #                     this_func, this_func, proto, fetched
-    #                 ),
-    #                 lambda: self.__close_cursor_without_response(proto, cursor["id"]),
-    #             )
-    #
-    #         return QueryIterator(out, True, lambda: defer.succeed(None), None)
-    #
-    #     return self._database.connection.getprotocol().addCallback(after_connection)
-
     @timeout
     def find_one(
         self,
@@ -870,7 +675,7 @@ class Collection:
         if isinstance(filter, ObjectId):
             filter = {"_id": filter}
 
-        return self._find(
+        cursor = self._find_with_cursor_v2(
             filter,
             projection,
             skip,
@@ -878,8 +683,19 @@ class Collection:
             sort=sort,
             allow_partial_results=allow_partial_results,
             flags=flags,
-            _deadline=_deadline,
-        ).addCallback(lambda result: result[0] if result else None)
+        )
+        rows = []
+
+        def on_batch(batch, this_func):
+            rows.extend(batch)
+            if not cursor.exhausted:
+                return cursor.next_batch(deadline=_deadline).addCallback(
+                    this_func, this_func
+                )
+            else:
+                return rows[0] if rows else None
+
+        return cursor.next_batch(deadline=_deadline).addCallback(on_batch, on_batch)
 
     @timeout
     def count(self, filter=None, **kwargs):

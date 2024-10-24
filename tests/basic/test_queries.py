@@ -32,6 +32,7 @@ from pymongo.results import (
     UpdateResult,
 )
 from pymongo.write_concern import WriteConcern
+from twisted.conch.insults.window import cursor
 from twisted.internet import defer
 
 import txmongo.filter as qf
@@ -40,6 +41,7 @@ from tests.basic.utils import (
     only_for_mongodb_starting_from,
 )
 from tests.utils import SingleCollectionTest
+from txmongo.collection import Cursor
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import MongoProtocol
 
@@ -254,6 +256,7 @@ class TestMongoQueries(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_AllowPartialResults(self):
+
         with patch.object(
             MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
         ) as mock:
@@ -268,7 +271,7 @@ class TestMongoQueries(SingleCollectionTest):
         await self.coll.insert_many([{"a": i} for i in range(100)])
 
         all_batches_len = 0
-        async for batch in self.coll.find_with_cursor_v2(batch_size=10).batches():
+        async for batch in self.coll.find(batch_size=10).batches():
             batch_len = len(batch)
             self.assertEqual(batch_len, 10)
             all_batches_len += batch_len
@@ -279,7 +282,7 @@ class TestMongoQueries(SingleCollectionTest):
         await self.coll.insert_many([{"b": i} for i in range(50)])
 
         sum_of_doc, doc_count = 0, 0
-        async for doc in self.coll.find_with_cursor_v2(batch_size=10):
+        async for doc in self.coll.find(batch_size=10):
             sum_of_doc += doc["b"]
             doc_count += 1
 
@@ -290,14 +293,39 @@ class TestMongoQueries(SingleCollectionTest):
         await self.coll.insert_many([{"c": i} for i in range(50)])
 
         doc_count = 0
-        async for doc in self.coll.find_with_cursor_v2(batch_size=10):
+        async for doc in self.coll.find(batch_size=10):
             doc_count += 1
             if doc_count == 25:
                 break
 
         self.assertEqual(doc_count, 25)
 
-        yield self.__check_no_open_cursors()
+        await self.__check_no_open_cursors()
+
+    async def test_iterate_next_batch(self):
+        batch_size = 10
+        await self.coll.insert_many([{"c": i} for i in range(50)])
+
+        cmd = self.coll._gen_find_command(
+            self.coll.database.name, self.coll.name, {}, {}, 0, 0, batch_size, False, 0
+        )
+        cursor = Cursor(self.coll, cmd, batch_size, None)
+
+        async def batches():
+            try:
+                while not cursor.exhausted:
+                    batch = await cursor.next_batch()
+                    if not batch:
+                        continue
+                    yield batch
+            finally:
+                cursor.close()
+
+        all_elements = sum([len(batch) async for batch in batches()])
+
+        self.assertEqual(all_elements, 50)
+
+        await self.__check_no_open_cursors()
 
 
 class TestMongoQueriesEdgeCases(SingleCollectionTest):
