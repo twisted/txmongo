@@ -18,26 +18,17 @@ from pymongo.common import (
     validate_ok_for_update,
 )
 
+from txmongo._bulk_constants import (
+    _DELETE,
+    _INSERT,
+    _UPDATE,
+    COMMAND_NAME,
+    PAYLOAD_ARG_NAME,
+)
 from txmongo.protocol import MongoProtocol, Msg
 from txmongo.types import Document
 
 _WriteOp = Union[InsertOne, UpdateOne, UpdateMany, ReplaceOne, DeleteOne, DeleteMany]
-
-_INSERT = 0
-_UPDATE = 1
-_DELETE = 2
-
-COMMAND_NAME = {
-    _INSERT: "insert",
-    _UPDATE: "update",
-    _DELETE: "delete",
-}
-
-PAYLOAD_ARG_NAME = {
-    _INSERT: "documents",
-    _UPDATE: "updates",
-    _DELETE: "deletes",
-}
 
 
 class _Run:

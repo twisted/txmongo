@@ -203,10 +203,7 @@ class TestMongoQueries(SingleCollectionTest):
             {"$where": "sleep(100); true"}, batch_size=5, timeout=0.8
         )
         with patch.object(
-            MongoProtocol,
-            "send_msg",
-            side_effect=MongoProtocol.send_msg,
-            autospec=True,
+            MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
         ) as mock:
             with self.assertRaises(TimeExceeded):
                 yield dfr

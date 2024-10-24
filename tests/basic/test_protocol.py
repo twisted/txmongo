@@ -87,24 +87,24 @@ class TestMongoProtocol(unittest.TestCase):
         self.assertEqual(decoded.documents, request.documents)
 
     def test_EncodeDecodeMsg(self):
-        request = Msg(
-            response_to=123,
-            flag_bits=OP_MSG_MORE_TO_COME,
-            body=bson.encode({"a": 1, "$db": "dbname"}),
+        request = Msg.create(
+            body={"a": 1, "$db": "dbname"},
             payload={
                 "documents": [
-                    bson.encode({"a": 1}),
-                    bson.encode({"a": 2}),
+                    {"a": 1},
+                    {"a": 2},
                 ],
                 "updates": [
-                    bson.encode({"$set": {"z": 1}}),
-                    bson.encode({"$set": {"z": 2}}),
+                    {"$set": {"z": 1}},
+                    {"$set": {"z": 2}},
                 ],
                 "deletes": [
-                    bson.encode({"_id": ObjectId()}),
-                    bson.encode({"_id": ObjectId()}),
+                    {"_id": ObjectId()},
+                    {"_id": ObjectId()},
                 ],
             },
+            acknowledged=False,
+            response_to=123,
         )
 
         decoded = self._encode_decode(request)

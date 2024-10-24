@@ -6,7 +6,6 @@ import collections.abc
 from operator import itemgetter
 from typing import Iterable, List, Optional
 
-import bson
 from bson import ObjectId
 from bson.codec_options import CodecOptions
 from bson.son import SON
@@ -32,19 +31,10 @@ from twisted.internet.defer import Deferred, FirstError, gatherResults, inlineCa
 from twisted.python.compat import comparable
 
 from txmongo import filter as qf
-from txmongo._bulk import _INSERT, _Bulk, _Run
-from txmongo.protocol import (
-    OP_MSG_MORE_TO_COME,
-    QUERY_PARTIAL,
-    QUERY_SLAVE_OK,
-    MongoProtocol,
-    Msg,
-)
-from txmongo.pymongo_internals import (
-    _check_command_response,
-    _check_write_command_response,
-    _merge_command,
-)
+from txmongo._bulk import _Bulk, _Run
+from txmongo._bulk_constants import _INSERT
+from txmongo.protocol import QUERY_PARTIAL, QUERY_SLAVE_OK, MongoProtocol, Msg
+from txmongo.pymongo_internals import _check_write_command_response, _merge_command
 from txmongo.types import Document
 from txmongo.utils import check_deadline, timeout
 
@@ -413,9 +403,8 @@ class Collection:
         "$showDiskLoc": "showRecordId",  # <= MongoDB 3.0
     }
 
-    @classmethod
     def _gen_find_command(
-        cls,
+        self,
         db_name: str,
         coll_name: str,
         filter_with_modifiers,
@@ -425,12 +414,16 @@ class Collection:
         batch_size,
         allow_partial_results,
         flags: int,
-    ):
+    ) -> Msg:
         cmd = {"find": coll_name}
         if "$query" in filter_with_modifiers:
             cmd.update(
                 [
-                    (cls._MODIFIERS[key], val) if key in cls._MODIFIERS else (key, val)
+                    (
+                        (self._MODIFIERS[key], val)
+                        if key in self._MODIFIERS
+                        else (key, val)
+                    )
                     for key, val in filter_with_modifiers.items()
                 ]
             )
@@ -459,19 +452,17 @@ class Collection:
             cmd = {"explain": cmd}
 
         cmd["$db"] = db_name
-        return cmd
+        return Msg.create(cmd, codec_options=self.codec_options)
 
     def __close_cursor_without_response(self, proto: MongoProtocol, cursor_id: int):
         proto.send_msg(
-            Msg(
-                flag_bits=OP_MSG_MORE_TO_COME,
-                body=bson.encode(
-                    {
-                        "killCursors": self.name,
-                        "$db": self._database.name,
-                        "cursors": [cursor_id],
-                    },
-                ),
+            Msg.create(
+                {
+                    "killCursors": self.name,
+                    "$db": self._database.name,
+                    "cursors": [cursor_id],
+                },
+                acknowledged=False,
             )
         )
 
@@ -524,7 +515,7 @@ class Collection:
                 flags,
             )
 
-            return proto.send_simple_msg(cmd, codec_options).addCallback(
+            return proto.send_msg(cmd, codec_options).addCallback(
                 after_reply, after_reply, proto
             )
 
@@ -540,8 +531,6 @@ class Collection:
                 if cursor_id:
                     self.__close_cursor_without_response(proto, cursor_id)
                 raise
-
-            _check_command_response(reply)
 
             if "cursor" not in reply:
                 # For example, when we run `explain` command
@@ -586,7 +575,9 @@ class Collection:
                 if batch_size:
                     get_more["batchSize"] = batch_size
 
-                next_reply = proto.send_simple_msg(get_more, codec_options)
+                next_reply = proto.send_msg(
+                    Msg.create(get_more, codec_options=codec_options), codec_options
+                )
                 next_reply.addCallback(this_func, this_func, proto, fetched)
                 return out, next_reply
 
@@ -697,26 +688,23 @@ class Collection:
             document["_id"] = ObjectId()
         inserted_id = document["_id"]
 
-        msg = Msg(
-            flag_bits=Msg.create_flag_bits(self.write_concern.acknowledged),
-            body=bson.encode(
-                {
-                    "insert": self.name,
-                    "$db": self.database.name,
-                    "writeConcern": self.write_concern.document,
-                }
-            ),
-            payload={
-                "documents": [bson.encode(document, codec_options=self.codec_options)],
+        msg = Msg.create(
+            {
+                "insert": self.name,
+                "$db": self.database.name,
+                "writeConcern": self.write_concern.document,
             },
+            {
+                "documents": [document],
+            },
+            codec_options=self.codec_options,
+            acknowledged=self.write_concern.acknowledged,
         )
 
         proto = yield self._database.connection.getprotocol()
         check_deadline(_deadline)
-        response: Optional[Msg] = yield proto.send_msg(msg)
-        if response:
-            reply = bson.decode(response.body, codec_options=self.codec_options)
-            _check_command_response(reply)
+        reply: Optional[dict] = yield proto.send_msg(msg, self.codec_options)
+        if reply:
             _check_write_command_response(reply)
         return InsertOneResult(inserted_id, self.write_concern.acknowledged)
 
@@ -761,37 +749,30 @@ class Collection:
 
     @defer.inlineCallbacks
     def _update(self, filter, update, upsert, multi, _deadline):
-        msg = Msg(
-            flag_bits=Msg.create_flag_bits(self.write_concern.acknowledged),
-            body=bson.encode(
-                {
-                    "update": self.name,
-                    "$db": self.database.name,
-                    "writeConcern": self.write_concern.document,
-                }
-            ),
-            payload={
+        msg = Msg.create(
+            {
+                "update": self.name,
+                "$db": self.database.name,
+                "writeConcern": self.write_concern.document,
+            },
+            {
                 "updates": [
-                    bson.encode(
-                        {
-                            "q": filter,
-                            "u": update,
-                            "upsert": bool(upsert),
-                            "multi": bool(multi),
-                        },
-                        codec_options=self.codec_options,
-                    )
+                    {
+                        "q": filter,
+                        "u": update,
+                        "upsert": bool(upsert),
+                        "multi": bool(multi),
+                    }
                 ],
             },
+            codec_options=self.codec_options,
+            acknowledged=self.write_concern.acknowledged,
         )
 
         proto = yield self._database.connection.getprotocol()
         check_deadline(_deadline)
-        response = yield proto.send_msg(msg)
-        reply = None
-        if response:
-            reply = bson.decode(response.body, codec_options=self.codec_options)
-            _check_command_response(reply)
+        reply = yield proto.send_msg(msg, self.codec_options)
+        if reply:
             _check_write_command_response(reply)
             if reply.get("n") and "upserted" in reply:
                 # MongoDB >= 2.6.0 returns the upsert _id in an array
@@ -916,29 +897,24 @@ class Collection:
         if let:
             body["let"] = let
 
-        msg = Msg(
-            flag_bits=Msg.create_flag_bits(self.write_concern.acknowledged),
-            body=bson.encode(body),
-            payload={
+        msg = Msg.create(
+            body,
+            {
                 "deletes": [
-                    bson.encode(
-                        {
-                            "q": filter,
-                            "limit": 0 if multi else 1,
-                        },
-                        codec_options=self.codec_options,
-                    )
+                    {
+                        "q": filter,
+                        "limit": 0 if multi else 1,
+                    },
                 ],
             },
+            codec_options=self.codec_options,
+            acknowledged=self.write_concern.acknowledged,
         )
 
         proto = yield self._database.connection.getprotocol()
         check_deadline(_deadline)
-        response = yield proto.send_msg(msg)
-        reply = None
-        if response:
-            reply = bson.decode(response.body, codec_options=self.codec_options)
-            _check_command_response(reply)
+        reply = yield proto.send_msg(msg, self.codec_options)
+        if reply:
             _check_write_command_response(reply)
 
         return DeleteResult(reply, self.write_concern.acknowledged)
@@ -1256,12 +1232,8 @@ class Collection:
         }
 
         def accumulate_response(response: dict, run: _Run, idx_offset: int) -> dict:
-            _check_command_response(response)
             _merge_command(run, full_result, idx_offset, response)
             return response
-
-        def decode_response(response: Msg, codec_options: CodecOptions) -> dict:
-            return bson.decode(response.body, codec_options=codec_options)
 
         got_error = False
         for run in bulk.gen_runs():
@@ -1273,9 +1245,8 @@ class Collection:
                 self.codec_options,
             ):
                 check_deadline(_deadline)
-                deferred = proto.send_msg(msg)
+                deferred = proto.send_msg(msg, self.codec_options)
                 if effective_write_concern.acknowledged:
-                    deferred.addCallback(decode_response, self.codec_options)
                     if bulk.ordered:
                         reply = yield deferred
                         accumulate_response(reply, run, doc_offset)
