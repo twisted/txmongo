@@ -23,10 +23,10 @@ from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
 from hashlib import sha1
 from random import SystemRandom
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import bson
-from bson import SON, Binary, CodecOptions
+from bson import DEFAULT_CODEC_OPTIONS, SON, Binary, CodecOptions
 from pymongo.errors import (
     AutoReconnect,
     ConfigurationError,
@@ -39,6 +39,8 @@ from twisted.internet import defer, error, protocol
 from twisted.python import failure, log
 
 from txmongo.pymongo_errors import _NOT_MASTER_CODES
+from txmongo.pymongo_internals import _check_command_response
+from txmongo.types import Document
 
 try:
     from pymongo.synchronous import auth
@@ -255,6 +257,35 @@ class Msg(BaseMessage):
     @classmethod
     def create_flag_bits(cls, not_more_to_come: bool) -> int:
         return 0 if not_more_to_come else OP_MSG_MORE_TO_COME
+
+    @classmethod
+    def create(
+        cls,
+        body: Document,
+        payload: Dict[str, List[Document]] = None,
+        *,
+        codec_options: CodecOptions = DEFAULT_CODEC_OPTIONS,
+        acknowledged: bool = True,
+        request_id: int = 0,
+        response_to: int = 0,
+    ) -> "Msg":
+        encoded_payload = {}
+        if payload:
+            encoded_payload = {
+                key: [bson.encode(doc, codec_options=codec_options) for doc in docs]
+                for key, docs in payload.items()
+            }
+        return Msg(
+            request_id=request_id,
+            response_to=response_to,
+            body=bson.encode(body, codec_options=codec_options),
+            flag_bits=0 if acknowledged else OP_MSG_MORE_TO_COME,
+            payload=encoded_payload,
+        )
+
+    @property
+    def acknowledged(self) -> bool:
+        return (self.flag_bits & OP_MSG_MORE_TO_COME) == 0
 
     def size_in_bytes(self) -> int:
         """return estimated overall message length including messageLength and requestID"""
@@ -519,50 +550,45 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
         request_id = self._send(request)
         return self.__wait_for_reply_to(request_id)
 
-    def send_msg(self, msg: Msg) -> defer.Deferred[Msg]:
-        """Send Msg (OP_MSG) and return deferred.
-
-        If OP_MSG has OP_MSG_MORE_TO_COME flag set, returns already fired deferred with None as a result.
-        """
+    def _send_raw_msg(self, msg: Msg) -> defer.Deferred[Optional[Msg]]:
+        """Send OP_MSG and return result as Msg object (or None if not acknowledged)"""
         request_id = self._send(msg)
-        if msg.flag_bits & OP_MSG_MORE_TO_COME:
-            return defer.succeed(None)
-        return self.__wait_for_reply_to(request_id)
+        if msg.acknowledged:
+            return self.__wait_for_reply_to(request_id)
+        return defer.succeed(None)
 
-    def _check_master(self, answer: dict):
-        if answer.get("ok") == 0:
-            if answer.get("code", -1) in _NOT_MASTER_CODES:
+    @defer.inlineCallbacks
+    def send_msg(
+        self,
+        msg: Msg,
+        codec_options: CodecOptions = DEFAULT_CODEC_OPTIONS,
+        *,
+        check: bool = True,
+        errmsg: str = None,
+        allowable_errors=None,
+    ) -> defer.Deferred[Optional[dict]]:
+        """Send OP_MSG and return parsed response as dict."""
+
+        response = yield self._send_raw_msg(msg)
+        if response is None:
+            return
+
+        reply = bson.decode(response.body, codec_options)
+        for key, bin_docs in msg.payload.items():
+            reply[key] = [bson.decode(doc, codec_options) for doc in bin_docs]
+
+        if reply.get("ok") == 0:
+            if reply.get("code") in _NOT_MASTER_CODES:
                 self.transport.loseConnection()
-                return NotPrimaryError(
-                    "TxMongo: " + answer.get("errmsg", "Unknown error")
+                raise NotPrimaryError(
+                    "TxMongo: " + reply.get("errmsg", "Unknown error")
                 )
 
-    def send_simple_msg(
-        self, body: dict, codec_options: CodecOptions
-    ) -> defer.Deferred[dict]:
-        """Send simple OP_MSG without extracted payload and return parsed response."""
-
-        def on_response(response: Msg):
-            reply = bson.decode(response.body, codec_options)
-            for key, bin_docs in msg.payload.items():
-                reply[key] = []
-                for doc in bin_docs:
-                    answer = bson.decode(doc, codec_options)
-                    # if check:
-                    #     if master_error := self._check_master(answer):
-                    #         reply[key].append(master_error)
-                    #         break
-                    reply[key].append(answer)
-            return reply
-
-        def on_response_v1(response: Msg):
-            reply = bson.decode(response.body, codec_options)
-            for key, bin_docs in msg.payload.items():
-                reply[key] = [bson.decode(doc, codec_options) for doc in bin_docs]
-            return reply
-
-        msg = Msg(body=bson.encode(body, codec_options=codec_options))
-        return self.send_msg(msg).addCallback(on_response_v1)
+        if check:
+            _check_command_response(
+                reply, msg=errmsg, allowable_errors=allowable_errors
+            )
+        return reply
 
     def handle(self, request: BaseMessage):
         if isinstance(request, Reply):
@@ -600,13 +626,9 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
             else:
                 df.callback(request)
 
-    def handle_msg(self, msg: Msg):
-        if dfr := self.__deferreds.pop(msg.response_to, None):
-            answer = bson.decode(msg.body)
-            if master_error := self._check_master(answer):
-                dfr.errback(master_error)
-            else:
-                dfr.callback(msg)
+    def handle_msg(self, request: Msg):
+        if dfr := self.__deferreds.pop(request.response_to, None):
+            dfr.callback(request)
 
     def set_wire_versions(self, min_wire_version, max_wire_version):
         self.min_wire_version = min_wire_version

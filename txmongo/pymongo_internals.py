@@ -1,4 +1,6 @@
-from typing import Any, Mapping, MutableMapping, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Mapping, MutableMapping, Optional
 
 from pymongo.errors import (
     CursorNotFound,
@@ -11,8 +13,11 @@ from pymongo.errors import (
     WTimeoutError,
 )
 
-from txmongo._bulk import _DELETE, _INSERT, _UPDATE, _Run
+from txmongo._bulk_constants import _DELETE, _INSERT, _UPDATE
 from txmongo.pymongo_errors import _NOT_MASTER_CODES
+
+if TYPE_CHECKING:
+    from txmongo._bulk import _Run
 
 
 # Copied from pymongo/helpers.py:193 at commit 47b0d8ebfd6cefca80c1e4521b47aec7cf8f529d
