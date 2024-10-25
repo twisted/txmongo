@@ -1,12 +1,10 @@
 # Copyright 2009-2015 The TxMongo Developers.  All rights reserved.
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
-import bson
 from twisted.internet import defer
 
 from txmongo.collection import Collection
 from txmongo.protocol import Msg
-from txmongo.pymongo_internals import _check_command_response
 from txmongo.utils import check_deadline, timeout
 
 
@@ -140,7 +138,7 @@ class Database:
             names = [n for n in names if "$" not in n]
             return names
 
-        return self["system.namespaces"].find(_deadline=_deadline).addCallback(ok)
+        return self["system.namespaces"].find(deadline=_deadline).addCallback(ok)
 
     def authenticate(self, name, password, mechanism="DEFAULT"):
         """

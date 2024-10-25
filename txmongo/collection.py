@@ -3,6 +3,8 @@
 # found in the LICENSE file.
 
 import collections.abc
+import time
+import warnings
 from operator import itemgetter
 from typing import Iterable, List, Optional
 
@@ -37,6 +39,242 @@ from txmongo.protocol import QUERY_PARTIAL, QUERY_SLAVE_OK, MongoProtocol, Msg
 from txmongo.pymongo_internals import _check_write_command_response, _merge_command
 from txmongo.types import Document
 from txmongo.utils import check_deadline, timeout
+
+_DEFERRED_METHODS = frozenset(
+    {
+        "addCallback",
+        "addCallbacks",
+        "addErrback",
+        "addBoth",
+        "called",
+        "paused",
+        "addTimeout",
+        "chainDeferred",
+        "callback",
+        "errback",
+        "pause",
+        "unpause",
+        "cancel",
+        "send",
+        "asFuture",
+    }
+)
+
+
+class Cursor(Deferred):
+    """
+    Cursor instance. Returned by :meth:`Collection.find()` method and should not be instantiated manually.
+
+    Can be used to asynchronously iterate over the query results:
+    ::
+        async def query():
+            async for doc in collection.find(query):
+                print(doc)
+
+    Or the same in batches:
+    ::
+        async def query():
+            async for batch in collection.find(query).batches():
+                for doc in batch:
+                    print(doc)
+
+    Or the same using classic deferreds
+    ::
+        @defer.inlineCallbacks
+        def query():
+            cursor = collection.find(query)
+            while not cursor.exhausted:
+                batch = yield cursor.next_batch()
+                do_something(batch)
+
+    This class inherits from :class:`Deferred` and when used as a deferred, it fires with a complete list
+    of documents found:
+    ::
+        result = yield collection.find(query)
+        for doc in result:
+            print(doc)
+    """
+
+    cursor_id: Optional[int] = None
+    """MongoDB cursor id"""
+
+    exhausted: bool = False
+    """
+    Is the cursor exhausted? If not, you can call :meth:`next_batch()` to retrieve the next batch
+    or :meth:`close()` to close the cursor on the MongoDB's side
+    """
+
+    _next_batch_deferreds: Optional[List[Deferred]] = None
+    _current_loading_op: Optional[defer.Deferred] = None
+
+    _find_deferred: Optional[Deferred] = None
+    _old_style_deadline: Optional[float] = None
+
+    def __init__(
+        self,
+        collection: "Collection",
+        command: Msg,
+        batch_size: int,
+        timeout: Optional[float],
+    ):
+        super().__init__()
+        self.collection = collection
+        self.command = command
+        self.batch_size = batch_size
+        self._timeout = timeout
+
+        if timeout:
+            # When used as deferred, we should treat `timeout` argument as a overall
+            # timeout for the whole find() operation, including all batches
+            self._old_style_deadline = time.time() + timeout
+
+    @inlineCallbacks
+    def _old_style_find(self):
+        result = []
+        try:
+            while not self.exhausted:
+                batch = yield self.next_batch(deadline=self._old_style_deadline)
+                if not batch:
+                    continue
+                result.extend(batch)
+            return result
+        finally:
+            self.close()
+
+    def _make_old_style_find_call(self):
+        if self._find_deferred:
+            return
+        self._find_deferred = self._old_style_find()
+
+    def __getattribute__(self, item):
+        if item in _DEFERRED_METHODS:
+            self._make_old_style_find_call()
+            value = getattr(self._find_deferred, item)
+            return value
+        return super().__getattribute__(item)
+
+    def _after_connection(self, proto: MongoProtocol, _deadline: Optional[float]):
+        return proto.send_msg(self.command, self.collection.codec_options).addCallback(
+            self._after_reply, _deadline
+        )
+
+    def _get_more(self, proto: MongoProtocol, _deadline: Optional[float]):
+        get_more = {
+            "getMore": self.cursor_id,
+            "$db": self.collection.database.name,
+            "collection": self.collection.name,
+        }
+        if self.batch_size:
+            get_more["batchSize"] = self.batch_size
+
+        return proto.send_msg(
+            Msg.create(get_more, codec_options=self.collection.codec_options),
+            self.collection.codec_options,
+        ).addCallback(self._after_reply, _deadline)
+
+    def _after_reply(self, reply: dict, _deadline: Optional[float]):
+        check_deadline(_deadline)
+
+        if "cursor" not in reply:
+            # For example, when we run `explain` command
+            self.cursor_id = None
+            self.exhausted = True
+            return [reply]
+        else:
+            cursor = reply["cursor"]
+            self.cursor_id = cursor["id"]
+            self.exhausted = not self.cursor_id
+            return cursor["nextBatch" if "nextBatch" in cursor else "firstBatch"]
+
+    @timeout
+    def next_batch(self, _deadline: Optional[float]) -> Deferred[List[dict]]:
+        """next_batch() -> Deferred[list[dict]]
+
+        Returns deferred that will fire with a next batch of results as a list of documents.
+
+        Resulting list can be empty if this is a last batch.
+
+        Check :attr:`exhausted` after calling this method to know if this is a last batch.
+        """
+        if self.exhausted:
+            return defer.succeed([])
+
+        def on_cancel(d):
+            self._next_batch_deferreds.remove(d)
+            if not self._next_batch_deferreds:
+                self._next_batch_deferreds = None
+                self._current_loading_op.cancel()
+
+        dfr = defer.Deferred(on_cancel)
+        if self._next_batch_deferreds is not None:
+            self._next_batch_deferreds.append(dfr)
+            return dfr
+
+        self._next_batch_deferreds = [dfr]
+
+        def on_result(result):
+            if isinstance(result, defer.Failure):
+                self.close()
+            if self._next_batch_deferreds:
+                deferreds, self._next_batch_deferreds = self._next_batch_deferreds, None
+                for d in deferreds:
+                    d.callback(result)
+
+        self._current_loading_op = (
+            self.collection.database.connection.getprotocol()
+            .addCallback(
+                (self._after_connection if self.cursor_id is None else self._get_more),
+                _deadline,
+            )
+            .addBoth(on_result)
+        )
+
+        return dfr
+
+    def close(self) -> defer.Deferred:
+        """
+        Close the cursor. Cursor automatically closed when it is exhausted or when you use
+        the cursor object as an async generator. But if you use it by calling :meth:`next_batch()`,
+        be sure to close cursor if you stop iterating before the cursor is exhausted.
+        """
+        if not self.cursor_id:
+            return defer.succeed(None)
+        return self.collection.database.connection.getprotocol().addCallback(
+            self.collection._close_cursor_without_response, self.cursor_id
+        )
+
+    async def batches(self):
+        """
+        Async generator over the query results in batches
+        ::
+            async def query():
+                async for batch in collection.find(query).batches():
+                    for doc in batch:
+                        print(doc)
+        """
+        try:
+            while not self.exhausted:
+                batch = await self.next_batch(timeout=self._timeout)
+                if not batch:
+                    continue
+                yield batch
+        finally:
+            self.close()
+
+    async def __aiter__(self):
+        """
+        Async generator over the query results
+        ::
+            @defer.inlineCallbacks
+            def query():
+                cursor = collection.find(query)
+                while not cursor.exhausted:
+                    batch = yield cursor.next_batch()
+                    do_something(batch)
+        """
+        async for batch in self.batches():
+            for doc in batch:
+                yield doc
 
 
 @comparable
@@ -233,7 +471,6 @@ class Collection:
             {"listCollections": 1, "filter": {"name": self.name}}
         ).addCallback(on_ok)
 
-    @timeout
     def find(
         self,
         filter=None,
@@ -242,9 +479,11 @@ class Collection:
         limit=0,
         sort=None,
         *,
+        batch_size=0,
         allow_partial_results: bool = False,
         flags=0,
-        _deadline=None,
+        timeout: Optional[float] = None,
+        deadline: Optional[float] = None,
     ):
         """find(filter=None, projection=None, skip=0, limit=0, sort=None, allow_partial_results=False)
 
@@ -282,53 +521,54 @@ class Collection:
             if True, mongos will return partial results if some shards are down
             instead of returning an error
 
-        :returns: an instance of :class:`Deferred` that called back with a list with
-            all documents found.
+        :returns: an instance of :class:`Cursor`. :class:`Cursor` inherits from :class:`Deferred`.
+            When used Deferred, it fires with a list of all documents found:
+            ::
+                result = yield collection.find(query)
+                for doc in result:
+                    print(doc)
+
+            You can also use :class:`Cursor` instance as an async generator that asynchronously
+            iterates over the query results:
+            ::
+                async def query():
+                    async for doc in collection.find(query):
+                        print(doc)
+
+            Cursor's :meth:`batches()` method returns async generator that asynchronously iterates
+            over the query results in batches:
+            ::
+                async def query():
+                    async for batch in collection.find(query).batches():
+                        for doc in batch:
+                            print(doc)
+
+            Alternatively :class:`Cursor` instance can be used to iterate query results
+            in batches using :meth:`next_batch()` method that returns the next batch as Deferred:
+            ::
+                @defer.inlineCallbacks
+                def query():
+                    cursor = collection.find(query)
+                    while not cursor.exhausted:
+                        batch = yield cursor.next_batch()
+                        do_something(batch)
         """
-        return self._find(
+        if timeout is not None and deadline is not None:
+            raise ValueError("timeout and deadline cannot be specified together")
+        if timeout is None and deadline is not None:
+            timeout = deadline - time.time()
+
+        return self._create_cursor(
             filter,
             projection,
             skip,
             limit,
             sort,
-            allow_partial_results,
-            flags,
-            _deadline=_deadline,
-        )
-
-    def _find(
-        self,
-        filter,
-        projection,
-        skip,
-        limit,
-        sort,
-        allow_partial_results,
-        flags,
-        _deadline,
-    ):
-        rows = []
-
-        def on_ok(result, this_func):
-            docs, dfr = result
-
-            if docs:
-                rows.extend(docs)
-                return dfr.addCallback(this_func, this_func)
-            else:
-                return rows
-
-        return self.__find_with_cursor(
-            filter,
-            projection,
-            skip,
-            limit,
-            sort,
-            0,
-            allow_partial_results,
+            batch_size=batch_size,
+            allow_partial_results=allow_partial_results,
             flags=flags,
-            _deadline=_deadline,
-        ).addCallback(on_ok, on_ok)
+            timeout=timeout,
+        )
 
     @staticmethod
     def __apply_find_filter(spec, c_filter):
@@ -377,17 +617,77 @@ class Collection:
                             do_something(doc)
                         docs, dfr = yield dfr
         """
-        return self.__find_with_cursor(
+        warnings.warn(
+            "TxMongo: find_with_cursor() method is deprecated. Please use find() method which now returns cursor instance.",
+            DeprecationWarning,
+        )
+
+        cursor = self._create_cursor(
             filter,
             projection,
             skip,
             limit,
             sort,
+            batch_size=batch_size,
+            allow_partial_results=allow_partial_results,
+            flags=flags,
+        )
+
+        def on_batch(batch, this_func):
+            if batch:
+                return batch, cursor.next_batch(deadline=_deadline).addCallback(
+                    this_func, this_func
+                )
+            else:
+                return [], None
+
+        return cursor.next_batch(deadline=_deadline).addCallback(on_batch, on_batch)
+
+    def _create_cursor(
+        self,
+        filter=None,
+        projection=None,
+        skip=0,
+        limit=0,
+        sort=None,
+        batch_size=0,
+        *,
+        allow_partial_results: bool = False,
+        flags=0,
+        timeout: Optional[float] = None,
+    ):
+        if filter is None:
+            filter = SON()
+
+        if not isinstance(filter, dict):
+            raise TypeError("TxMongo: filter must be an instance of dict.")
+        if not isinstance(projection, (dict, list)) and projection is not None:
+            raise TypeError("TxMongo: projection must be an instance of dict or list.")
+        if not isinstance(skip, int):
+            raise TypeError("TxMongo: skip must be an instance of int.")
+        if not isinstance(limit, int):
+            raise TypeError("TxMongo: limit must be an instance of int.")
+        if not isinstance(batch_size, int):
+            raise TypeError("TxMongo: batch_size must be an instance of int.")
+        if sort:
+            validate_is_mapping("sort", sort)
+
+        projection = self._normalize_fields_projection(projection)
+
+        filter = self.__apply_find_filter(filter, sort)
+
+        cmd = self._gen_find_command(
+            self.database.name,
+            self.name,
+            filter,
+            projection,
+            skip,
+            limit,
             batch_size,
             allow_partial_results,
             flags,
-            _deadline,
         )
+        return Cursor(self, cmd, batch_size, timeout)
 
     _MODIFIERS = {
         "$query": "filter",
@@ -454,7 +754,7 @@ class Collection:
         cmd["$db"] = db_name
         return Msg.create(cmd, codec_options=self.codec_options)
 
-    def __close_cursor_without_response(self, proto: MongoProtocol, cursor_id: int):
+    def _close_cursor_without_response(self, proto: MongoProtocol, cursor_id: int):
         proto.send_msg(
             Msg.create(
                 {
@@ -465,125 +765,6 @@ class Collection:
                 acknowledged=False,
             )
         )
-
-    def __find_with_cursor(
-        self,
-        filter,
-        projection,
-        skip,
-        limit,
-        sort,
-        batch_size,
-        allow_partial_results,
-        flags,
-        _deadline,
-    ):
-        if filter is None:
-            filter = SON()
-
-        if not isinstance(filter, dict):
-            raise TypeError("TxMongo: filter must be an instance of dict.")
-        if not isinstance(projection, (dict, list)) and projection is not None:
-            raise TypeError("TxMongo: projection must be an instance of dict or list.")
-        if not isinstance(skip, int):
-            raise TypeError("TxMongo: skip must be an instance of int.")
-        if not isinstance(limit, int):
-            raise TypeError("TxMongo: limit must be an instance of int.")
-        if not isinstance(batch_size, int):
-            raise TypeError("TxMongo: batch_size must be an instance of int.")
-        if sort:
-            validate_is_mapping("sort", sort)
-
-        projection = self._normalize_fields_projection(projection)
-
-        filter = self.__apply_find_filter(filter, sort)
-
-        codec_options = self.codec_options
-
-        def after_connection(proto):
-            check_deadline(_deadline)
-
-            cmd = self._gen_find_command(
-                self.database.name,
-                self.name,
-                filter,
-                projection,
-                skip,
-                limit,
-                batch_size,
-                allow_partial_results,
-                flags,
-            )
-
-            return proto.send_msg(cmd, codec_options).addCallback(
-                after_reply, after_reply, proto
-            )
-
-        # this_func argument is just a reference to after_reply function itself.
-        # after_reply can reference to itself directly but this will create a circular
-        # reference between closure and function object which will add unnecessary
-        # work for GC.
-        def after_reply(reply: dict, this_func, proto, fetched=0):
-            try:
-                check_deadline(_deadline)
-            except Exception:
-                cursor_id = reply.get("cursor", {}).get("id")
-                if cursor_id:
-                    self.__close_cursor_without_response(proto, cursor_id)
-                raise
-
-            if "cursor" not in reply:
-                # For example, when we run `explain` command
-                return [reply], defer.succeed(([], None))
-
-            cursor = reply["cursor"]
-            docs_key = "firstBatch"
-            if "nextBatch" in cursor:
-                docs_key = "nextBatch"
-
-            docs_count = len(cursor[docs_key])
-            if limit > 0:
-                docs_count = min(docs_count, limit - fetched)
-            fetched += docs_count
-            out = cursor[docs_key][:docs_count]
-
-            if cursor["id"]:
-                if limit == 0:
-                    to_fetch = 0  # no limit
-                    if batch_size:
-                        to_fetch = batch_size
-                elif limit < 0:
-                    # We won't actually get here because MongoDB won't
-                    # create a cursor when limit < 0
-                    to_fetch = None
-                else:
-                    to_fetch = limit - fetched
-                    if to_fetch <= 0:
-                        to_fetch = None  # close cursor
-                    elif batch_size:
-                        to_fetch = min(batch_size, to_fetch)
-
-                if to_fetch is None:
-                    self.__close_cursor_without_response(proto, cursor["id"])
-                    return out, defer.succeed(([], None))
-
-                get_more = {
-                    "getMore": cursor["id"],
-                    "$db": self.database.name,
-                    "collection": self.name,
-                }
-                if batch_size:
-                    get_more["batchSize"] = batch_size
-
-                next_reply = proto.send_msg(
-                    Msg.create(get_more, codec_options=codec_options), codec_options
-                )
-                next_reply.addCallback(this_func, this_func, proto, fetched)
-                return out, next_reply
-
-            return out, defer.succeed(([], None))
-
-        return self._database.connection.getprotocol().addCallback(after_connection)
 
     @timeout
     def find_one(
@@ -611,16 +792,20 @@ class Collection:
         if isinstance(filter, ObjectId):
             filter = {"_id": filter}
 
-        return self._find(
-            filter,
-            projection,
-            skip,
-            limit=1,
-            sort=sort,
-            allow_partial_results=allow_partial_results,
-            flags=flags,
-            _deadline=_deadline,
-        ).addCallback(lambda result: result[0] if result else None)
+        # Since we specify limit=1, MongoDB will close cursor automatically for us
+        return (
+            self._create_cursor(
+                filter,
+                projection,
+                skip,
+                limit=1,
+                sort=sort,
+                allow_partial_results=allow_partial_results,
+                flags=flags,
+            )
+            .next_batch(deadline=_deadline)
+            .addCallback(lambda batch: batch[0] if batch else None)
+        )
 
     @timeout
     def count(self, filter=None, **kwargs):
