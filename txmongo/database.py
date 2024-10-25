@@ -138,7 +138,7 @@ class Database:
             names = [n for n in names if "$" not in n]
             return names
 
-        return self["system.namespaces"].find(timeout=_deadline).addCallback(ok)
+        return self["system.namespaces"].find(deadline=_deadline).addCallback(ok)
 
     def authenticate(self, name, password, mechanism="DEFAULT"):
         """

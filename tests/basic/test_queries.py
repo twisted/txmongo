@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import time
 from unittest.mock import patch
 
 import bson
@@ -32,7 +33,6 @@ from pymongo.results import (
     UpdateResult,
 )
 from pymongo.write_concern import WriteConcern
-from twisted.conch.insults.window import cursor
 from twisted.internet import defer
 
 import txmongo.filter as qf
@@ -204,6 +204,34 @@ class TestMongoQueries(SingleCollectionTest):
         yield self.__check_no_open_cursors()
 
     @defer.inlineCallbacks
+    def test_TimeoutAndDeadline(self):
+        yield self.coll.insert_many([{"a": i} for i in range(10)])
+
+        # Success cases
+        result = yield self.coll.find()
+        self.assertEqual(len(result), 10)
+        result = yield self.coll.find({"$where": "sleep(40); true"}, timeout=0.5)
+        self.assertEqual(len(result), 10)
+        result = yield self.coll.find(
+            {"$where": "sleep(40); true"}, timeout=0.5, batch_size=2
+        )
+        self.assertEqual(len(result), 10)
+
+        # Timeout cases
+        dfr = self.coll.find({"$where": "sleep(55); true"}, timeout=0.5)
+        yield self.assertFailure(dfr, TimeExceeded)
+        dfr = self.coll.find({"$where": "sleep(55); true"}, timeout=0.5, batch_size=2)
+        yield self.assertFailure(dfr, TimeExceeded)
+
+        # Deadline cases
+        dfr = self.coll.find({"$where": "sleep(55); true"}, deadline=time.time() + 0.5)
+        yield self.assertFailure(dfr, TimeExceeded)
+        dfr = self.coll.find(
+            {"$where": "sleep(55); true"}, deadline=time.time() + 0.5, batch_size=2
+        )
+        yield self.assertFailure(dfr, TimeExceeded)
+
+    @defer.inlineCallbacks
     def test_CursorClosingWithTimeout(self):
         yield self.coll.insert_many({"x": x} for x in range(10))
 
@@ -267,18 +295,7 @@ class TestMongoQueries(SingleCollectionTest):
             cmd = bson.decode(msg.body)
             self.assertEqual(cmd["allowPartialResults"], True)
 
-    async def test_find_iterate_batches(self):
-        await self.coll.insert_many([{"a": i} for i in range(100)])
-
-        all_batches_len = 0
-        async for batch in self.coll.find(batch_size=10).batches():
-            batch_len = len(batch)
-            self.assertEqual(batch_len, 10)
-            all_batches_len += batch_len
-
-        self.assertEqual(all_batches_len, 100)
-
-    async def test_find_iterate(self):
+    async def test_FindIterate(self):
         await self.coll.insert_many([{"b": i} for i in range(50)])
 
         sum_of_doc, doc_count = 0, 0
@@ -289,11 +306,22 @@ class TestMongoQueries(SingleCollectionTest):
         self.assertEqual(sum_of_doc, 1225)
         self.assertEqual(doc_count, 50)
 
-    async def test_find_iterate_close_cursor(self):
+    async def test_FindIterateBatches(self):
+        await self.coll.insert_many([{"a": i} for i in range(100)])
+
+        all_batches_len = 0
+        async for batch in self.coll.find(batch_size=10).batches():
+            batch_len = len(batch)
+            self.assertEqual(batch_len, 10)
+            all_batches_len += batch_len
+
+        self.assertEqual(all_batches_len, 100)
+
+    async def test_FindIterateCloseCursor(self):
         await self.coll.insert_many([{"c": i} for i in range(50)])
 
         doc_count = 0
-        async for doc in self.coll.find(batch_size=10):
+        async for _ in self.coll.find(batch_size=10):
             doc_count += 1
             if doc_count == 25:
                 break
@@ -302,53 +330,19 @@ class TestMongoQueries(SingleCollectionTest):
 
         await self.__check_no_open_cursors()
 
-    async def test_iterate_next_batch(self):
-        batch_size = 10
-        await self.coll.insert_many([{"c": i} for i in range(50)])
-
-        cmd = self.coll._gen_find_command(
-            self.coll.database.name, self.coll.name, {}, {}, 0, 0, batch_size, False, 0
-        )
-        cursor = Cursor(self.coll, cmd, batch_size, None)
-
-        async def batches():
-            try:
-                while not cursor.exhausted:
-                    batch = await cursor.next_batch()
-                    if not batch:
-                        continue
-                    yield batch
-            finally:
-                cursor.close()
-
-        all_elements = sum([len(batch) async for batch in batches()])
-
-        self.assertEqual(all_elements, 50)
-
-        await self.__check_no_open_cursors()
-
-
-class TestMongoQueriesEdgeCases(SingleCollectionTest):
-
-    timeout = 15
-
     @defer.inlineCallbacks
-    def test_BelowBatchThreshold(self):
-        yield self.coll.insert_many([{"v": i} for i in range(100)])
-        res = yield self.coll.find()
-        self.assertEqual(len(res), 100)
+    def test_IterateNextBatch(self):
+        yield self.coll.insert_many([{"c": i} for i in range(50)])
 
-    @defer.inlineCallbacks
-    def test_EqualToBatchThreshold(self):
-        yield self.coll.insert_many([{"v": i} for i in range(101)])
-        res = yield self.coll.find()
-        self.assertEqual(len(res), 101)
+        all_docs = []
+        cursor = self.coll.find(batch_size=10)
+        while not cursor.exhausted:
+            batch = yield cursor.next_batch()
+            all_docs.extend(batch)
 
-    @defer.inlineCallbacks
-    def test_AboveBatchThreshold(self):
-        yield self.coll.insert_many([{"v": i} for i in range(102)])
-        res = yield self.coll.find()
-        self.assertEqual(len(res), 102)
+        self.assertEqual(len(all_docs), 50)
+
+        yield self.__check_no_open_cursors()
 
 
 class TestLimit(SingleCollectionTest):
