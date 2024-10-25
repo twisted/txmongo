@@ -19,6 +19,10 @@ API Changes
   - `as_class` argument of `find()`, `find_with_cursor()` and `find_one()`
   - old-style parameters of `find*()` methods: `spec`, `fields`, `cursor`
 - `find()`, `find_one()` and `find_with_cursor()` now supports `allow_partial_results` argument.
+- `find()` method now returns `Cursor()` instance that can be used as async generator to
+  asynchronously iterate over results. It can still be used as Deferred too, so this change
+  is backward-compatible.
+- `find_with_cursor()` is deprecated and will be removed in the next release.
 
 
 
