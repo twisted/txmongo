@@ -600,6 +600,8 @@ class Collection:
     ):
         """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0, allow_partial_results=False)
 
+        This method is deprecated. Please use :meth:`find()` method which now returns :class:`Cursor` instance.
+
         Find documents in a collection and return them in one batch at a time.
 
         Arguments are the same as for :meth:`find()`.
