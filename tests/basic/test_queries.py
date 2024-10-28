@@ -41,7 +41,6 @@ from tests.basic.utils import (
     only_for_mongodb_starting_from,
 )
 from tests.utils import SingleCollectionTest
-from txmongo.collection import Cursor
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import MongoProtocol
 
@@ -56,12 +55,12 @@ class _CallCounter:
         return self.original(this, *args, **kwargs)
 
 
-class TestMongoQueries(SingleCollectionTest):
+class TestFind(SingleCollectionTest):
 
     timeout = 15
 
     @defer.inlineCallbacks
-    def test_find_return_type(self):
+    def test_FindReturnType(self):
         dfr = self.coll.find()
         dfr_one = self.coll.find_one()
         try:
@@ -106,7 +105,7 @@ class TestMongoQueries(SingleCollectionTest):
         self.assertEqual(total, 150)
 
     @defer.inlineCallbacks
-    def test_FindWithCursorBatchsize(self):
+    def test_FindWithCursorBatchSize(self):
         self.assertRaises(TypeError, self.coll.find_with_cursor, batch_size="string")
 
         yield self.coll.insert_many([{"v": i} for i in range(140)])
@@ -119,7 +118,7 @@ class TestMongoQueries(SingleCollectionTest):
         self.assertEqual(lengths, [50, 50, 40])
 
     @defer.inlineCallbacks
-    def test_FindWithCursorBatchsizeLimit(self):
+    def test_FindWithCursorBatchSizeLimit(self):
         yield self.coll.insert_many([{"v": i} for i in range(140)])
 
         docs, d = yield self.coll.find_with_cursor(batch_size=50, limit=10)
@@ -130,7 +129,7 @@ class TestMongoQueries(SingleCollectionTest):
         self.assertEqual(lengths, [10])
 
     @defer.inlineCallbacks
-    def test_FindWithCursorZeroBatchsize(self):
+    def test_FindWithCursorZeroBatchSize(self):
         yield self.coll.insert_many([{"v": i} for i in range(140)])
 
         docs, d = yield self.coll.find_with_cursor(batch_size=0)
@@ -149,13 +148,23 @@ class TestMongoQueries(SingleCollectionTest):
     @defer.inlineCallbacks
     def test_SpecifiedFields(self):
         yield self.coll.insert_many([dict((k, v) for k in "abcdefg") for v in range(5)])
-        res = yield self.coll.find(projection={"a": 1, "c": 1})
-        self.assertTrue(all(x in ["a", "c", "_id"] for x in res[0].keys()))
+
+        res = yield self.coll.find(projection={"a": 1, "c": 1, "_id": 0})
+        self.assertTrue(all(set(x.keys()) == {"a", "c"} for x in res))
         res = yield self.coll.find(projection=["a", "c"])
-        self.assertTrue(all(x in ["a", "c", "_id"] for x in res[0].keys()))
+        self.assertTrue(all(set(x.keys()) == {"a", "c", "_id"} for x in res))
         res = yield self.coll.find(projection=[])
-        self.assertTrue(all(x in ["_id"] for x in res[0].keys()))
-        self.assertRaises(TypeError, self.coll.find, {}, projection=[1])
+        self.assertTrue(all(set(x.keys()) == {"_id"} for x in res))
+        yield self.assertFailure(self.coll.find({}, projection=[1]), TypeError)
+
+        # Alternative form
+        res = yield self.coll.find().projection({"a": 1, "c": 1, "_id": 0})
+        self.assertTrue(all(set(x.keys()) == {"a", "c"} for x in res))
+        res = yield self.coll.find().projection(["a", "c"])
+        self.assertTrue(all(set(x.keys()) == {"a", "c", "_id"} for x in res))
+        res = yield self.coll.find().projection([])
+        self.assertTrue(all(set(x.keys()) == {"_id"} for x in res))
+        yield self.assertFailure(self.coll.find().projection([1]), TypeError)
 
     def __make_big_object(self):
         return {"_id": ObjectId(), "x": "a" * 1000}
@@ -218,9 +227,9 @@ class TestMongoQueries(SingleCollectionTest):
         self.assertEqual(len(result), 10)
 
         # Timeout cases
-        dfr = self.coll.find({"$where": "sleep(55); true"}, timeout=0.5)
+        dfr = self.coll.find({"$where": "sleep(55); true"}).timeout(0.5)
         yield self.assertFailure(dfr, TimeExceeded)
-        dfr = self.coll.find({"$where": "sleep(55); true"}, timeout=0.5, batch_size=2)
+        dfr = self.coll.find({"$where": "sleep(55); true"}).timeout(0.5).batch_size(2)
         yield self.assertFailure(dfr, TimeExceeded)
 
         # Deadline cases
@@ -284,11 +293,20 @@ class TestMongoQueries(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_AllowPartialResults(self):
-
         with patch.object(
             MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
         ) as mock:
             yield self.coll.find_one(allow_partial_results=True)
+
+            mock.assert_called_once()
+            msg = mock.call_args[0][1]
+            cmd = bson.decode(msg.body)
+            self.assertEqual(cmd["allowPartialResults"], True)
+
+        with patch.object(
+            MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
+        ) as mock:
+            yield self.coll.find().limit(1).allow_partial_results()
 
             mock.assert_called_once()
             msg = mock.call_args[0][1]
@@ -344,6 +362,39 @@ class TestMongoQueries(SingleCollectionTest):
 
         yield self.__check_no_open_cursors()
 
+    @defer.inlineCallbacks
+    def test_NextBatchBeforePreviousComplete(self):
+        """If next_batch() is called before previous one is fired, it will return the same batch"""
+        yield self.coll.insert_many([{"c": i} for i in range(50)])
+        cursor = self.coll.find().batch_size(10)
+
+        batches = yield defer.gatherResults([cursor.next_batch() for _ in range(5)])
+        self.assertFalse(cursor.exhausted)
+        for batch in batches[1:]:
+            self.assertEqual(batch, batches[0])
+
+        batch2 = yield cursor.next_batch()
+        self.assertNotEqual(batch2, batches[0])
+
+        yield cursor.close()
+
+    @defer.inlineCallbacks
+    def test_CursorId(self):
+        yield self.coll.insert_many([{"c": i} for i in range(50)])
+
+        cursor = self.coll.find().batch_size(45)
+        yield cursor.next_batch()
+        try:
+            self.assertIsInstance(cursor.cursor_id, int)
+            self.assertNotEqual(cursor.cursor_id, 0)
+            self.assertIsNotNone(cursor.cursor_id)
+        finally:
+            yield cursor.close()
+
+    def test_CursorCollection(self):
+        cursor = self.coll.find().batch_size(45)
+        self.assertIs(cursor.collection, self.coll)
+
 
 class TestLimit(SingleCollectionTest):
 
@@ -354,41 +405,40 @@ class TestLimit(SingleCollectionTest):
         yield self.coll.insert_many([{"v": i} for i in range(50)])
         res = yield self.coll.find(limit=20)
         self.assertEqual(len(res), 20)
+        res = yield self.coll.find().limit(20)
+        self.assertEqual(len(res), 20)
 
     @defer.inlineCallbacks
     def test_LimitAboveBatchThreshold(self):
         yield self.coll.insert_many([{"v": i} for i in range(200)])
         res = yield self.coll.find(limit=150)
         self.assertEqual(len(res), 150)
+        res = yield self.coll.find().limit(150)
+        self.assertEqual(len(res), 150)
 
     @defer.inlineCallbacks
     def test_LimitAtBatchThresholdEdge(self):
         yield self.coll.insert_many([{"v": i} for i in range(200)])
-        res = yield self.coll.find(limit=100)
-        self.assertEqual(len(res), 100)
-
-        yield self.coll.drop()
-
-        yield self.coll.insert_many([{"v": i} for i in range(200)])
-        res = yield self.coll.find(limit=101)
-        self.assertEqual(len(res), 101)
-
-        yield self.coll.drop()
-
-        yield self.coll.insert_many([{"v": i} for i in range(200)])
-        res = yield self.coll.find(limit=102)
-        self.assertEqual(len(res), 102)
+        for limit in [100, 101, 102]:
+            res = yield self.coll.find(limit=limit, batch_size=100)
+            self.assertEqual(len(res), limit)
+            res = yield self.coll.find().limit(limit).batch_size(100)
+            self.assertEqual(len(res), limit)
 
     @defer.inlineCallbacks
     def test_LimitAboveMessageSizeThreshold(self):
         yield self.coll.insert_many([{"v": " " * (2**20)} for _ in range(8)])
         res = yield self.coll.find(limit=5)
         self.assertEqual(len(res), 5)
+        res = yield self.coll.find().limit(5)
+        self.assertEqual(len(res), 5)
 
     @defer.inlineCallbacks
     def test_HardLimit(self):
         yield self.coll.insert_many([{"v": i} for i in range(200)])
         res = yield self.coll.find(limit=-150)
+        self.assertEqual(len(res), 150)
+        res = yield self.coll.find().limit(-150)
         self.assertEqual(len(res), 150)
 
 
@@ -399,44 +449,36 @@ class TestSkip(SingleCollectionTest):
     @defer.inlineCallbacks
     def test_Skip(self):
         yield self.coll.insert_many([{"v": i} for i in range(5)])
-        res = yield self.coll.find(skip=3)
-        self.assertEqual(len(res), 2)
 
-        yield self.coll.drop()
+        tests = {
+            2: 3,
+            3: 2,
+            5: 0,
+            6: 0,
+        }
 
-        yield self.coll.insert_many([{"v": i} for i in range(5)])
-        res = yield self.coll.find(skip=5)
-        self.assertEqual(len(res), 0)
-
-        yield self.coll.drop()
-
-        yield self.coll.insert_many([{"v": i} for i in range(5)])
-        res = yield self.coll.find(skip=6)
-        self.assertEqual(len(res), 0)
+        for skip, expected in tests.items():
+            res = yield self.coll.find(skip=skip)
+            self.assertEqual(len(res), expected)
+            res = yield self.coll.find().skip(skip)
+            self.assertEqual(len(res), expected)
 
     @defer.inlineCallbacks
     def test_SkipWithLimit(self):
         yield self.coll.insert_many([{"v": i} for i in range(5)])
-        res = yield self.coll.find(skip=3, limit=1)
-        self.assertEqual(len(res), 1)
 
-        yield self.coll.drop()
+        tests = {
+            (3, 1): 1,
+            (4, 2): 1,
+            (4, 1): 1,
+            (5, 1): 0,
+        }
 
-        yield self.coll.insert_many([{"v": i} for i in range(5)])
-        res = yield self.coll.find(skip=4, limit=2)
-        self.assertEqual(len(res), 1)
-
-        yield self.coll.drop()
-
-        yield self.coll.insert_many([{"v": i} for i in range(5)])
-        res = yield self.coll.find(skip=4, limit=1)
-        self.assertEqual(len(res), 1)
-
-        yield self.coll.drop()
-
-        yield self.coll.insert_many([{"v": i} for i in range(5)])
-        res = yield self.coll.find(skip=5, limit=1)
-        self.assertEqual(len(res), 0)
+        for (skip, limit), expected in tests.items():
+            res = yield self.coll.find(skip=skip, limit=limit)
+            self.assertEqual(len(res), expected)
+            res = yield self.coll.find().skip(skip).limit(limit)
+            self.assertEqual(len(res), expected)
 
 
 class TestCommand(SingleCollectionTest):

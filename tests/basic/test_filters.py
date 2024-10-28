@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from contextlib import asynccontextmanager, contextmanager
 
 from pymongo.errors import OperationFailure
 from twisted.internet import defer
@@ -39,19 +40,43 @@ class TestMongoFilters(unittest.TestCase):
         yield self.db.system.profile.drop()
         yield self.conn.disconnect()
 
-    @defer.inlineCallbacks
-    def test_Hint(self):
+    @asynccontextmanager
+    async def _assert_single_command_with_option(self, optionname, optionvalue):
+        # Checking that `optionname` appears in profiler log with specified value
+
+        await self.db.command("profile", 2)
+        yield
+        await self.db.command("profile", 0)
+
+        profile_filter = {"command." + optionname: optionvalue}
+        cnt = await self.db.system.profile.count(profile_filter)
+        await self.db.system.profile.drop()
+        self.assertEqual(cnt, 1)
+
+    async def test_Hint(self):
         # find() should fail with 'bad hint' if hint specifier works correctly
         self.assertFailure(
             self.coll.find({}, sort=qf.hint([("x", 1)])), OperationFailure
         )
+        self.assertFailure(self.coll.find().hint({"x": 1}), OperationFailure)
 
         # create index and test it is honoured
-        yield self.coll.create_index(qf.sort(qf.ASCENDING("x")), name="test_index")
-        found_1 = yield self.coll.find({}, sort=qf.hint([("x", 1)]))
-        found_2 = yield self.coll.find({}, sort=qf.hint(qf.ASCENDING("x")))
-        found_3 = yield self.coll.find({}, sort=qf.hint("test_index"))
-        self.assertTrue(found_1 == found_2 == found_3)
+        await self.coll.create_index(qf.sort(qf.ASCENDING("x")), name="test_index")
+        forms = [
+            [("x", 1)],
+            {"x": 1},
+            qf.ASCENDING("x"),
+        ]
+        for form in forms:
+            async with self._assert_single_command_with_option("hint", {"x": 1}):
+                await self.coll.find({}, sort=qf.hint(form))
+            async with self._assert_single_command_with_option("hint", {"x": 1}):
+                await self.coll.find().hint(form)
+
+        async with self._assert_single_command_with_option("hint", "test_index"):
+            await self.coll.find({}, sort=qf.hint("test_index"))
+        async with self._assert_single_command_with_option("hint", "test_index"):
+            await self.coll.find().hint("test_index")
 
         # find() should fail with 'bad hint' if hint specifier works correctly
         self.assertFailure(
@@ -67,6 +92,10 @@ class TestMongoFilters(unittest.TestCase):
             qf.sort(qf.ASCENDING(["x", "y"])),
             qf.sort(qf.ASCENDING("x") + qf.ASCENDING("y")),
         )
+        self.assertEqual(
+            qf.sort(qf.ASCENDING(["x", "y"])),
+            qf.sort({"x": 1, "y": 1}),
+        )
 
     def test_SortOneLevelList(self):
         self.assertEqual(qf.sort([("x", 1)]), qf.sort(("x", 1)))
@@ -74,6 +103,7 @@ class TestMongoFilters(unittest.TestCase):
     def test_SortInvalidKey(self):
         self.assertRaises(TypeError, qf.sort, [(1, 2)])
         self.assertRaises(TypeError, qf.sort, [("x", 3)])
+        self.assertRaises(TypeError, qf.sort, {"x": 3})
 
     def test_SortGeoIndexes(self):
         self.assertEqual(qf.sort(qf.GEO2D("x")), qf.sort([("x", "2d")]))
@@ -83,44 +113,32 @@ class TestMongoFilters(unittest.TestCase):
     def test_TextIndex(self):
         self.assertEqual(qf.sort(qf.TEXT("title")), qf.sort([("title", "text")]))
 
-    def __3_2_or_higher(self):
-        return self.db.command("buildInfo").addCallback(
-            lambda info: info["versionArray"] >= [3, 2]
-        )
+    async def test_SortProfile(self):
+        forms = [
+            qf.DESCENDING("x"),
+            {"x": -1},
+            [("x", -1)],
+            ("x", -1),
+        ]
+        for form in forms:
+            async with self._assert_single_command_with_option("sort.x", -1):
+                await self.coll.find({}, sort=qf.sort(form))
+            async with self._assert_single_command_with_option("sort.x", -1):
+                await self.coll.find().sort(form)
 
-    def __3_6_or_higher(self):
-        return self.db.command("buildInfo").addCallback(
-            lambda info: info["versionArray"] >= [3, 6]
-        )
-
-    @defer.inlineCallbacks
-    def __test_simple_filter(self, filter, optionname, optionvalue):
-        # Checking that `optionname` appears in profiler log with specified value
-
-        yield self.db.command("profile", 2)
-        yield self.coll.find({}, sort=filter)
-        yield self.db.command("profile", 0)
-
-        if (yield self.__3_6_or_higher()):
-            profile_filter = {"command." + optionname: optionvalue}
-        elif (yield self.__3_2_or_higher()):
-            # query options format in system.profile have changed in MongoDB 3.2
-            profile_filter = {"query." + optionname: optionvalue}
-        else:
-            profile_filter = {"query.$" + optionname: optionvalue}
-
-        cnt = yield self.db.system.profile.count(profile_filter)
-        self.assertEqual(cnt, 1)
-
-    @defer.inlineCallbacks
-    def test_Comment(self):
+    async def test_Comment(self):
         comment = "hello world"
 
-        yield self.__test_simple_filter(qf.comment(comment), "comment", comment)
+        async with self._assert_single_command_with_option("comment", comment):
+            await self.coll.find({}, sort=qf.comment(comment))
+        async with self._assert_single_command_with_option("comment", comment):
+            await self.coll.find().comment(comment)
 
     @defer.inlineCallbacks
     def test_Explain(self):
         result = yield self.coll.find({}, sort=qf.explain())
+        self.assertTrue("executionStats" in result[0] or "nscanned" in result[0])
+        result = yield self.coll.find().explain()
         self.assertTrue("executionStats" in result[0] or "nscanned" in result[0])
 
     @defer.inlineCallbacks
@@ -136,12 +154,7 @@ class TestMongoFilters(unittest.TestCase):
         yield self.coll.find({}, sort=qf.sort(qf.ASCENDING("x")) + qf.comment(comment))
         yield self.db.command("profile", 0)
 
-        if (yield self.__3_6_or_higher()):
-            profile_filter = {"command.sort.x": 1, "command.comment": comment}
-        elif (yield self.__3_2_or_higher()):
-            profile_filter = {"query.sort.x": 1, "query.comment": comment}
-        else:
-            profile_filter = {"query.$orderby.x": 1, "query.$comment": comment}
+        profile_filter = {"command.sort.x": 1, "command.comment": comment}
         cnt = yield self.db.system.profile.count(profile_filter)
         self.assertEqual(cnt, 1)
 

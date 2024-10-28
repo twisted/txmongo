@@ -2,11 +2,13 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
+from __future__ import annotations
+
 import collections.abc
 import time
 import warnings
 from operator import itemgetter
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Mapping, Optional, Union
 
 from bson import ObjectId
 from bson.codec_options import CodecOptions
@@ -35,10 +37,50 @@ from twisted.python.compat import comparable
 from txmongo import filter as qf
 from txmongo._bulk import _Bulk, _Run
 from txmongo._bulk_constants import _INSERT
+from txmongo.filter import SortArgument
 from txmongo.protocol import QUERY_PARTIAL, QUERY_SLAVE_OK, MongoProtocol, Msg
 from txmongo.pymongo_internals import _check_write_command_response, _merge_command
 from txmongo.types import Document
 from txmongo.utils import check_deadline, timeout
+
+_timeout_decorator = timeout
+
+
+def _normalize_fields_projection(fields):
+    """
+    transform a list of fields from ["a", "b"] to {"a":1, "b":1}
+    """
+    if fields is None:
+        return None
+
+    if isinstance(fields, dict):
+        return fields
+
+    # Consider fields as iterable
+    as_dict = {}
+    for field in fields:
+        if not isinstance(field, (bytes, str)):
+            raise TypeError("TxMongo: fields must be a list of key names.")
+        as_dict[field] = 1
+    if not as_dict:
+        # Empty list should be treated as "_id only"
+        as_dict = {"_id": 1}
+    return as_dict
+
+
+def _apply_find_filter(spec, c_filter):
+    if c_filter:
+        if "query" not in spec:
+            spec = {"$query": spec}
+
+        for k, v in c_filter.items():
+            if isinstance(v, (list, tuple)):
+                spec["$" + k] = SON(v)
+            else:
+                spec["$" + k] = v
+
+    return spec
+
 
 _DEFERRED_METHODS = frozenset(
     {
@@ -95,14 +137,8 @@ class Cursor(Deferred):
             print(doc)
     """
 
-    cursor_id: Optional[int] = None
-    """MongoDB cursor id"""
-
-    exhausted: bool = False
-    """
-    Is the cursor exhausted? If not, you can call :meth:`next_batch()` to retrieve the next batch
-    or :meth:`close()` to close the cursor on the MongoDB's side
-    """
+    _cursor_id: Optional[int] = None
+    _exhausted: bool = False
 
     _next_batch_deferreds: Optional[List[Deferred]] = None
     _current_loading_op: Optional[defer.Deferred] = None
@@ -112,27 +148,129 @@ class Cursor(Deferred):
 
     def __init__(
         self,
-        collection: "Collection",
-        command: Msg,
+        collection: Collection,
+        filter: Optional[dict],
+        projection: Optional[dict],
+        skip: int,
+        limit: int,
+        modifiers: Optional[Mapping],
         batch_size: int,
+        allow_partial_results: bool,
+        flags: int,
         timeout: Optional[float],
     ):
         super().__init__()
-        self.collection = collection
-        self.command = command
-        self.batch_size = batch_size
-        self._timeout = timeout
+        self._collection = collection
+        self._filter = filter
 
-        if timeout:
-            # When used as deferred, we should treat `timeout` argument as a overall
-            # timeout for the whole find() operation, including all batches
-            self._old_style_deadline = time.time() + timeout
+        if modifiers:
+            validate_is_mapping("sort", modifiers)
+        self._modifiers = modifiers or {}
+
+        # FIXME: 1. Add type checking to these methods
+        # FIXME: 2. Add check that command was not already sent to these method
+        self.projection(projection)
+        self.skip(skip)
+        self.limit(limit)
+        self.batch_size(batch_size)
+        self.allow_partial_results(allow_partial_results)
+        self.timeout(timeout)
+
+        self._flags = flags
+
+        # When used as deferred, we should treat `timeout` argument as a overall
+        # timeout for the whole find() operation, including all batches
+        self._old_style_deadline = (time.time() + timeout) if timeout else None
+
+    @property
+    def cursor_id(self) -> int:
+        """MongoDB cursor id"""
+        return self._cursor_id
+
+    @property
+    def exhausted(self) -> bool:
+        """
+        Is the cursor exhausted? If not, you can call :meth:`next_batch()` to retrieve the next batch
+        or :meth:`close()` to close the cursor on the MongoDB's side
+        """
+        return self._exhausted
+
+    @property
+    def collection(self) -> Collection:
+        return self._collection
+
+    def projection(self, projection) -> Cursor:
+        """
+        a list of field names that should be returned for each document
+        in the result set or a dict specifying field names to include or
+        exclude. If `projection` is a list ``_id`` fields will always be
+        returned. Use a dict form to exclude fields: ``{"_id": False}``.
+        """
+        self._projection = projection
+        return self
+
+    def sort(self, sort: SortArgument) -> Cursor:
+        """Specify the order in which to return query results."""
+        self._modifiers.update(qf.sort(sort))
+        return self
+
+    def hint(self, hint: Union[str, SortArgument]) -> Cursor:
+        """Adds a `hint`, telling MongoDB the proper index to use for the query."""
+        self._modifiers.update(qf.hint(hint))
+        return self
+
+    def comment(self, comment: str) -> Cursor:
+        """Adds a comment to the query."""
+        self._modifiers.update(qf.comment(comment))
+        return self
+
+    def explain(self) -> Cursor:
+        """Returns an explain plan for the query."""
+        self._modifiers.update(qf.explain())
+        return self
+
+    def skip(self, skip: int) -> Cursor:
+        """
+        Set the number of documents to omit from the start of the result set.
+        """
+        self._skip = skip
+        return self
+
+    def limit(self, limit: int) -> Cursor:
+        """
+        Set the maximum number of documents to return. All documents are returned when `limit` is zero.
+        """
+        self._limit = limit
+        return self
+
+    def batch_size(self, batch_size: int) -> Cursor:
+        """
+        Set the number of documents to return in each batch of results.
+        """
+        self._batch_size = batch_size
+        return self
+
+    def allow_partial_results(self, allow_partial_results: bool = True) -> Cursor:
+        """
+        If True, mongos will return partial results if some shards are down instead of returning an error
+        """
+        self._allow_partial_results = allow_partial_results
+        return self
+
+    def timeout(self, timeout: Optional[float]) -> Cursor:
+        """
+        Set the timeout for retrieving batches of results. If Cursor object is used as a Deferred,
+        this timeout will be used as an overall timeout for the whole results set loading.
+        """
+        self._timeout = timeout
+        self._old_style_deadline = (time.time() + timeout) if timeout else None
+        return self
 
     @inlineCallbacks
     def _old_style_find(self):
         result = []
         try:
-            while not self.exhausted:
+            while not self._exhausted:
                 batch = yield self.next_batch(deadline=self._old_style_deadline)
                 if not batch:
                     continue
@@ -153,23 +291,103 @@ class Cursor(Deferred):
             return value
         return super().__getattribute__(item)
 
-    def _after_connection(self, proto: MongoProtocol, _deadline: Optional[float]):
-        return proto.send_msg(self.command, self.collection.codec_options).addCallback(
-            self._after_reply, _deadline
+    _MODIFIERS = {
+        "$query": "filter",
+        "$orderby": "sort",
+        "$hint": "hint",
+        "$comment": "comment",
+        "$maxScan": "maxScan",
+        "$maxTimeMS": "maxTimeMS",
+        "$max": "max",
+        "$min": "min",
+        "$returnKey": "returnKey",
+        "$showRecordId": "showRecordId",
+        "$showDiskLoc": "showRecordId",  # <= MongoDB 3.0
+    }
+
+    def _gen_find_command(
+        self,
+        db_name: str,
+        coll_name: str,
+        filter_with_modifiers,
+        projection,
+        skip,
+        limit,
+        batch_size,
+        allow_partial_results,
+        flags: int,
+    ) -> Msg:
+        cmd = {"find": coll_name}
+        if "$query" in filter_with_modifiers:
+            cmd.update(
+                [
+                    (
+                        (self._MODIFIERS[key], val)
+                        if key in self._MODIFIERS
+                        else (key, val)
+                    )
+                    for key, val in filter_with_modifiers.items()
+                ]
+            )
+        else:
+            cmd["filter"] = filter_with_modifiers
+
+        if projection:
+            cmd["projection"] = projection
+        if skip:
+            cmd["skip"] = skip
+        if limit:
+            cmd["limit"] = abs(limit)
+            if limit < 0:
+                cmd["singleBatch"] = True
+                cmd["batchSize"] = abs(limit)
+        if batch_size:
+            cmd["batchSize"] = batch_size
+
+        if flags & QUERY_SLAVE_OK:
+            cmd["$readPreference"] = {"mode": "secondaryPreferred"}
+        if allow_partial_results or flags & QUERY_PARTIAL:
+            cmd["allowPartialResults"] = True
+
+        if "$explain" in filter_with_modifiers:
+            cmd.pop("$explain")
+            cmd = {"explain": cmd}
+
+        cmd["$db"] = db_name
+        return Msg.create(cmd, codec_options=self._collection.codec_options)
+
+    def _build_command(self) -> Msg:
+        projection = _normalize_fields_projection(self._projection)
+        filter = _apply_find_filter(self._filter, self._modifiers)
+        return self._gen_find_command(
+            self._collection.database.name,
+            self._collection.name,
+            filter,
+            projection,
+            self._skip,
+            self._limit,
+            self._batch_size,
+            self._allow_partial_results,
+            self._flags,
         )
+
+    def _after_connection(self, proto: MongoProtocol, _deadline: Optional[float]):
+        return proto.send_msg(
+            self._build_command(), self._collection.codec_options
+        ).addCallback(self._after_reply, _deadline)
 
     def _get_more(self, proto: MongoProtocol, _deadline: Optional[float]):
         get_more = {
-            "getMore": self.cursor_id,
-            "$db": self.collection.database.name,
-            "collection": self.collection.name,
+            "getMore": self._cursor_id,
+            "$db": self._collection.database.name,
+            "collection": self._collection.name,
         }
-        if self.batch_size:
-            get_more["batchSize"] = self.batch_size
+        if self._batch_size:
+            get_more["batchSize"] = self._batch_size
 
         return proto.send_msg(
-            Msg.create(get_more, codec_options=self.collection.codec_options),
-            self.collection.codec_options,
+            Msg.create(get_more, codec_options=self._collection.codec_options),
+            self._collection.codec_options,
         ).addCallback(self._after_reply, _deadline)
 
     def _after_reply(self, reply: dict, _deadline: Optional[float]):
@@ -177,16 +395,16 @@ class Cursor(Deferred):
 
         if "cursor" not in reply:
             # For example, when we run `explain` command
-            self.cursor_id = None
-            self.exhausted = True
+            self._cursor_id = None
+            self._exhausted = True
             return [reply]
         else:
             cursor = reply["cursor"]
-            self.cursor_id = cursor["id"]
-            self.exhausted = not self.cursor_id
+            self._cursor_id = cursor["id"]
+            self._exhausted = not self._cursor_id
             return cursor["nextBatch" if "nextBatch" in cursor else "firstBatch"]
 
-    @timeout
+    @_timeout_decorator
     def next_batch(self, _deadline: Optional[float]) -> Deferred[List[dict]]:
         """next_batch() -> Deferred[list[dict]]
 
@@ -196,7 +414,7 @@ class Cursor(Deferred):
 
         Check :attr:`exhausted` after calling this method to know if this is a last batch.
         """
-        if self.exhausted:
+        if self._exhausted:
             return defer.succeed([])
 
         def on_cancel(d):
@@ -221,9 +439,9 @@ class Cursor(Deferred):
                     d.callback(result)
 
         self._current_loading_op = (
-            self.collection.database.connection.getprotocol()
+            self._collection.database.connection.getprotocol()
             .addCallback(
-                (self._after_connection if self.cursor_id is None else self._get_more),
+                (self._after_connection if self._cursor_id is None else self._get_more),
                 _deadline,
             )
             .addBoth(on_result)
@@ -237,10 +455,10 @@ class Cursor(Deferred):
         the cursor object as an async generator. But if you use it by calling :meth:`next_batch()`,
         be sure to close cursor if you stop iterating before the cursor is exhausted.
         """
-        if not self.cursor_id:
+        if not self._cursor_id:
             return defer.succeed(None)
-        return self.collection.database.connection.getprotocol().addCallback(
-            self.collection._close_cursor_without_response, self.cursor_id
+        return self._collection.database.connection.getprotocol().addCallback(
+            self._collection._close_cursor_without_response, self._cursor_id
         )
 
     async def batches(self):
@@ -253,7 +471,7 @@ class Cursor(Deferred):
                         print(doc)
         """
         try:
-            while not self.exhausted:
+            while not self._exhausted:
                 batch = await self.next_batch(timeout=self._timeout)
                 if not batch:
                     continue
@@ -420,28 +638,6 @@ class Collection:
         )
 
     @staticmethod
-    def _normalize_fields_projection(fields):
-        """
-        transform a list of fields from ["a", "b"] to {"a":1, "b":1}
-        """
-        if fields is None:
-            return None
-
-        if isinstance(fields, dict):
-            return fields
-
-        # Consider fields as iterable
-        as_dict = {}
-        for field in fields:
-            if not isinstance(field, (bytes, str)):
-                raise TypeError("TxMongo: fields must be a list of key names.")
-            as_dict[field] = 1
-        if not as_dict:
-            # Empty list should be treated as "_id only"
-            as_dict = {"_id": 1}
-        return as_dict
-
-    @staticmethod
     def _gen_index_name(keys):
         return "_".join(["%s_%s" % item for item in keys])
 
@@ -570,20 +766,6 @@ class Collection:
             timeout=timeout,
         )
 
-    @staticmethod
-    def __apply_find_filter(spec, c_filter):
-        if c_filter:
-            if "query" not in spec:
-                spec = {"$query": spec}
-
-            for k, v in c_filter.items():
-                if isinstance(v, (list, tuple)):
-                    spec["$" + k] = SON(v)
-                else:
-                    spec["$" + k] = v
-
-        return spec
-
     @timeout
     def find_with_cursor(
         self,
@@ -674,87 +856,18 @@ class Collection:
         if sort:
             validate_is_mapping("sort", sort)
 
-        projection = self._normalize_fields_projection(projection)
-
-        filter = self.__apply_find_filter(filter, sort)
-
-        cmd = self._gen_find_command(
-            self.database.name,
-            self.name,
+        return Cursor(
+            self,
             filter,
             projection,
             skip,
             limit,
+            sort,
             batch_size,
             allow_partial_results,
             flags,
+            timeout,
         )
-        return Cursor(self, cmd, batch_size, timeout)
-
-    _MODIFIERS = {
-        "$query": "filter",
-        "$orderby": "sort",
-        "$hint": "hint",
-        "$comment": "comment",
-        "$maxScan": "maxScan",
-        "$maxTimeMS": "maxTimeMS",
-        "$max": "max",
-        "$min": "min",
-        "$returnKey": "returnKey",
-        "$showRecordId": "showRecordId",
-        "$showDiskLoc": "showRecordId",  # <= MongoDB 3.0
-    }
-
-    def _gen_find_command(
-        self,
-        db_name: str,
-        coll_name: str,
-        filter_with_modifiers,
-        projection,
-        skip,
-        limit,
-        batch_size,
-        allow_partial_results,
-        flags: int,
-    ) -> Msg:
-        cmd = {"find": coll_name}
-        if "$query" in filter_with_modifiers:
-            cmd.update(
-                [
-                    (
-                        (self._MODIFIERS[key], val)
-                        if key in self._MODIFIERS
-                        else (key, val)
-                    )
-                    for key, val in filter_with_modifiers.items()
-                ]
-            )
-        else:
-            cmd["filter"] = filter_with_modifiers
-
-        if projection:
-            cmd["projection"] = projection
-        if skip:
-            cmd["skip"] = skip
-        if limit:
-            cmd["limit"] = abs(limit)
-            if limit < 0:
-                cmd["singleBatch"] = True
-                cmd["batchSize"] = abs(limit)
-        if batch_size:
-            cmd["batchSize"] = batch_size
-
-        if flags & QUERY_SLAVE_OK:
-            cmd["$readPreference"] = {"mode": "secondaryPreferred"}
-        if allow_partial_results or flags & QUERY_PARTIAL:
-            cmd["allowPartialResults"] = True
-
-        if "$explain" in filter_with_modifiers:
-            cmd.pop("$explain")
-            cmd = {"explain": cmd}
-
-        cmd["$db"] = db_name
-        return Msg.create(cmd, codec_options=self.codec_options)
 
     def _close_cursor_without_response(self, proto: MongoProtocol, cursor_id: int):
         proto.send_msg(
@@ -1304,7 +1417,7 @@ class Collection:
         }
 
         if projection is not None:
-            cmd["fields"] = self._normalize_fields_projection(projection)
+            cmd["fields"] = _normalize_fields_projection(projection)
 
         if sort is not None:
             cmd["sort"] = dict(sort["orderby"])
