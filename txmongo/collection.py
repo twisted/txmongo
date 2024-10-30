@@ -149,18 +149,24 @@ class Cursor(Deferred):
     def __init__(
         self,
         collection: Collection,
-        filter: Optional[dict],
-        projection: Optional[dict],
-        skip: int,
-        limit: int,
-        modifiers: Optional[Mapping],
-        batch_size: int,
-        allow_partial_results: bool,
-        flags: int,
-        timeout: Optional[float],
+        filter: Optional[dict] = None,
+        projection: Optional[dict] = None,
+        skip: int = 0,
+        limit: int = 0,
+        modifiers: Optional[Mapping] = None,
+        batch_size: int = 0,
+        *,
+        allow_partial_results: bool = False,
+        flags: int = 0,
+        timeout: Optional[float] = None,
     ):
         super().__init__()
         self._collection = collection
+
+        if filter is None:
+            filter = {}
+        if not isinstance(filter, dict):
+            raise TypeError("TxMongo: filter must be an instance of dict.")
         self._filter = filter
 
         if modifiers:
@@ -206,6 +212,8 @@ class Cursor(Deferred):
         exclude. If `projection` is a list ``_id`` fields will always be
         returned. Use a dict form to exclude fields: ``{"_id": False}``.
         """
+        if not isinstance(projection, (dict, list)) and projection is not None:
+            raise TypeError("TxMongo: projection must be an instance of dict or list.")
         self._projection = projection
         return self
 
@@ -233,6 +241,8 @@ class Cursor(Deferred):
         """
         Set the number of documents to omit from the start of the result set.
         """
+        if not isinstance(skip, int):
+            raise TypeError("TxMongo: skip must be an instance of int.")
         self._skip = skip
         return self
 
@@ -240,6 +250,8 @@ class Cursor(Deferred):
         """
         Set the maximum number of documents to return. All documents are returned when `limit` is zero.
         """
+        if not isinstance(limit, int):
+            raise TypeError("TxMongo: limit must be an instance of int.")
         self._limit = limit
         return self
 
@@ -247,6 +259,8 @@ class Cursor(Deferred):
         """
         Set the number of documents to return in each batch of results.
         """
+        if not isinstance(batch_size, int):
+            raise TypeError("TxMongo: batch_size must be an instance of int.")
         self._batch_size = batch_size
         return self
 
@@ -254,7 +268,7 @@ class Cursor(Deferred):
         """
         If True, mongos will return partial results if some shards are down instead of returning an error
         """
-        self._allow_partial_results = allow_partial_results
+        self._allow_partial_results = bool(allow_partial_results)
         return self
 
     def timeout(self, timeout: Optional[float]) -> Cursor:
@@ -262,6 +276,8 @@ class Cursor(Deferred):
         Set the timeout for retrieving batches of results. If Cursor object is used as a Deferred,
         this timeout will be used as an overall timeout for the whole results set loading.
         """
+        if timeout is not None and not isinstance(timeout, (int, float)):
+            raise TypeError("TxMongo: timeout must be an instance of float or None.")
         self._timeout = timeout
         self._old_style_deadline = (time.time() + timeout) if timeout else None
         return self
@@ -754,12 +770,13 @@ class Collection:
         if timeout is None and deadline is not None:
             timeout = deadline - time.time()
 
-        return self._create_cursor(
+        return Cursor(
+            self,
             filter,
             projection,
             skip,
             limit,
-            sort,
+            modifiers=sort,
             batch_size=batch_size,
             allow_partial_results=allow_partial_results,
             flags=flags,
@@ -806,12 +823,13 @@ class Collection:
             DeprecationWarning,
         )
 
-        cursor = self._create_cursor(
+        cursor = Cursor(
+            self,
             filter,
             projection,
-            skip,
-            limit,
-            sort,
+            skip=skip,
+            limit=limit,
+            modifiers=sort,
             batch_size=batch_size,
             allow_partial_results=allow_partial_results,
             flags=flags,
@@ -826,48 +844,6 @@ class Collection:
                 return [], None
 
         return cursor.next_batch(deadline=_deadline).addCallback(on_batch, on_batch)
-
-    def _create_cursor(
-        self,
-        filter=None,
-        projection=None,
-        skip=0,
-        limit=0,
-        sort=None,
-        batch_size=0,
-        *,
-        allow_partial_results: bool = False,
-        flags=0,
-        timeout: Optional[float] = None,
-    ):
-        if filter is None:
-            filter = SON()
-
-        if not isinstance(filter, dict):
-            raise TypeError("TxMongo: filter must be an instance of dict.")
-        if not isinstance(projection, (dict, list)) and projection is not None:
-            raise TypeError("TxMongo: projection must be an instance of dict or list.")
-        if not isinstance(skip, int):
-            raise TypeError("TxMongo: skip must be an instance of int.")
-        if not isinstance(limit, int):
-            raise TypeError("TxMongo: limit must be an instance of int.")
-        if not isinstance(batch_size, int):
-            raise TypeError("TxMongo: batch_size must be an instance of int.")
-        if sort:
-            validate_is_mapping("sort", sort)
-
-        return Cursor(
-            self,
-            filter,
-            projection,
-            skip,
-            limit,
-            sort,
-            batch_size,
-            allow_partial_results,
-            flags,
-            timeout,
-        )
 
     def _close_cursor_without_response(self, proto: MongoProtocol, cursor_id: int):
         proto.send_msg(
@@ -909,12 +885,13 @@ class Collection:
 
         # Since we specify limit=1, MongoDB will close cursor automatically for us
         return (
-            self._create_cursor(
+            Cursor(
+                self,
                 filter,
                 projection,
                 skip,
                 limit=1,
-                sort=sort,
+                modifiers=sort,
                 allow_partial_results=allow_partial_results,
                 flags=flags,
             )

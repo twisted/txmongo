@@ -38,7 +38,7 @@ def cmp(a, b):
     return (a > b) - (a < b)
 
 
-class TestIndexInfo(unittest.TestCase):
+class TestCollectionMethods(unittest.TestCase):
 
     timeout = 5
 
@@ -54,7 +54,7 @@ class TestIndexInfo(unittest.TestCase):
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
-    def test_collection(self):
+    def test_type_checking(self):
         self.assertRaises(TypeError, Collection, self.db, 5)
 
         def make_col(base, name):
@@ -76,6 +76,7 @@ class TestIndexInfo(unittest.TestCase):
         self.assertRaises(TypeError, self.db.test.find, projection="test")
         self.assertRaises(TypeError, self.db.test.find, skip="test")
         self.assertRaises(TypeError, self.db.test.find, limit="test")
+        self.assertRaises(TypeError, self.db.test.find, batch_size="test")
         self.assertRaises(TypeError, self.db.test.find, sort="test")
         self.assertRaises(TypeError, self.db.test.find, skip="test")
         self.assertRaises(TypeError, self.db.test.insert_many, [1])
