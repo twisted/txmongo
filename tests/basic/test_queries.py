@@ -363,6 +363,28 @@ class TestFind(SingleCollectionTest):
         yield self.__check_no_open_cursors()
 
     @defer.inlineCallbacks
+    def test_SettingOptionsAfterCommandIsSent(self):
+        yield self.coll.insert_many([{"c": i} for i in range(50)])
+
+        cursor = self.coll.find().batch_size(10)
+        yield cursor.next_batch()
+
+        # all these commands should raise InvalidOperation because query command is already sent
+        self.assertRaises(InvalidOperation, cursor.projection, {"x": 1})
+        self.assertRaises(InvalidOperation, cursor.sort, {"x": 1})
+        self.assertRaises(InvalidOperation, cursor.hint, {"x": 1})
+        self.assertRaises(InvalidOperation, cursor.comment, "hello")
+        self.assertRaises(InvalidOperation, cursor.explain)
+        self.assertRaises(InvalidOperation, cursor.skip, 10)
+        self.assertRaises(InvalidOperation, cursor.limit, 10)
+        self.assertRaises(InvalidOperation, cursor.batch_size, 10)
+        self.assertRaises(InvalidOperation, cursor.allow_partial_results)
+        self.assertRaises(InvalidOperation, cursor.timeout, 500)
+
+        yield cursor.close()
+        yield self.__check_no_open_cursors()
+
+    @defer.inlineCallbacks
     def test_NextBatchBeforePreviousComplete(self):
         """If next_batch() is called before previous one is fired, it will return the same batch"""
         yield self.coll.insert_many([{"c": i} for i in range(50)])

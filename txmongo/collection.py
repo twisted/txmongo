@@ -137,6 +137,7 @@ class Cursor(Deferred):
             print(doc)
     """
 
+    _command_sent: bool = False
     _cursor_id: Optional[int] = None
     _exhausted: bool = False
 
@@ -173,8 +174,6 @@ class Cursor(Deferred):
             validate_is_mapping("sort", modifiers)
         self._modifiers = modifiers or {}
 
-        # FIXME: 1. Add type checking to these methods
-        # FIXME: 2. Add check that command was not already sent to these method
         self.projection(projection)
         self.skip(skip)
         self.limit(limit)
@@ -205,6 +204,12 @@ class Cursor(Deferred):
     def collection(self) -> Collection:
         return self._collection
 
+    def _check_command_not_sent(self):
+        if self._command_sent:
+            raise InvalidOperation(
+                "TxMongo: Cannot set cursor options after executing query."
+            )
+
     def projection(self, projection) -> Cursor:
         """
         a list of field names that should be returned for each document
@@ -214,26 +219,31 @@ class Cursor(Deferred):
         """
         if not isinstance(projection, (dict, list)) and projection is not None:
             raise TypeError("TxMongo: projection must be an instance of dict or list.")
+        self._check_command_not_sent()
         self._projection = projection
         return self
 
     def sort(self, sort: SortArgument) -> Cursor:
         """Specify the order in which to return query results."""
+        self._check_command_not_sent()
         self._modifiers.update(qf.sort(sort))
         return self
 
     def hint(self, hint: Union[str, SortArgument]) -> Cursor:
         """Adds a `hint`, telling MongoDB the proper index to use for the query."""
+        self._check_command_not_sent()
         self._modifiers.update(qf.hint(hint))
         return self
 
     def comment(self, comment: str) -> Cursor:
         """Adds a comment to the query."""
+        self._check_command_not_sent()
         self._modifiers.update(qf.comment(comment))
         return self
 
     def explain(self) -> Cursor:
         """Returns an explain plan for the query."""
+        self._check_command_not_sent()
         self._modifiers.update(qf.explain())
         return self
 
@@ -243,6 +253,7 @@ class Cursor(Deferred):
         """
         if not isinstance(skip, int):
             raise TypeError("TxMongo: skip must be an instance of int.")
+        self._check_command_not_sent()
         self._skip = skip
         return self
 
@@ -252,6 +263,7 @@ class Cursor(Deferred):
         """
         if not isinstance(limit, int):
             raise TypeError("TxMongo: limit must be an instance of int.")
+        self._check_command_not_sent()
         self._limit = limit
         return self
 
@@ -261,6 +273,7 @@ class Cursor(Deferred):
         """
         if not isinstance(batch_size, int):
             raise TypeError("TxMongo: batch_size must be an instance of int.")
+        self._check_command_not_sent()
         self._batch_size = batch_size
         return self
 
@@ -268,6 +281,7 @@ class Cursor(Deferred):
         """
         If True, mongos will return partial results if some shards are down instead of returning an error
         """
+        self._check_command_not_sent()
         self._allow_partial_results = bool(allow_partial_results)
         return self
 
@@ -278,6 +292,7 @@ class Cursor(Deferred):
         """
         if timeout is not None and not isinstance(timeout, (int, float)):
             raise TypeError("TxMongo: timeout must be an instance of float or None.")
+        self._check_command_not_sent()
         self._timeout = timeout
         self._old_style_deadline = (time.time() + timeout) if timeout else None
         return self
@@ -388,6 +403,7 @@ class Cursor(Deferred):
         )
 
     def _after_connection(self, proto: MongoProtocol, _deadline: Optional[float]):
+        self._command_sent = True
         return proto.send_msg(
             self._build_command(), self._collection.codec_options
         ).addCallback(self._after_reply, _deadline)
