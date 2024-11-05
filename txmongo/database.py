@@ -2,6 +2,7 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 from twisted.internet import defer
+from twisted.internet.defer import inlineCallbacks
 
 from txmongo.collection import Collection
 from txmongo.protocol import Msg
@@ -127,18 +128,39 @@ class Database:
         )
 
     @timeout
-    def collection_names(self, _deadline=None):
+    @inlineCallbacks
+    def collection_names(self, *, batch_size=0, _deadline=None):
         """collection_names()"""
 
-        def ok(results):
-            names = [r["name"] for r in results]
-            names = [
-                n[len(str(self)) + 1 :] for n in names if n.startswith(str(self) + ".")
-            ]
-            names = [n for n in names if "$" not in n]
-            return names
-
-        return self["system.namespaces"].find(deadline=_deadline).addCallback(ok)
+        cmd = {
+            "listCollections": 1,
+            "nameOnly": True,
+            "authorizedCollections": True,
+        }
+        if batch_size:
+            # "cursor" parameter is undocumented, but working in 4.0-8.0 and
+            # is useful for testing purposes
+            cmd["cursor"] = {"batchSize": batch_size}
+        response = yield self.command(
+            cmd,
+            _deadline=_deadline,
+        )
+        names = []
+        cursor_id = response["cursor"]["id"]
+        names.extend(coll["name"] for coll in response["cursor"]["firstBatch"])
+        while cursor_id:
+            response = yield self.command(
+                {
+                    "getMore": cursor_id,
+                    "$db": self.name,
+                    "collection": "$cmd.listCollections",
+                    "batchSize": batch_size,
+                },
+                _deadline=_deadline,
+            )
+            cursor_id = response["cursor"]["id"]
+            names.extend(coll["name"] for coll in response["cursor"]["nextBatch"])
+        return names
 
     def authenticate(self, name, password, mechanism="DEFAULT"):
         """

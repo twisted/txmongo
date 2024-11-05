@@ -13,6 +13,8 @@ implementation can be shared. This includes BSON encoding and
 decoding as well as Exception types, when applicable.
 """
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import hmac
@@ -117,7 +119,7 @@ class BaseMessage:
     @abstractmethod
     def decode(
         cls, request_id: int, response_to: int, opcode: int, message_data: bytes
-    ) -> "BaseMessage": ...
+    ) -> BaseMessage: ...
 
 
 QUERY_TAILABLE_CURSOR = 1 << 1
@@ -155,7 +157,7 @@ class Query(BaseMessage):
     @classmethod
     def decode(
         cls, request_id: int, response_to: int, opcode: int, message_data: bytes
-    ) -> "Query":
+    ) -> Query:
         (flags,) = struct.unpack("<i", message_data[16:20])
         name = message_data[20:].split(b"\x00", 1)[0]
         offset = 20 + len(name) + 1
@@ -214,7 +216,7 @@ class Reply(BaseMessage):
     @classmethod
     def decode(
         cls, request_id: int, response_to: int, opcode: int, message_data: bytes
-    ) -> "Reply":
+    ) -> Reply:
         msg_len = len(message_data)
         (response_flags, cursor_id, starting_from, n_returned) = struct.unpack(
             "<iqii", message_data[16:36]
@@ -268,7 +270,7 @@ class Msg(BaseMessage):
         acknowledged: bool = True,
         request_id: int = 0,
         response_to: int = 0,
-    ) -> "Msg":
+    ) -> Msg:
         encoded_payload = {}
         if payload:
             encoded_payload = {
@@ -330,7 +332,7 @@ class Msg(BaseMessage):
     @classmethod
     def decode(
         cls, request_id: int, response_to: int, opcode: int, message_data: bytes
-    ) -> "Msg":
+    ) -> Msg:
         msg_length = len(message_data)
         body = None
         payload: Dict[str, List[bytes]] = {}

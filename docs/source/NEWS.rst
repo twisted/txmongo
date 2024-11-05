@@ -22,6 +22,10 @@ API Changes
 - `find()` method now returns `Cursor()` instance that can be used as async generator to
   asynchronously iterate over results. It can still be used as Deferred too, so this change
   is backward-compatible.
+- `Cursor()` options can be by chaining its methods, for example:
+  ::
+    async for doc in collection.find({"size": "L"}).sort({"price": 1}).limit(10).skip(5):
+        print(doc)
 - `find_with_cursor()` is deprecated and will be removed in the next release.
 
 

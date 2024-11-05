@@ -38,7 +38,7 @@ def cmp(a, b):
     return (a > b) - (a < b)
 
 
-class TestIndexInfo(unittest.TestCase):
+class TestCollectionMethods(unittest.TestCase):
 
     timeout = 5
 
@@ -54,7 +54,7 @@ class TestIndexInfo(unittest.TestCase):
         yield self.conn.disconnect()
 
     @defer.inlineCallbacks
-    def test_collection(self):
+    def test_type_checking(self):
         self.assertRaises(TypeError, Collection, self.db, 5)
 
         def make_col(base, name):
@@ -76,6 +76,7 @@ class TestIndexInfo(unittest.TestCase):
         self.assertRaises(TypeError, self.db.test.find, projection="test")
         self.assertRaises(TypeError, self.db.test.find, skip="test")
         self.assertRaises(TypeError, self.db.test.find, limit="test")
+        self.assertRaises(TypeError, self.db.test.find, batch_size="test")
         self.assertRaises(TypeError, self.db.test.find, sort="test")
         self.assertRaises(TypeError, self.db.test.find, skip="test")
         self.assertRaises(TypeError, self.db.test.insert_many, [1])
@@ -105,9 +106,32 @@ class TestIndexInfo(unittest.TestCase):
         options = yield self.db.test.options()
         self.assertTrue(isinstance(options, dict))
 
+    @defer.inlineCallbacks
+    def test_collection_names(self):
+        coll_names = [f"coll_{i}" for i in range(10)]
+        yield defer.gatherResults(
+            self.db[name].insert_one({"x": 1}) for name in coll_names
+        )
+
+        try:
+            names = yield self.db.collection_names()
+            self.assertEqual(set(coll_names), set(names))
+            names = yield self.db.collection_names(batch_size=10)
+            self.assertEqual(set(coll_names), set(names))
+        finally:
+            yield defer.gatherResults(self.db[name].drop() for name in coll_names)
+
+    test_collection_names.timeout = 1500
+
+    @defer.inlineCallbacks
+    def test_drop_collection(self):
+        yield self.db.test.insert_one({"x": 1})
+        collection_names = yield self.db.collection_names()
+        self.assertIn("test", collection_names)
+
         yield self.db.drop_collection("test")
         collection_names = yield self.db.collection_names()
-        self.assertFalse("test" in collection_names)
+        self.assertNotIn("test", collection_names)
 
     @defer.inlineCallbacks
     def test_create_index(self):
