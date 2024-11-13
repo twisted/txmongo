@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 24.1.0 (yyyy-mm-dd)
+Release 24.1.0 (2024-11-13)
 ---------------------------
 
 Features
