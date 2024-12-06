@@ -2,7 +2,11 @@
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
 
-import warnings
+from __future__ import annotations
+
+from collections import deque
+from contextlib import contextmanager
+from typing import Optional
 
 from bson.binary import UuidRepresentation
 from bson.codec_options import CodecOptions
@@ -16,6 +20,8 @@ from twisted.python import log
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol
+from txmongo.sessions import ClientSession, ServerSession, SessionOptions
+from txmongo.types import Document
 from txmongo.utils import get_err, timeout
 
 _PRIMARY_READ_PREFERENCES = {
@@ -106,6 +112,11 @@ class _Connection(ReconnectingClientFactory):
             raise ConfigurationError(msg)
 
         proto.init_from_hello_response(config)
+        if config.get("logicalSessionTimeoutMinutes"):
+            self.__pool._logical_session_timeout_minutes = min(
+                config["logicalSessionTimeoutMinutes"],
+                self.__pool._logical_session_timeout_minutes,
+            )
 
         # Track the other hosts in the replica set.
         hosts = config.get("hosts")
@@ -235,6 +246,11 @@ class ConnectionPool:
 
     __pinger_discovery_interval = 10
 
+    __server_sessions_cache: deque[ServerSession]
+    _logical_session_timeout_minutes = 30
+
+    _cluster_time: Optional[Document] = None
+
     def __init__(
         self,
         uri="mongodb://127.0.0.1:27017",
@@ -247,6 +263,8 @@ class ConnectionPool:
         assert isinstance(uri, str)
         assert isinstance(pool_size, int)
         assert pool_size >= 1
+
+        self.__server_sessions_cache = deque()
 
         if not uri.startswith("mongodb://") and not uri.startswith("mongodb+srv://"):
             uri = "mongodb://" + uri
@@ -452,6 +470,89 @@ class ConnectionPool:
                 connection.instance.transport.abortConnection()
 
         self.__on_ping_lost(addr)
+
+    def _acquire_server_session(self) -> ServerSession:
+        while True:
+            try:
+                session = self.__server_sessions_cache.popleft()
+            except IndexError:
+                return ServerSession.create_with_local_id()
+
+            if not session.is_about_to_expire(self._logical_session_timeout_minutes):
+                return session
+
+    def _return_server_session(self, server_session: ServerSession) -> None:
+        while self.__server_sessions_cache:
+            last = self.__server_sessions_cache[-1]
+            if last.is_about_to_expire(self._logical_session_timeout_minutes):
+                self.__server_sessions_cache.pop()
+            else:
+                break
+
+        if server_session.is_dirty:
+            return
+        if server_session.is_about_to_expire(self._logical_session_timeout_minutes):
+            return
+        self.__server_sessions_cache.appendleft(server_session)
+
+    def start_session(self, options: SessionOptions = None) -> ClientSession:
+        return ClientSession(self, options, implicit=False)
+
+    def _create_implicit_session(self) -> ClientSession:
+        return ClientSession(self, None, implicit=True)
+
+    @property
+    def cluster_time(self) -> Optional[Document]:
+        return self._cluster_time
+
+    @contextmanager
+    def _using_session(
+        self, session: Optional[ClientSession], write_concern: WriteConcern
+    ) -> Optional[ClientSession]:
+        if session is not None and not write_concern.acknowledged:
+            raise ValueError(
+                "TxMongo: Cannot use unacknowledged write concern with an explicit session"
+            )
+        if session is None and write_concern.acknowledged:
+            session = self._create_implicit_session()
+        try:
+            yield session
+        finally:
+            # FIXME: we should discard the session if there was an error in response
+
+            if session and session.implicit:
+                session.end_session()
+
+    def _get_session_command_fields(self, session: Optional[ClientSession]) -> dict:
+        fields = {}
+        if cluster_time := self._get_cluster_time(session):
+            fields["$clusterTime"] = cluster_time
+        if session:
+            fields["lsid"] = session._use_session_id()
+        return fields
+
+    def _get_cluster_time(self, session: Optional[ClientSession]) -> Optional[Document]:
+        session_ct = session.cluster_time if session else None
+        if session_ct is None:
+            return self.cluster_time
+        if self.cluster_time is None:
+            return session_ct
+        if session_ct["clusterTime"] > self.cluster_time["clusterTime"]:
+            return session_ct
+        return self.cluster_time
+
+    def _advance_cluster_time(
+        self, session: Optional[ClientSession], reply: Document
+    ) -> None:
+        cluster_time = reply.get("$clusterTime")
+        if cluster_time is None:
+            return
+        if session:
+            session.advance_cluster_time(cluster_time)
+        if self._cluster_time is None:
+            self._cluster_time = cluster_time
+        elif self._cluster_time["clusterTime"] < cluster_time["clusterTime"]:
+            self._cluster_time = cluster_time
 
 
 class _PingerProtocol(MongoProtocol):

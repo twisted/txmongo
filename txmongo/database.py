@@ -1,11 +1,15 @@
 # Copyright 2009-2015 The TxMongo Developers.  All rights reserved.
 # Use of this source code is governed by the Apache License that can be
 # found in the LICENSE file.
+
+from __future__ import annotations
+
 from twisted.internet import defer
 from twisted.internet.defer import inlineCallbacks
 
 from txmongo.collection import Collection
 from txmongo.protocol import Msg
+from txmongo.sessions import ClientSession
 from txmongo.utils import check_deadline, timeout
 
 
@@ -63,10 +67,12 @@ class Database:
         check=True,
         allowable_errors=None,
         codec_options=None,
+        *,
+        session: ClientSession = None,
         _deadline=None,
         **kwargs,
     ):
-        """command(command, value=1, check=True, allowable_errors=None, codec_options=None)"""
+        """command(command, value=1, check=True, allowable_errors=None, codec_options=None, *, session: ClientSession=None)"""
         if isinstance(command, (bytes, str)):
             command = {command: value}
         if codec_options is None:
@@ -74,20 +80,24 @@ class Database:
         command.update(kwargs.copy())
         command["$db"] = self.name
 
-        proto = yield self.connection.getprotocol()
-        check_deadline(_deadline)
+        with self.connection._using_session(session, self.write_concern) as session:
+            command.update(self.connection._get_session_command_fields(session))
 
-        errmsg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(
-            repr(command), self
-        )
-        reply = yield proto.send_msg(
-            Msg.create(command, codec_options=codec_options),
-            codec_options,
-            check=check,
-            errmsg=errmsg,
-            allowable_errors=allowable_errors,
-        )
-        return reply
+            proto = yield self.connection.getprotocol()
+            check_deadline(_deadline)
+
+            errmsg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(
+                repr(command), self
+            )
+            reply = yield proto.send_msg(
+                Msg.create(command, codec_options=codec_options),
+                codec_options,
+                check=check,
+                errmsg=errmsg,
+                allowable_errors=allowable_errors,
+            )
+            self.connection._advance_cluster_time(session, reply)
+            return reply
 
     @timeout
     def create_collection(

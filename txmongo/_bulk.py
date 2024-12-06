@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Iterator, List, Tuple, Union
 
 import bson
@@ -62,6 +64,7 @@ class _Run:
         write_concern: WriteConcern,
         proto: MongoProtocol,
         codec_options: CodecOptions,
+        session_fields: dict,
     ) -> Iterator[Tuple[int, Msg]]:
         payload_arg_name = PAYLOAD_ARG_NAME[self.op_type]
         msg = Msg(
@@ -72,6 +75,7 @@ class _Run:
                     "$db": database_name,
                     "ordered": self.ordered,
                     "writeConcern": write_concern.document,
+                    **session_fields,
                 }
             ),
             payload={payload_arg_name: []},
