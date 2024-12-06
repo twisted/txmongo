@@ -40,6 +40,7 @@ from txmongo._bulk_constants import _INSERT
 from txmongo.filter import SortArgument
 from txmongo.protocol import QUERY_PARTIAL, QUERY_SLAVE_OK, MongoProtocol, Msg
 from txmongo.pymongo_internals import _check_write_command_response, _merge_command
+from txmongo.sessions import ClientSession
 from txmongo.types import Document
 from txmongo.utils import check_deadline, timeout
 
@@ -147,8 +148,11 @@ class Cursor(Deferred):
     _find_deferred: Optional[Deferred] = None
     _old_style_deadline: Optional[float] = None
 
+    _session: ClientSession
+
     def __init__(
         self,
+        *,
         collection: Collection,
         filter: Optional[dict] = None,
         projection: Optional[dict] = None,
@@ -156,9 +160,9 @@ class Cursor(Deferred):
         limit: int = 0,
         modifiers: Optional[Mapping] = None,
         batch_size: int = 0,
-        *,
         allow_partial_results: bool = False,
         flags: int = 0,
+        session: ClientSession,
         timeout: Optional[float] = None,
     ):
         super().__init__()
@@ -183,6 +187,13 @@ class Cursor(Deferred):
 
         self._flags = flags
 
+        if session:
+            self._session = session
+        else:
+            self._session = (
+                self.collection.database.connection._create_implicit_session()
+            )
+
         # When used as deferred, we should treat `timeout` argument as a overall
         # timeout for the whole find() operation, including all batches
         self._old_style_deadline = (time.time() + timeout) if timeout else None
@@ -203,6 +214,10 @@ class Cursor(Deferred):
     @property
     def collection(self) -> Collection:
         return self._collection
+
+    @property
+    def session(self) -> ClientSession:
+        return self._session
 
     def _check_command_not_sent(self):
         if self._command_sent:
@@ -385,6 +400,11 @@ class Cursor(Deferred):
             cmd = {"explain": cmd}
 
         cmd["$db"] = db_name
+        cmd.update(
+            self._collection.database.connection._get_session_command_fields(
+                self._session
+            )
+        )
         return Msg.create(cmd, codec_options=self._collection.codec_options)
 
     def _build_command(self) -> Msg:
@@ -413,6 +433,9 @@ class Cursor(Deferred):
             "getMore": self._cursor_id,
             "$db": self._collection.database.name,
             "collection": self._collection.name,
+            **self._collection.database.connection._get_session_command_fields(
+                self._session
+            ),
         }
         if self._batch_size:
             get_more["batchSize"] = self._batch_size
@@ -423,18 +446,23 @@ class Cursor(Deferred):
         ).addCallback(self._after_reply, _deadline)
 
     def _after_reply(self, reply: dict, _deadline: Optional[float]):
+        self._collection.database.connection._advance_cluster_time(self._session, reply)
         check_deadline(_deadline)
 
-        if "cursor" not in reply:
-            # For example, when we run `explain` command
-            self._cursor_id = None
-            self._exhausted = True
-            return [reply]
-        else:
-            cursor = reply["cursor"]
-            self._cursor_id = cursor["id"]
-            self._exhausted = not self._cursor_id
-            return cursor["nextBatch" if "nextBatch" in cursor else "firstBatch"]
+        try:
+            if "cursor" not in reply:
+                # For example, when we run `explain` command
+                self._cursor_id = None
+                self._exhausted = True
+                return [reply]
+            else:
+                cursor = reply["cursor"]
+                self._cursor_id = cursor["id"]
+                self._exhausted = not self._cursor_id
+                return cursor["nextBatch" if "nextBatch" in cursor else "firstBatch"]
+        finally:
+            if self._exhausted and self._session.implicit:
+                self._session.end_session()
 
     @_timeout_decorator
     def next_batch(self, _deadline: Optional[float]) -> Deferred[List[dict]]:
@@ -487,6 +515,8 @@ class Cursor(Deferred):
         the cursor object as an async generator. But if you use it by calling :meth:`next_batch()`,
         be sure to close cursor if you stop iterating before the cursor is exhausted.
         """
+        if self._session.implicit:
+            self._session.end_session()
         if not self._cursor_id:
             return defer.succeed(None)
         return self._collection.database.connection.getprotocol().addCallback(
@@ -710,10 +740,11 @@ class Collection:
         batch_size=0,
         allow_partial_results: bool = False,
         flags=0,
+        session: ClientSession = None,
         timeout: Optional[float] = None,
         deadline: Optional[float] = None,
     ):
-        """find(filter=None, projection=None, skip=0, limit=0, sort=None, allow_partial_results=False)
+        """find(filter=None, projection=None, skip=0, limit=0, sort=None, *, batch_size=0, allow_partial_results=False, session: ClientSession=None)
 
         Find documents in a collection.
 
@@ -748,6 +779,9 @@ class Collection:
         :param allow_partial_results:
             if True, mongos will return partial results if some shards are down
             instead of returning an error
+
+        :param session:
+            Optional :class:`~txmongo.sessions.ClientSession` to use for this query
 
         :returns: an instance of :class:`Cursor`. :class:`Cursor` inherits from :class:`Deferred`.
             When used Deferred, it fires with a list of all documents found:
@@ -787,15 +821,16 @@ class Collection:
             timeout = deadline - time.time()
 
         return Cursor(
-            self,
-            filter,
-            projection,
-            skip,
-            limit,
+            collection=self,
+            filter=filter,
+            projection=projection,
+            skip=skip,
+            limit=limit,
             modifiers=sort,
             batch_size=batch_size,
             allow_partial_results=allow_partial_results,
             flags=flags,
+            session=session,
             timeout=timeout,
         )
 
@@ -811,9 +846,10 @@ class Collection:
         *,
         allow_partial_results: bool = False,
         flags=0,
+        session: ClientSession = None,
         _deadline=None,
     ):
-        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0, allow_partial_results=False)
+        """find_with_cursor(filter=None, projection=None, skip=0, limit=0, sort=None, batch_size=0, *, allow_partial_results=False, session: ClientSession=None)
 
         This method is deprecated. Please use :meth:`find()` method which now returns :class:`Cursor` instance.
 
@@ -840,15 +876,16 @@ class Collection:
         )
 
         cursor = Cursor(
-            self,
-            filter,
-            projection,
+            collection=self,
+            filter=filter,
+            projection=projection,
             skip=skip,
             limit=limit,
             modifiers=sort,
             batch_size=batch_size,
             allow_partial_results=allow_partial_results,
             flags=flags,
+            session=session,
         )
 
         def on_batch(batch, this_func):
@@ -883,9 +920,10 @@ class Collection:
         *,
         allow_partial_results=False,
         flags=0,
+        session: ClientSession = None,
         _deadline=None,
     ):
-        """find_one(filter=None, projection=None, skip=0, sort=None, allow_partial_results=False)
+        """find_one(filter=None, projection=None, skip=0, sort=None, *, allow_partial_results=False, session: ClientSession=None)
 
         Get a single document from the collection.
 
@@ -902,14 +940,15 @@ class Collection:
         # Since we specify limit=1, MongoDB will close cursor automatically for us
         return (
             Cursor(
-                self,
-                filter,
-                projection,
-                skip,
+                collection=self,
+                filter=filter,
+                projection=projection,
+                skip=skip,
                 limit=1,
                 modifiers=sort,
                 allow_partial_results=allow_partial_results,
                 flags=flags,
+                session=session,
             )
             .next_batch(deadline=_deadline)
             .addCallback(lambda batch: batch[0] if batch else None)
@@ -958,52 +997,67 @@ class Collection:
 
     @timeout
     def insert_one(
-        self, document: Document, _deadline=None
+        self, document: Document, *, session: ClientSession = None, _deadline=None
     ) -> Deferred[InsertOneResult]:
-        """insert_one(document)
+        """insert_one(document: Document, *, session: ClientSession=None)
 
         Insert a single document into collection
 
         :param document: Document to insert
+        :param session: Optional :class:`~txmongo.sessions.ClientSession` to use for this operation
 
         :returns:
             :class:`Deferred` that called back with
             :class:`pymongo.results.InsertOneResult`
         """
         validate_is_document_type("document", document)
-        return self._insert_one(document, _deadline)
+        return self._insert_one(document, session, _deadline)
 
     @defer.inlineCallbacks
     def _insert_one(
-        self, document: Document, _deadline: Optional[float]
+        self,
+        document: Document,
+        session: Optional[ClientSession],
+        _deadline: Optional[float],
     ) -> InsertOneResult:
         if "_id" not in document:
             document["_id"] = ObjectId()
         inserted_id = document["_id"]
 
-        msg = Msg.create(
-            {
+        with self.database.connection._using_session(
+            session, self.write_concern
+        ) as session:
+            body = {
                 "insert": self.name,
                 "$db": self.database.name,
                 "writeConcern": self.write_concern.document,
-            },
-            {
-                "documents": [document],
-            },
-            codec_options=self.codec_options,
-            acknowledged=self.write_concern.acknowledged,
-        )
+                **self.database.connection._get_session_command_fields(session),
+            }
+            msg = Msg.create(
+                body,
+                {"documents": [document]},
+                codec_options=self.codec_options,
+                acknowledged=self.write_concern.acknowledged,
+            )
 
-        proto = yield self._database.connection.getprotocol()
-        check_deadline(_deadline)
-        reply: Optional[dict] = yield proto.send_msg(msg, self.codec_options)
-        if reply:
-            _check_write_command_response(reply)
-        return InsertOneResult(inserted_id, self.write_concern.acknowledged)
+            proto = yield self._database.connection.getprotocol()
+            check_deadline(_deadline)
+            reply: Optional[dict] = yield proto.send_msg(msg, self.codec_options)
+            if reply:
+                self.database.connection._advance_cluster_time(session, reply)
+                _check_write_command_response(reply)
+            return InsertOneResult(inserted_id, self.write_concern.acknowledged)
 
     @timeout
-    def insert_many(self, documents: Iterable[Document], ordered=True, _deadline=None):
-        """insert_many(documents, ordered=True)
+    def insert_many(
+        self,
+        documents: Iterable[Document],
+        ordered=True,
+        *,
+        session: ClientSession = None,
+        _deadline=None,
+    ):
+        """insert_many(documents, ordered=True, *, session: ClientSession=None)
 
         Insert an iterable of documents into collection
 
@@ -1017,6 +1071,9 @@ class Collection:
             inserts are aborted. If ``False``, documents will be inserted on
             the server in arbitrary order, possibly in parallel, and all
             document inserts will be attempted.
+
+        :param session:
+            Optional :class:`~txmongo.sessions.ClientSession` to use for this operation
 
         :returns:
             :class:`Deferred` that called back with
@@ -1036,48 +1093,63 @@ class Collection:
 
         bulk = _Bulk(ordered)
         bulk.ops = list(gen())
-        return self._execute_bulk(bulk, _deadline).addCallback(
+        return self._execute_bulk(bulk, session, _deadline).addCallback(
             lambda _: InsertManyResult(inserted_ids, self.write_concern.acknowledged)
         )
 
     @defer.inlineCallbacks
-    def _update(self, filter, update, upsert, multi, _deadline):
-        msg = Msg.create(
-            {
-                "update": self.name,
-                "$db": self.database.name,
-                "writeConcern": self.write_concern.document,
-            },
-            {
-                "updates": [
-                    {
-                        "q": filter,
-                        "u": update,
-                        "upsert": bool(upsert),
-                        "multi": bool(multi),
-                    }
-                ],
-            },
-            codec_options=self.codec_options,
-            acknowledged=self.write_concern.acknowledged,
-        )
+    def _update(
+        self, filter, update, upsert, multi, session: Optional[ClientSession], _deadline
+    ):
+        with self.database.connection._using_session(
+            session, self.write_concern
+        ) as session:
+            msg = Msg.create(
+                {
+                    "update": self.name,
+                    "$db": self.database.name,
+                    "writeConcern": self.write_concern.document,
+                    **self.database.connection._get_session_command_fields(session),
+                },
+                {
+                    "updates": [
+                        {
+                            "q": filter,
+                            "u": update,
+                            "upsert": bool(upsert),
+                            "multi": bool(multi),
+                        }
+                    ],
+                },
+                codec_options=self.codec_options,
+                acknowledged=self.write_concern.acknowledged,
+            )
 
-        proto = yield self._database.connection.getprotocol()
-        check_deadline(_deadline)
-        reply = yield proto.send_msg(msg, self.codec_options)
-        if reply:
-            _check_write_command_response(reply)
-            if reply.get("n") and "upserted" in reply:
-                # MongoDB >= 2.6.0 returns the upsert _id in an array
-                # element. Break it out for backward compatibility.
-                if "upserted" in reply:
-                    reply["upserted"] = reply["upserted"][0]["_id"]
+            proto = yield self._database.connection.getprotocol()
+            check_deadline(_deadline)
+            reply = yield proto.send_msg(msg, self.codec_options)
+            if reply:
+                self.database.connection._advance_cluster_time(session, reply)
+                _check_write_command_response(reply)
+                if reply.get("n") and "upserted" in reply:
+                    # MongoDB >= 2.6.0 returns the upsert _id in an array
+                    # element. Break it out for backward compatibility.
+                    if "upserted" in reply:
+                        reply["upserted"] = reply["upserted"][0]["_id"]
 
-        return UpdateResult(reply, self.write_concern.acknowledged)
+            return UpdateResult(reply, self.write_concern.acknowledged)
 
     @timeout
-    def update_one(self, filter, update, upsert=False, _deadline=None):
-        """update_one(filter, update, upsert=False)
+    def update_one(
+        self,
+        filter,
+        update,
+        upsert=False,
+        *,
+        session: ClientSession = None,
+        _deadline=None,
+    ):
+        """update_one(filter, update, upsert=False, *, session: ClientSession=None)
 
         Update a single document matching the filter.
 
@@ -1101,6 +1173,9 @@ class Collection:
         :param upsert:
             If ``True``, perform an insert if no documents match the `filter`.
 
+        :param session:
+            Optional :class:`~txmongo.sessions.ClientSession` to use for this operation
+
         :returns:
             deferred instance of :class:`pymongo.results.UpdateResult`.
         """
@@ -1108,11 +1183,19 @@ class Collection:
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
 
-        return self._update(filter, update, upsert, False, _deadline)
+        return self._update(filter, update, upsert, False, session, _deadline)
 
     @timeout
-    def update_many(self, filter, update, upsert=False, _deadline=None):
-        """update_many(filter, update, upsert=False)
+    def update_many(
+        self,
+        filter,
+        update,
+        upsert=False,
+        *,
+        session: ClientSession = None,
+        _deadline=None,
+    ):
+        """update_many(filter, update, upsert=False, *, session: ClientSession=None)
 
         Update one or more documents that match the filter.
 
@@ -1136,6 +1219,9 @@ class Collection:
         :param upsert:
             If ``True``, perform an insert if no documents match the `filter`.
 
+        :param session:
+            Optional :class:`~txmongo.sessions.ClientSession` to use for this operation
+
         :returns:
             deferred instance of :class:`pymongo.results.UpdateResult`.
         """
@@ -1143,11 +1229,19 @@ class Collection:
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
 
-        return self._update(filter, update, upsert, True, _deadline)
+        return self._update(filter, update, upsert, True, session, _deadline)
 
     @timeout
-    def replace_one(self, filter, replacement, upsert=False, _deadline=None):
-        """replace_one(filter, replacement, upsert=False)
+    def replace_one(
+        self,
+        filter,
+        replacement,
+        upsert=False,
+        *,
+        session: ClientSession = None,
+        _deadline=None,
+    ):
+        """replace_one(filter, replacement, upsert=False, *, session: ClientSession=None)
 
         Replace a single document matching the filter.
 
@@ -1168,6 +1262,9 @@ class Collection:
         :param upsert:
             If ``True``, perform an insert if no documents match the filter.
 
+        :param session:
+            Optional :class:`~txmongo.sessions.ClientSession` to use for this operation
+
         :returns:
             deferred instance of :class:`pymongo.results.UpdateResult`.
         """
@@ -1175,68 +1272,79 @@ class Collection:
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
 
-        return self._update(filter, replacement, upsert, False, _deadline)
+        return self._update(filter, replacement, upsert, False, session, _deadline)
 
     @defer.inlineCallbacks
     def _delete(
-        self, filter: dict, let: Optional[dict], multi: bool, _deadline: Optional[float]
+        self,
+        filter: dict,
+        let: Optional[dict],
+        multi: bool,
+        session: Optional[ClientSession],
+        _deadline: Optional[float],
     ):
-        body = {
-            "delete": self.name,
-            "$db": self.database.name,
-            "writeConcern": self.write_concern.document,
-        }
+        with self.database.connection._using_session(
+            session, self.write_concern
+        ) as session:
+            body = {
+                "delete": self.name,
+                "$db": self.database.name,
+                "writeConcern": self.write_concern.document,
+                **self.database.connection._get_session_command_fields(session),
+            }
 
-        if let:
-            body["let"] = let
+            if let:
+                body["let"] = let
 
-        msg = Msg.create(
-            body,
-            {
-                "deletes": [
-                    {
-                        "q": filter,
-                        "limit": 0 if multi else 1,
-                    },
-                ],
-            },
-            codec_options=self.codec_options,
-            acknowledged=self.write_concern.acknowledged,
-        )
+            msg = Msg.create(
+                body,
+                {"deletes": [{"q": filter, "limit": 0 if multi else 1}]},
+                codec_options=self.codec_options,
+                acknowledged=self.write_concern.acknowledged,
+            )
 
-        proto = yield self._database.connection.getprotocol()
-        check_deadline(_deadline)
-        reply = yield proto.send_msg(msg, self.codec_options)
-        if reply:
-            _check_write_command_response(reply)
+            proto = yield self._database.connection.getprotocol()
+            check_deadline(_deadline)
+            reply = yield proto.send_msg(msg, self.codec_options)
+            if reply:
+                self.database.connection._advance_cluster_time(session, reply)
+                _check_write_command_response(reply)
 
-        return DeleteResult(reply, self.write_concern.acknowledged)
+            return DeleteResult(reply, self.write_concern.acknowledged)
 
     @timeout
     def delete_one(
         self,
         filter: dict,
         let: Optional[dict] = None,
+        *,
+        session: ClientSession = None,
         _deadline: Optional[float] = None,
     ) -> Deferred[DeleteResult]:
-        """delete_one(filter)"""
+        """delete_one(filter, *, session: ClientSession=None)"""
         validate_is_mapping("filter", filter)
         if let:
             validate_is_mapping("let", let)
-        return self._delete(filter, let, multi=False, _deadline=_deadline)
+        return self._delete(
+            filter, let, multi=False, session=session, _deadline=_deadline
+        )
 
     @timeout
     def delete_many(
         self,
         filter: dict,
         let: Optional[dict] = None,
+        *,
+        session: ClientSession = None,
         _deadline: Optional[float] = None,
     ) -> Deferred[DeleteResult]:
-        """delete_many(filter)"""
+        """delete_many(filter, *, session: ClientSession=None)"""
         validate_is_mapping("filter", filter)
         if let:
             validate_is_mapping("let", let)
-        return self._delete(filter, let, multi=True, _deadline=_deadline)
+        return self._delete(
+            filter, let, multi=True, session=session, _deadline=_deadline
+        )
 
     @timeout
     def drop(self, _deadline=None):
@@ -1324,22 +1432,36 @@ class Collection:
         )
 
     @timeout
-    def distinct(self, key, filter=None, _deadline=None, **kwargs):
-        """distinct(key, filter=None)"""
+    def distinct(
+        self,
+        key,
+        filter=None,
+        *,
+        session: ClientSession = None,
+        _deadline=None,
+        **kwargs,
+    ):
+        """distinct(key, filter=None, *, session: ClientSesson=None)"""
         params = {"key": key}
         filter = kwargs.pop("spec", filter)
         if filter:
             params["query"] = filter
 
         return self._database.command(
-            "distinct", self.name, _deadline=_deadline, **params
+            "distinct", self.name, session=session, _deadline=_deadline, **params
         ).addCallback(lambda result: result.get("values"))
 
     @timeout
     def aggregate(
-        self, pipeline, full_response=False, initial_batch_size=None, _deadline=None
+        self,
+        pipeline,
+        full_response=False,
+        initial_batch_size=None,
+        *,
+        session: ClientSession = None,
+        _deadline=None,
     ):
-        """aggregate(pipeline, full_response=False)"""
+        """aggregate(pipeline, full_response=False, *, session: ClientSession=None)"""
 
         def on_ok(raw, data=None):
             if data is None:
@@ -1368,6 +1490,7 @@ class Collection:
             "aggregate",
             self.name,
             pipeline=pipeline,
+            session=session,
             _deadline=_deadline,
             cursor=cursor,
         ).addCallback(on_ok)
@@ -1392,6 +1515,8 @@ class Collection:
         sort,
         upsert=None,
         return_document=ReturnDocument.BEFORE,
+        *,
+        session: Optional[ClientSession],
         _deadline=None,
         **kwargs,
     ):
@@ -1421,14 +1546,22 @@ class Collection:
         no_obj_error = "No matching object found"
 
         return self._database.command(
-            cmd, allowable_errors=[no_obj_error], _deadline=_deadline
+            cmd, allowable_errors=[no_obj_error], session=session, _deadline=_deadline
         ).addCallback(lambda result: result.get("value"))
 
     @timeout
-    def find_one_and_delete(self, filter, projection=None, sort=None, _deadline=None):
-        """find_one_and_delete(filter, projection=None, sort=None)"""
+    def find_one_and_delete(
+        self,
+        filter,
+        projection=None,
+        sort=None,
+        *,
+        session: ClientSession = None,
+        _deadline=None,
+    ):
+        """find_one_and_delete(filter, projection=None, sort=None, *, session: ClientSession=None)"""
         return self._find_and_modify(
-            filter, projection, sort, remove=True, _deadline=_deadline
+            filter, projection, sort, remove=True, session=session, _deadline=_deadline
         )
 
     @timeout
@@ -1440,9 +1573,11 @@ class Collection:
         sort=None,
         upsert=False,
         return_document=ReturnDocument.BEFORE,
+        *,
+        session: ClientSession = None,
         _deadline=None,
     ):
-        """find_one_and_replace(filter, replacement, projection=None, sort=None, upsert=False, return_document=ReturnDocument.BEFORE)"""
+        """find_one_and_replace(filter, replacement, projection=None, sort=None, upsert=False, return_document=ReturnDocument.BEFORE, *, session: ClientSession=None)"""
         validate_ok_for_replace(replacement)
         return self._find_and_modify(
             filter,
@@ -1451,6 +1586,7 @@ class Collection:
             upsert,
             return_document,
             update=replacement,
+            session=session,
             _deadline=_deadline,
         )
 
@@ -1463,9 +1599,11 @@ class Collection:
         sort=None,
         upsert=False,
         return_document=ReturnDocument.BEFORE,
+        *,
+        session: ClientSession = None,
         _deadline=None,
     ):
-        """find_one_and_update(filter, update, projection=None, sort=None, upsert=False, return_document=ReturnDocument.BEFORE)"""
+        """find_one_and_update(filter, update, projection=None, sort=None, upsert=False, return_document=ReturnDocument.BEFORE, *, session: ClientSession=None)"""
         validate_ok_for_update(update)
         return self._find_and_modify(
             filter,
@@ -1474,21 +1612,34 @@ class Collection:
             upsert,
             return_document,
             update=update,
+            session=session,
             _deadline=_deadline,
         )
 
     @timeout
-    def bulk_write(self, requests, ordered=True, _deadline: Optional[float] = None):
+    def bulk_write(
+        self,
+        requests,
+        ordered=True,
+        *,
+        session: ClientSession = None,
+        _deadline: Optional[float] = None,
+    ):
         if not isinstance(requests, collections.abc.Iterable):
             raise TypeError("requests must be iterable")
 
         bulk = _Bulk(ordered)
         for request in requests:
             bulk.add_write_op(request)
-        return self._execute_bulk(bulk, _deadline)
+        return self._execute_bulk(bulk, session, _deadline)
 
     @inlineCallbacks
-    def _execute_bulk(self, bulk: _Bulk, _deadline: Optional[float]):
+    def _execute_bulk(
+        self,
+        bulk: _Bulk,
+        session: Optional[ClientSession],
+        _deadline: Optional[float],
+    ):
         if not bulk.ops:
             raise InvalidOperation("No operations to execute")
 
@@ -1525,46 +1676,56 @@ class Collection:
         }
 
         def accumulate_response(response: dict, run: _Run, idx_offset: int) -> dict:
+            self.database.connection._advance_cluster_time(session, response)
             _merge_command(run, full_result, idx_offset, response)
             return response
 
-        got_error = False
-        for run in bulk.gen_runs():
-            for doc_offset, msg in run.gen_messages(
-                self._database.name,
-                self.name,
-                effective_write_concern,
-                proto,
-                self.codec_options,
-            ):
-                check_deadline(_deadline)
-                deferred = proto.send_msg(msg, self.codec_options)
-                if effective_write_concern.acknowledged:
-                    if bulk.ordered:
-                        reply = yield deferred
-                        accumulate_response(reply, run, doc_offset)
-                        if "writeErrors" in reply:
-                            got_error = True
-                            break
-                    else:
-                        all_responses.append(
-                            deferred.addCallback(accumulate_response, run, doc_offset)
-                        )
+        with self.database.connection._using_session(
+            session, self.write_concern
+        ) as session:
+            got_error = False
+            for run in bulk.gen_runs():
+                for doc_offset, msg in run.gen_messages(
+                    self._database.name,
+                    self.name,
+                    effective_write_concern,
+                    proto,
+                    self.codec_options,
+                    self.database.connection._get_session_command_fields(session),
+                ):
+                    check_deadline(_deadline)
+                    deferred = proto.send_msg(msg, self.codec_options)
+                    if effective_write_concern.acknowledged:
+                        if bulk.ordered:
+                            reply = yield deferred
+                            self.database.connection._advance_cluster_time(
+                                session, reply
+                            )
+                            accumulate_response(reply, run, doc_offset)
+                            if "writeErrors" in reply:
+                                got_error = True
+                                break
+                        else:
+                            all_responses.append(
+                                deferred.addCallback(
+                                    accumulate_response, run, doc_offset
+                                )
+                            )
 
-            if got_error:
-                break
+                if got_error:
+                    break
 
-        if effective_write_concern.acknowledged and not bulk.ordered:
-            try:
-                yield gatherResults(all_responses, consumeErrors=True)
-            except FirstError as exc:
-                exc.subFailure.raiseException()
+            if effective_write_concern.acknowledged and not bulk.ordered:
+                try:
+                    yield gatherResults(all_responses, consumeErrors=True)
+                except FirstError as exc:
+                    exc.subFailure.raiseException()
 
-        if self.write_concern.acknowledged:
-            write_errors = full_result["writeErrors"]
-            if write_errors:
-                write_errors.sort(key=itemgetter("index"))
-            if write_errors or full_result["writeConcernErrors"]:
-                raise BulkWriteError(full_result)
+            if self.write_concern.acknowledged:
+                write_errors = full_result["writeErrors"]
+                if write_errors:
+                    write_errors.sort(key=itemgetter("index"))
+                if write_errors or full_result["writeConcernErrors"]:
+                    raise BulkWriteError(full_result)
 
-        return BulkWriteResult(full_result, self.write_concern.acknowledged)
+            return BulkWriteResult(full_result, self.write_concern.acknowledged)

@@ -15,8 +15,10 @@
 
 import signal
 from time import time
+from unittest.mock import patch
 
-from bson import SON
+import bson
+from bson import SON, CodecOptions, UuidRepresentation
 from pymongo.errors import AutoReconnect, ConfigurationError, NotPrimaryError
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
@@ -369,3 +371,87 @@ class TestReplicaSet(unittest.TestCase):
         finally:
             yield conn.disconnect()
             self.flushLoggedErrors(NotPrimaryError)
+
+    async def test_ClusterTimeGossiping(self):
+        conn = ConnectionPool(self.master_with_guaranteed_write)
+        self.assertIsNone(conn.cluster_time)
+        try:
+            await conn.db.coll.insert_one({"x": 1})
+            cluster_time = conn.cluster_time
+            self.assertLess(abs(time() - cluster_time["clusterTime"].time), 10)
+
+            with patch.object(
+                MongoProtocol,
+                "send_msg",
+                side_effect=MongoProtocol.send_msg,
+                autospec=True,
+            ) as mock:
+                await conn.db.coll.insert_one({"x": 2})
+                await conn.db.coll.insert_one({"x": 3})
+
+            self.assertEqual(mock.call_count, 2)
+            cmd_times = [
+                bson.decode(
+                    call.args[1].body,
+                    codec_options=CodecOptions(
+                        uuid_representation=UuidRepresentation.STANDARD
+                    ),
+                )["$clusterTime"]
+                for call in mock.call_args_list
+            ]
+            # First command should contain the same clusterTime that was returned by the previous one.
+            # Second command should have clusterTime greater than first one: this confirms that
+            # connection's clusterTime is updated.
+            self.assertEqual(cmd_times[0], cluster_time)
+            self.assertGreater(cmd_times[1]["clusterTime"], cluster_time["clusterTime"])
+        finally:
+            await conn.disconnect()
+
+    async def test_SessionAdvanceClusterTime(self):
+        conn = ConnectionPool(self.master_with_guaranteed_write)
+        try:
+            session = conn.start_session()
+            await conn.db.coll.insert_one({"x": 1}, session=session)
+            self.assertIsNotNone(conn.cluster_time)
+            # Cluster time is updated on both connection and session
+            self.assertEqual(conn.cluster_time, session.cluster_time)
+
+            time_in_future = int(time()) + 60 * 60
+            # Some random cluster time from future
+            fake_cluster_time = {"clusterTime": bson.Timestamp(time_in_future, 1)}
+            session.advance_cluster_time(fake_cluster_time)
+            # Session cluster_time is updated, but connection's one is not
+            self.assertEqual(session.cluster_time, fake_cluster_time)
+            self.assertNotEqual(conn.cluster_time, fake_cluster_time)
+
+            with patch.object(
+                MongoProtocol,
+                "send_msg",
+                side_effect=MongoProtocol.send_msg,
+                autospec=True,
+            ) as mock:
+                await conn.db.coll.insert_one({"x": 2}, session=session)
+
+            mock.assert_called_once()
+            cmd_time = bson.decode(
+                mock.call_args[0][1].body,
+                codec_options=CodecOptions(
+                    uuid_representation=UuidRepresentation.STANDARD
+                ),
+            )["$clusterTime"]
+            # Check that command was sent with session's cluster_time
+            self.assertEqual(cmd_time, fake_cluster_time)
+            # Check that session's cluster_time was updated from server
+            # to the same time value (but with different inc)
+            self.assertEqual(
+                session.cluster_time["clusterTime"].time,
+                fake_cluster_time["clusterTime"].time,
+            )
+            self.assertGreater(
+                session.cluster_time["clusterTime"].inc,
+                fake_cluster_time["clusterTime"].inc,
+            )
+
+            session.end_session()
+        finally:
+            await conn.disconnect()
