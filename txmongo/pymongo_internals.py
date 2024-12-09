@@ -113,7 +113,7 @@ def _merge_command(
 
 # Copied from pymongo/helpers.py:105 at commit d7d94b2776098dba32686ddf3ada1f201172daaf
 def _check_command_response(
-    response, msg=None, allowable_errors=None, parse_write_concern_error=False
+    response, allowable_errors=None, parse_write_concern_error=False
 ):
     """Check the response to a command for errors."""
     if "ok" not in response:
@@ -161,5 +161,4 @@ def _check_command_response(
             elif code == 43:
                 raise CursorNotFound(errmsg, code, response)
 
-            msg = msg or "%s"
-            raise OperationFailure(msg % errmsg, code, response)
+            raise OperationFailure(errmsg, code, response)

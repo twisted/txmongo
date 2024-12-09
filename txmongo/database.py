@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from pymongo.errors import OperationFailure
 from twisted.internet import defer
 from twisted.internet.defer import inlineCallbacks
 
@@ -86,16 +87,22 @@ class Database:
             proto = yield self.connection.getprotocol()
             check_deadline(_deadline)
 
-            errmsg = "TxMongo: command {0} on namespace {1} failed with '%s'".format(
-                repr(command), self
-            )
-            reply = yield proto.send_msg(
-                Msg.create(command, codec_options=codec_options),
-                codec_options,
-                check=check,
-                errmsg=errmsg,
-                allowable_errors=allowable_errors,
-            )
+            try:
+                reply = yield proto.send_msg(
+                    Msg.create(command, codec_options=codec_options),
+                    codec_options,
+                    check=check,
+                    allowable_errors=allowable_errors,
+                )
+            except OperationFailure as e:
+                clean_command = {**command}
+                clean_command.pop("$db", None)
+                clean_command.pop("lsid", None)
+                e.args = (
+                    f"TxMongo: command {clean_command!r} on namespace {self} failed with '{e}'",
+                    *e.args[1:],
+                )
+                raise e
             self.connection._advance_cluster_time(session, reply)
             return reply
 
