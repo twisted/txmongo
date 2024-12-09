@@ -8,7 +8,7 @@ from bson import CodecOptions, UuidRepresentation
 from bson.raw_bson import RawBSONDocument
 from pymongo import InsertOne, UpdateOne
 
-from tests.utils import SingleCollectionTest
+from tests.utils import SingleCollectionTest, patch_send_msg
 from txmongo import MongoProtocol
 from txmongo.sessions import ClientSession
 
@@ -18,9 +18,7 @@ class TestClientSessions(SingleCollectionTest):
     def _test_has_lsid(
         self, session_id: RawBSONDocument = None
     ) -> ContextManager[Callable[[], Set[UUID]]]:
-        with patch.object(
-            MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
-        ) as mock:
+        with patch_send_msg() as mock:
             session_ids = set()
 
             yield lambda: session_ids
