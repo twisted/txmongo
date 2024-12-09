@@ -40,7 +40,7 @@ from tests.basic.utils import (
     only_for_mongodb_older_than,
     only_for_mongodb_starting_from,
 )
-from tests.utils import SingleCollectionTest
+from tests.utils import SingleCollectionTest, patch_send_msg
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import MongoProtocol
 
@@ -252,9 +252,7 @@ class TestFind(SingleCollectionTest):
         batch1, dfr = yield self.coll.find_with_cursor(
             {"$where": "sleep(100); true"}, batch_size=5, timeout=0.8
         )
-        with patch.object(
-            MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
-        ) as mock:
+        with patch_send_msg() as mock:
             with self.assertRaises(TimeExceeded):
                 yield dfr
 
@@ -293,9 +291,7 @@ class TestFind(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_AllowPartialResults(self):
-        with patch.object(
-            MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
-        ) as mock:
+        with patch_send_msg() as mock:
             yield self.coll.find_one(allow_partial_results=True)
 
             mock.assert_called_once()
@@ -303,9 +299,7 @@ class TestFind(SingleCollectionTest):
             cmd = bson.decode(msg.body)
             self.assertEqual(cmd["allowPartialResults"], True)
 
-        with patch.object(
-            MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
-        ) as mock:
+        with patch_send_msg() as mock:
             yield self.coll.find().limit(1).allow_partial_results()
 
             mock.assert_called_once()
@@ -807,9 +801,7 @@ class TestInsertMany(SingleCollectionTest):
         # This call will trigger ismaster which we don't want to include in call count
         yield self.coll.count()
 
-        with patch.object(
-            MongoProtocol, "_send", side_effect=MongoProtocol._send, autospec=True
-        ) as mock:
+        with patch_send_msg() as mock:
             result = yield self.coll.insert_many([small, huge])
         mock.assert_called_once()
         self.assertEqual(len(result.inserted_ids), 2)

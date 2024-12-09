@@ -22,6 +22,7 @@ from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 from twisted.trial import unittest
 
+from tests.utils import patch_send_msg
 from txmongo import MongoProtocol
 from txmongo.collection import Collection
 from txmongo.connection import ConnectionPool, MongoConnection
@@ -35,9 +36,7 @@ class TestWriteConcern(unittest.TestCase):
 
     @contextmanager
     def assert_called_with_write_concern(self, write_concern: WriteConcern):
-        with patch.object(
-            MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
-        ) as mock:
+        with patch_send_msg() as mock:
             yield
 
             mock.assert_called_once()

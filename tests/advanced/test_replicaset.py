@@ -25,6 +25,7 @@ from twisted.trial import unittest
 
 from tests.conf import MongoConf
 from tests.mongod import create_mongod
+from tests.utils import patch_send_msg
 from txmongo.connection import ConnectionPool
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
@@ -380,12 +381,7 @@ class TestReplicaSet(unittest.TestCase):
             cluster_time = conn.cluster_time
             self.assertLess(abs(time() - cluster_time["clusterTime"].time), 10)
 
-            with patch.object(
-                MongoProtocol,
-                "send_msg",
-                side_effect=MongoProtocol.send_msg,
-                autospec=True,
-            ) as mock:
+            with patch_send_msg() as mock:
                 await conn.db.coll.insert_one({"x": 2})
                 await conn.db.coll.insert_one({"x": 3})
 
@@ -424,12 +420,7 @@ class TestReplicaSet(unittest.TestCase):
             self.assertEqual(session.cluster_time, fake_cluster_time)
             self.assertNotEqual(conn.cluster_time, fake_cluster_time)
 
-            with patch.object(
-                MongoProtocol,
-                "send_msg",
-                side_effect=MongoProtocol.send_msg,
-                autospec=True,
-            ) as mock:
+            with patch_send_msg() as mock:
                 await conn.db.coll.insert_one({"x": 2}, session=session)
 
             mock.assert_called_once()

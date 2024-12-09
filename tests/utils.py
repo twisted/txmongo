@@ -1,8 +1,12 @@
+from contextlib import contextmanager
+from unittest.mock import patch
+
 from pymongo.errors import AutoReconnect
 from twisted.internet import defer
 from twisted.trial import unittest
 
 import txmongo
+from txmongo import MongoProtocol
 
 
 class SingleCollectionTest(unittest.TestCase):
@@ -24,3 +28,11 @@ class SingleCollectionTest(unittest.TestCase):
                 pass
 
         yield self.conn.disconnect()
+
+
+@contextmanager
+def patch_send_msg():
+    with patch.object(
+        MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
+    ) as mock:
+        yield mock
