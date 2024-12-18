@@ -10,6 +10,7 @@ from typing import Optional
 
 from bson.binary import UuidRepresentation
 from bson.codec_options import CodecOptions
+from pymongo.common import validate_is_mapping
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.read_preferences import ReadPreference
 from pymongo.uri_parser import parse_uri
@@ -19,10 +20,10 @@ from twisted.internet.protocol import ClientFactory, ReconnectingClientFactory
 from twisted.python import log
 
 from txmongo.database import Database
-from txmongo.protocol import MongoProtocol
+from txmongo.protocol import MongoProtocol, Msg
 from txmongo.sessions import ClientSession, ServerSession, SessionOptions
 from txmongo.types import Document
-from txmongo.utils import get_err, timeout
+from txmongo.utils import check_deadline, get_err, timeout
 
 _PRIMARY_READ_PREFERENCES = {
     ReadPreference.PRIMARY.mode,
@@ -416,6 +417,56 @@ class ConnectionPool:
     @property
     def uri(self):
         return self.__uri
+
+    @timeout
+    @defer.inlineCallbacks
+    def command(
+        self,
+        dbname: str,
+        command: Document,
+        *,
+        allowable_errors=None,
+        check=True,
+        codec_options: CodecOptions = None,
+        write_concern: WriteConcern = None,
+        session: ClientSession = None,
+        _deadline=None,
+    ):
+        validate_is_mapping("command", command)
+        command["$db"] = dbname
+        if codec_options is None:
+            codec_options = self.codec_options
+        if write_concern is None:
+            write_concern = self.write_concern
+
+        with self._using_session(session, write_concern) as session:
+            command.update(self._get_session_command_fields(session))
+            proto = yield self.getprotocol()
+            check_deadline(_deadline)
+
+            try:
+                reply = yield proto.send_msg(
+                    Msg.create(
+                        command,
+                        codec_options=codec_options,
+                        acknowledged=write_concern.acknowledged,
+                    ),
+                    codec_options,
+                    check=check,
+                    allowable_errors=allowable_errors,
+                )
+            except OperationFailure as e:
+                clean_command = {**command}
+                clean_command.pop("$db", None)
+                clean_command.pop("lsid", None)
+                e.args = (
+                    f"TxMongo: command {clean_command!r} on namespace {self} failed with '{e}'",
+                    *e.args[1:],
+                )
+                raise e
+            if reply:
+                self._advance_cluster_time(session, reply)
+            return reply
 
     # Pingers are persistent connections that are established to each
     # node of the replicaset to monitor their availability.

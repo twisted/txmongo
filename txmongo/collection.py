@@ -1531,6 +1531,7 @@ class Collection:
             "findAndModify": self.name,
             "query": filter,
             "new": return_document,
+            "writeConcern": self.write_concern.document,
             **kwargs,
         }
 
@@ -1545,9 +1546,14 @@ class Collection:
 
         no_obj_error = "No matching object found"
 
-        return self._database.command(
-            cmd, allowable_errors=[no_obj_error], session=session, _deadline=_deadline
-        ).addCallback(lambda result: result.get("value"))
+        return self._database.connection.command(
+            self._database.name,
+            cmd,
+            allowable_errors=[no_obj_error],
+            write_concern=self.write_concern,
+            session=session,
+            _deadline=_deadline,
+        ).addCallback(lambda result: result.get("value") if result else None)
 
     @timeout
     def find_one_and_delete(

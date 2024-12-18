@@ -1,6 +1,19 @@
 Changelog
 =========
 
+Release 24.2.0 (unspecified)
+----------------------------
+
+Features
+^^^^^^^^
+
+- Client sessions support
+
+API Changes
+^^^^^^^^^^^
+
+- find_one_and_* methods now returns None if called with unacknowledged write_concern.
+
 Release 24.1.0 (2024-11-13)
 ---------------------------
 

@@ -1,19 +1,35 @@
 from contextlib import contextmanager
 from typing import Callable, ContextManager, Optional, Set
-from unittest.mock import patch
 from uuid import UUID
 
 import bson
 from bson import CodecOptions, UuidRepresentation
 from bson.raw_bson import RawBSONDocument
-from pymongo import InsertOne, UpdateOne
+from pymongo import InsertOne, UpdateOne, WriteConcern
 
 from tests.utils import SingleCollectionTest, patch_send_msg
-from txmongo import MongoProtocol
+from txmongo.collection import Collection
 from txmongo.sessions import ClientSession
 
 
+async def iterate_find_with_cursor(coll: Collection, session: Optional[ClientSession]):
+    batch, dfr = await coll.find_with_cursor(session=session)
+    while batch:
+        batch, dfr = await dfr
+
+
 class TestClientSessions(SingleCollectionTest):
+    @contextmanager
+    def _test_has_no_lsid(self):
+        with patch_send_msg() as mock:
+            yield
+
+            mock.assert_called()
+            for call in mock.call_args_list:
+                msg = call.args[1]
+                cmd = bson.decode(msg.body)
+                self.assertNotIn("lsid", cmd)
+
     @contextmanager
     def _test_has_lsid(
         self, session_id: RawBSONDocument = None
@@ -39,53 +55,55 @@ class TestClientSessions(SingleCollectionTest):
                 else:
                     self.assertEqual(lsid["id"], session_id["id"])
 
-    async def _iterate_find_with_cursor(self, session: Optional[ClientSession]):
-        batch, dfr = await self.coll.find_with_cursor(session=session)
-        while batch:
-            batch, dfr = await dfr
-
-    operations = [
-        lambda self, session: self.db.command("ismaster", session=session),
-        lambda self, session: self.coll.insert_one({}, session=session),
-        lambda self, session: self.coll.insert_many(
-            [{} for _ in range(10)], session=session
-        ),
-        lambda self, session: self.coll.update_one(
-            {}, {"$set": {"x": 2}}, session=session
-        ),
-        lambda self, session: self.coll.update_many(
-            {}, {"$set": {"x": 2}}, session=session
-        ),
-        lambda self, session: self.coll.replace_one({}, {}, session=session),
-        lambda self, session: self.coll.delete_one({}, session=session),
-        lambda self, session: self.coll.delete_many({}, session=session),
-        lambda self, session: self.coll.bulk_write(
-            [InsertOne({}), UpdateOne({}, {"$set": {"x": 2}})],
-            session=session,
-        ),
-        lambda self, session: self.coll.distinct("x", session=session),
-        lambda self, session: self.coll.aggregate([{"$count": "cnt"}], session=session),
-        lambda self, session: self.coll.map_reduce(
+    coll_reads = [
+        lambda coll, session: coll.distinct("x", session=session),
+        lambda coll, session: coll.aggregate([{"$count": "cnt"}], session=session),
+        lambda coll, session: coll.map_reduce(
             "function () { emit(this.src, 1) }",
             "function (key, values) { return Array.sum(values) }",
             out={"inline": 1},
             session=session,
         ),
-        lambda self, session: self.coll.find_one_and_delete({}, session=session),
-        lambda self, session: self.coll.find_one_and_update(
+        lambda coll, session: coll.find({}, session=session),
+        lambda coll, session: coll.find_one({}, session=session),
+        lambda coll, session: iterate_find_with_cursor(coll, session),
+    ]
+
+    coll_writes = [
+        lambda coll, session: coll.insert_one({}, session=session),
+        lambda coll, session: coll.insert_many(
+            [{} for _ in range(10)], session=session
+        ),
+        lambda coll, session: coll.update_one({}, {"$set": {"x": 2}}, session=session),
+        lambda coll, session: coll.update_many({}, {"$set": {"x": 2}}, session=session),
+        lambda coll, session: coll.replace_one({}, {}, session=session),
+        lambda coll, session: coll.delete_one({}, session=session),
+        lambda coll, session: coll.delete_many({}, session=session),
+        lambda coll, session: coll.bulk_write(
+            [InsertOne({}), UpdateOne({}, {"$set": {"x": 2}})],
+            session=session,
+        ),
+        lambda coll, session: coll.find_one_and_delete({}, session=session),
+        lambda coll, session: coll.find_one_and_update(
             {}, {"$set": {"y": 1}}, session=session
         ),
-        lambda self, session: self.coll.find_one_and_replace({}, {}, session=session),
-        lambda self, session: self.coll.find({}, session=session),
-        lambda self, session: self.coll.find_one({}, session=session),
-        lambda self, session: self._iterate_find_with_cursor(session),
+        lambda coll, session: coll.find_one_and_replace({}, {}, session=session),
+    ]
+
+    coll_operations = coll_reads + coll_writes
+
+    db_operations = [
+        lambda db, session: db.command("ismaster", session=session),
     ]
 
     async def test_explicit_session_id(self):
         session = self.db.connection.start_session()
-        for op in self.operations:
+        for op in self.coll_operations:
             with self._test_has_lsid(session.session_id):
-                await op(self, session)
+                await op(self.coll, session)
+        for op in self.db_operations:
+            with self._test_has_lsid(session.session_id):
+                await op(self.db, session)
         session.end_session()
 
     def test_session_reuse(self):
@@ -130,9 +148,13 @@ class TestClientSessions(SingleCollectionTest):
         session_ids = set()
 
         # adding the first operation again to test session reusing by the last operation
-        for op in self.operations + [self.operations[0]]:
+        for op in self.coll_operations + [self.coll_operations[0]]:
             with self._test_has_lsid() as get_session_ids:
-                await op(self, None)
+                await op(self.coll, None)
+            session_ids.update(get_session_ids())
+        for op in self.db_operations + [self.db_operations[0]]:
+            with self._test_has_lsid() as get_session_ids:
+                await op(self.db, None)
             session_ids.update(get_session_ids())
 
         # All ops should share the same implicit session if each of them properly
@@ -169,3 +191,20 @@ class TestClientSessions(SingleCollectionTest):
         self.assertFalse(cursor.session.is_ended)
         cursor.close()
         self.assertTrue(cursor.session.is_ended)
+
+    async def test_unacknowledged_no_implicit_session(self):
+        """Test that implicit session is not used with unacknowledged writes"""
+
+        coll_unack = self.coll.with_options(write_concern=WriteConcern(w=0))
+
+        for op in self.coll_writes:
+            with self._test_has_no_lsid():
+                await op(coll_unack, None)
+
+    async def test_unacknowledged_no_explicit_session(self):
+        """Test that explicit session cannot be used with unacknowledged writes"""
+        coll_unack = self.coll.with_options(write_concern=WriteConcern(w=0))
+
+        for op in self.coll_writes:
+            with self.assertRaises(ValueError):
+                await op(coll_unack, self.db.connection.start_session())
