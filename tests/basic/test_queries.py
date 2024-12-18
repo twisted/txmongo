@@ -1157,6 +1157,10 @@ class TestFindOneAndDelete(SingleCollectionTest):
         doc = yield self.coll.find_one_and_delete({"x": 2}, {"y": 1, "_id": 0})
         self.assertEqual(doc, {"y": 2})
 
+    async def test_Unack(self):
+        coll_unack = self.coll.with_options(write_concern=WriteConcern(w=0))
+        self.assertIsNone(await coll_unack.find_one_and_delete({"x": 2}))
+
 
 class TestFindOneAndReplace(SingleCollectionTest):
 
@@ -1215,6 +1219,14 @@ class TestFindOneAndReplace(SingleCollectionTest):
             ValueError, self.coll.find_one_and_replace, {}, {}, return_document=1
         )
 
+    async def test_Unack(self):
+        coll_unack = self.coll.with_options(write_concern=WriteConcern(w=0))
+        self.assertIsNone(
+            await coll_unack.find_one_and_replace(
+                {"x": 10}, {"x": 15}, return_document=ReturnDocument.BEFORE
+            )
+        )
+
 
 class TestFindOneAndUpdate(SingleCollectionTest):
 
@@ -1270,6 +1282,14 @@ class TestFindOneAndUpdate(SingleCollectionTest):
             {"x": 10}, {"$set": {"y": 15}}, return_document=ReturnDocument.AFTER
         )
         self.assertEqual(doc["y"], 15)
+
+    async def test_Unack(self):
+        coll_unack = self.coll.with_options(write_concern=WriteConcern(w=0))
+        self.assertIsNone(
+            await coll_unack.find_one_and_update(
+                {"x": 10}, {"$set": {"y": 5}}, return_document=ReturnDocument.BEFORE
+            )
+        )
 
 
 class TestCount(SingleCollectionTest):

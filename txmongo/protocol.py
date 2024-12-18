@@ -566,7 +566,6 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
         codec_options: CodecOptions = DEFAULT_CODEC_OPTIONS,
         *,
         check: bool = True,
-        errmsg: str = None,
         allowable_errors=None,
     ) -> defer.Deferred[Optional[dict]]:
         """Send OP_MSG and return parsed response as dict."""

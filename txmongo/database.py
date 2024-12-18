@@ -4,14 +4,11 @@
 
 from __future__ import annotations
 
-from pymongo.errors import OperationFailure
-from twisted.internet import defer
 from twisted.internet.defer import inlineCallbacks
 
 from txmongo.collection import Collection
-from txmongo.protocol import Msg
 from txmongo.sessions import ClientSession
-from txmongo.utils import check_deadline, timeout
+from txmongo.utils import timeout
 
 
 class Database:
@@ -60,7 +57,6 @@ class Database:
         return self.__codec_options or self.__factory.codec_options
 
     @timeout
-    @defer.inlineCallbacks
     def command(
         self,
         command,
@@ -76,35 +72,18 @@ class Database:
         """command(command, value=1, check=True, allowable_errors=None, codec_options=None, *, session: ClientSession=None)"""
         if isinstance(command, (bytes, str)):
             command = {command: value}
-        if codec_options is None:
-            codec_options = self.codec_options
         command.update(kwargs.copy())
-        command["$db"] = self.name
 
-        with self.connection._using_session(session, self.write_concern) as session:
-            command.update(self.connection._get_session_command_fields(session))
-
-            proto = yield self.connection.getprotocol()
-            check_deadline(_deadline)
-
-            try:
-                reply = yield proto.send_msg(
-                    Msg.create(command, codec_options=codec_options),
-                    codec_options,
-                    check=check,
-                    allowable_errors=allowable_errors,
-                )
-            except OperationFailure as e:
-                clean_command = {**command}
-                clean_command.pop("$db", None)
-                clean_command.pop("lsid", None)
-                e.args = (
-                    f"TxMongo: command {clean_command!r} on namespace {self} failed with '{e}'",
-                    *e.args[1:],
-                )
-                raise e
-            self.connection._advance_cluster_time(session, reply)
-            return reply
+        return self.connection.command(
+            self.name,
+            command,
+            allowable_errors=allowable_errors,
+            check=check,
+            codec_options=codec_options or self.codec_options,
+            write_concern=self.write_concern,
+            session=session,
+            _deadline=_deadline,
+        )
 
     @timeout
     def create_collection(
