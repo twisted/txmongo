@@ -13,10 +13,13 @@ class SingleCollectionTest(unittest.TestCase):
     mongo_host = "localhost"
     mongo_port = 27017
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.conn = txmongo.MongoConnection(self.mongo_host, self.mongo_port)
         self.db = self.conn.mydb
         self.coll = self.db.mycol
+        # MapReduce command on MongoDB ≤4.2 requires collection to actually exist
+        yield self.db.create_collection("mycol")
 
     @defer.inlineCallbacks
     def tearDown(self):

@@ -1531,7 +1531,6 @@ class Collection:
             "findAndModify": self.name,
             "query": filter,
             "new": return_document,
-            "writeConcern": self.write_concern.document,
             **kwargs,
         }
 
@@ -1543,6 +1542,9 @@ class Collection:
         if upsert is not None:
             validate_boolean("upsert", upsert)
             cmd["upsert"] = upsert
+        write_concern_doc = self.write_concern.document
+        if write_concern_doc:
+            cmd["writeConcern"] = write_concern_doc
 
         no_obj_error = "No matching object found"
 
