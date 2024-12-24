@@ -23,9 +23,9 @@ from twisted.internet import defer, ssl
 from twisted.internet.defer import TimeoutError
 from twisted.trial import unittest
 
-from tests.basic.utils import only_for_mongodb_older_than
 from tests.conf import MongoConf
 from tests.mongod import create_mongod
+from tests.utils import catch_sent_msgs
 from txmongo import connection
 from txmongo.protocol import MongoAuthenticationError
 
@@ -261,6 +261,33 @@ class TestMongoAuth(unittest.TestCase, MongoAuth):
 
             yield conn[self.db2].authenticate(self.login2, self.password2)
             yield conn[self.db2][self.coll].find_one()
+        finally:
+            yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_NoSessionWithMultipleAuth(self):
+        """Test that implicit session is used with a single auth but not with multiple auths"""
+        if self.ismaster["maxWireVersion"] >= 17:
+            raise unittest.SkipTest(
+                "MongoDB>=6.0 doesn't allow multiple authentication"
+            )
+
+        conn = self.__get_connection()
+
+        try:
+            yield conn[self.db1].authenticate(self.login1, self.password1)
+
+            with catch_sent_msgs() as get_messages:
+                yield conn[self.db1][self.coll].find_one()
+            [msg] = get_messages()
+            self.assertIn("lsid", msg.to_dict())
+
+            yield conn[self.db2].authenticate(self.login2, self.password2)
+
+            with catch_sent_msgs() as get_messages:
+                yield conn[self.db1][self.coll].find_one()
+            [msg] = get_messages()
+            self.assertNotIn("lsid", msg.to_dict())
         finally:
             yield conn.disconnect()
 

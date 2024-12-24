@@ -14,16 +14,12 @@
 # limitations under the License.
 import copy
 from contextlib import contextmanager
-from unittest import SkipTest
-from unittest.mock import patch
 
-import bson
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
 from twisted.trial import unittest
 
-from tests.utils import patch_send_msg
-from txmongo import MongoProtocol
+from tests.utils import catch_sent_msgs
 from txmongo.collection import Collection
 from txmongo.connection import ConnectionPool, MongoConnection
 from txmongo.database import Database
@@ -36,13 +32,11 @@ class TestWriteConcern(unittest.TestCase):
 
     @contextmanager
     def assert_called_with_write_concern(self, write_concern: WriteConcern):
-        with patch_send_msg() as mock:
+        with catch_sent_msgs() as get_messages:
             yield
 
-            mock.assert_called_once()
-            msg = mock.call_args[0][1]
-            cmd = bson.decode(msg.body)
-            self.assertEqual(cmd["writeConcern"], write_concern.document)
+        [msg] = get_messages()
+        self.assertEqual(msg.to_dict()["writeConcern"], write_concern.document)
 
     @defer.inlineCallbacks
     def test_Priority(self):

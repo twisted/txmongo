@@ -285,6 +285,12 @@ class Msg(BaseMessage):
             payload=encoded_payload,
         )
 
+    def to_dict(self, codec_options: CodecOptions = None) -> dict:
+        reply = bson.decode(self.body, codec_options)
+        for key, bin_docs in self.payload.items():
+            reply[key] = [bson.decode(doc, codec_options) for doc in bin_docs]
+        return reply
+
     @property
     def acknowledged(self) -> bool:
         return (self.flag_bits & OP_MSG_MORE_TO_COME) == 0
@@ -574,9 +580,7 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
         if response is None:
             return
 
-        reply = bson.decode(response.body, codec_options)
-        for key, bin_docs in msg.payload.items():
-            reply[key] = [bson.decode(doc, codec_options) for doc in bin_docs]
+        reply = response.to_dict(codec_options)
 
         if reply.get("ok") == 0:
             if reply.get("code") in _NOT_MASTER_CODES:

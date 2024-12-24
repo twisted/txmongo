@@ -3,6 +3,6 @@
 [x] Validate that explicit session cannot be used with unack writes
 [ ] do advance_cluster_time in send_msg?
 [ ] mark_as_dirty in case of errors
-[ ] check auth behavior
+[x] check auth behavior
 [ ] snapshot support (?)
 [ ] causal consistency support

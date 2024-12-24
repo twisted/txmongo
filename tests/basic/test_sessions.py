@@ -2,12 +2,11 @@ from contextlib import contextmanager
 from typing import Callable, ContextManager, Optional, Set
 from uuid import UUID
 
-import bson
 from bson import CodecOptions, UuidRepresentation
 from bson.raw_bson import RawBSONDocument
 from pymongo import InsertOne, UpdateOne, WriteConcern
 
-from tests.utils import SingleCollectionTest, patch_send_msg
+from tests.utils import SingleCollectionTest, catch_sent_msgs
 from txmongo.collection import Collection
 from txmongo.sessions import ClientSession
 
@@ -21,39 +20,33 @@ async def iterate_find_with_cursor(coll: Collection, session: Optional[ClientSes
 class TestClientSessions(SingleCollectionTest):
     @contextmanager
     def _test_has_no_lsid(self):
-        with patch_send_msg() as mock:
+        with catch_sent_msgs() as get_messages:
             yield
 
-            mock.assert_called()
-            for call in mock.call_args_list:
-                msg = call.args[1]
-                cmd = bson.decode(msg.body)
-                self.assertNotIn("lsid", cmd)
+        messages = get_messages()
+        self.assertGreater(len(messages), 0)
+        for msg in messages:
+            self.assertNotIn("lsid", msg.to_dict())
 
     @contextmanager
     def _test_has_lsid(
         self, session_id: RawBSONDocument = None
     ) -> ContextManager[Callable[[], Set[UUID]]]:
-        with patch_send_msg() as mock:
-            session_ids = set()
-
+        session_ids = set()
+        with catch_sent_msgs() as get_messages:
             yield lambda: session_ids
 
-            mock.assert_called()
-            for call in mock.call_args_list:
-                msg = call.args[1]
-                cmd = bson.decode(
-                    msg.body,
-                    codec_options=CodecOptions(
-                        uuid_representation=UuidRepresentation.STANDARD
-                    ),
-                )
-                lsid = cmd["lsid"]
-                session_ids.add(lsid["id"])
-                if session_id is None:
-                    self.assertIsInstance(lsid["id"], UUID)
-                else:
-                    self.assertEqual(lsid["id"], session_id["id"])
+        messages = get_messages()
+        self.assertGreater(len(messages), 0)
+        for msg in messages:
+            lsid = msg.to_dict(
+                CodecOptions(uuid_representation=UuidRepresentation.STANDARD)
+            )["lsid"]
+            session_ids.add(lsid["id"])
+            if session_id is None:
+                self.assertIsInstance(lsid["id"], UUID)
+            else:
+                self.assertEqual(lsid["id"], session_id["id"])
 
     coll_reads = [
         lambda coll, session: coll.distinct("x", session=session),
