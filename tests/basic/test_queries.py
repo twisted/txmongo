@@ -40,9 +40,8 @@ from tests.basic.utils import (
     only_for_mongodb_older_than,
     only_for_mongodb_starting_from,
 )
-from tests.utils import SingleCollectionTest, patch_send_msg
+from tests.utils import SingleCollectionTest, catch_sent_msgs
 from txmongo.errors import TimeExceeded
-from txmongo.protocol import MongoProtocol
 
 
 class _CallCounter:
@@ -252,18 +251,11 @@ class TestFind(SingleCollectionTest):
         batch1, dfr = yield self.coll.find_with_cursor(
             {"$where": "sleep(100); true"}, batch_size=5, timeout=0.8
         )
-        with patch_send_msg() as mock:
+        with catch_sent_msgs() as get_messages:
             with self.assertRaises(TimeExceeded):
                 yield dfr
 
-        self.assertTrue(
-            any(
-                [
-                    "killCursors" in bson.decode(args[0][1].body)
-                    for args in mock.call_args_list
-                ]
-            )
-        )
+        self.assertTrue(any(["killCursors" in msg.to_dict() for msg in get_messages()]))
 
         self.assertEqual(len(batch1), 5)
 
@@ -291,21 +283,15 @@ class TestFind(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_AllowPartialResults(self):
-        with patch_send_msg() as mock:
+        with catch_sent_msgs() as get_messages:
             yield self.coll.find_one(allow_partial_results=True)
+        [msg] = get_messages()
+        self.assertEqual(msg.to_dict()["allowPartialResults"], True)
 
-            mock.assert_called_once()
-            msg = mock.call_args[0][1]
-            cmd = bson.decode(msg.body)
-            self.assertEqual(cmd["allowPartialResults"], True)
-
-        with patch_send_msg() as mock:
+        with catch_sent_msgs() as get_messages:
             yield self.coll.find().limit(1).allow_partial_results()
-
-            mock.assert_called_once()
-            msg = mock.call_args[0][1]
-            cmd = bson.decode(msg.body)
-            self.assertEqual(cmd["allowPartialResults"], True)
+        [msg] = get_messages()
+        self.assertEqual(msg.to_dict()["allowPartialResults"], True)
 
     async def test_FindIterate(self):
         await self.coll.insert_many([{"b": i} for i in range(50)])
@@ -801,9 +787,10 @@ class TestInsertMany(SingleCollectionTest):
         # This call will trigger ismaster which we don't want to include in call count
         yield self.coll.count()
 
-        with patch_send_msg() as mock:
+        with catch_sent_msgs() as get_messages:
             result = yield self.coll.insert_many([small, huge])
-        mock.assert_called_once()
+        [msg] = get_messages()
+        self.assertEqual(len(msg.to_dict()["documents"]), 2)
         self.assertEqual(len(result.inserted_ids), 2)
 
 

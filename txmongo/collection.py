@@ -148,7 +148,7 @@ class Cursor(Deferred):
     _find_deferred: Optional[Deferred] = None
     _old_style_deadline: Optional[float] = None
 
-    _session: ClientSession
+    _session: Optional[ClientSession]
 
     def __init__(
         self,
@@ -162,7 +162,7 @@ class Cursor(Deferred):
         batch_size: int = 0,
         allow_partial_results: bool = False,
         flags: int = 0,
-        session: ClientSession,
+        session: Optional[ClientSession],
         timeout: Optional[float] = None,
     ):
         super().__init__()
@@ -190,9 +190,7 @@ class Cursor(Deferred):
         if session:
             self._session = session
         else:
-            self._session = (
-                self.collection.database.connection._create_implicit_session()
-            )
+            self._session = self.collection.database.connection._get_implicit_session()
 
         # When used as deferred, we should treat `timeout` argument as a overall
         # timeout for the whole find() operation, including all batches
@@ -216,7 +214,7 @@ class Cursor(Deferred):
         return self._collection
 
     @property
-    def session(self) -> ClientSession:
+    def session(self) -> Optional[ClientSession]:
         return self._session
 
     def _check_command_not_sent(self):
@@ -461,7 +459,7 @@ class Cursor(Deferred):
                 self._exhausted = not self._cursor_id
                 return cursor["nextBatch" if "nextBatch" in cursor else "firstBatch"]
         finally:
-            if self._exhausted and self._session.implicit:
+            if self._exhausted and self._session and self._session.implicit:
                 self._session.end_session()
 
     @_timeout_decorator
@@ -515,7 +513,7 @@ class Cursor(Deferred):
         the cursor object as an async generator. But if you use it by calling :meth:`next_batch()`,
         be sure to close cursor if you stop iterating before the cursor is exhausted.
         """
-        if self._session.implicit:
+        if self._session and self._session.implicit:
             self._session.end_session()
         if not self._cursor_id:
             return defer.succeed(None)

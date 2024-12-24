@@ -68,6 +68,7 @@ class TestCancelParts(unittest.TestCase):
         uri = parse_uri("mongodb://localhost:27017/")
         pool = Mock()
         pool._logical_session_timeout_minutes = 30
+        pool.auth_creds = {}
         conn = _Connection(pool, uri, 0, 10, 10)
         d1 = conn.notifyReady()
         d2 = conn.notifyReady()

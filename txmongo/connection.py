@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections import deque
 from contextlib import contextmanager
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 from bson.binary import UuidRepresentation
 from bson.codec_options import CodecOptions
@@ -48,7 +48,6 @@ class _Connection(ReconnectingClientFactory):
         self.connection_id = connection_id
         self.initialDelay = initial_delay
         self.maxDelay = max_delay
-        self.__auth_creds = {}
 
     def buildProtocol(self, addr):
         # Build the protocol.
@@ -225,14 +224,12 @@ class _Connection(ReconnectingClientFactory):
                     username,
                     password,
                     mechanism,
-                ) in self.__auth_creds.items()
+                ) in self.__pool.auth_creds.items()
             ],
             consumeErrors=True,
         )
 
     def authenticate(self, database, username, password, mechanism):
-        self.__auth_creds[str(database)] = (username, password, mechanism)
-
         if self.instance:
             return self.instance.authenticate(database, username, password, mechanism)
         else:
@@ -244,6 +241,8 @@ class ConnectionPool:
     __pool = None
     __pool_size = None
     __uri = None
+
+    __auth_creds: Dict[str, Tuple[str, str, str]]
 
     __pinger_discovery_interval = 10
 
@@ -266,6 +265,7 @@ class ConnectionPool:
         assert pool_size >= 1
 
         self.__server_sessions_cache = deque()
+        self.__auth_creds = {}
 
         if not uri.startswith("mongodb://") and not uri.startswith("mongodb+srv://"):
             uri = "mongodb://" + uri
@@ -389,7 +389,13 @@ class ConnectionPool:
         reactor.callLater(0, df.callback, None)
         return df
 
+    @property
+    def auth_creds(self) -> Dict[str, Tuple[str, str, str]]:
+        return self.__auth_creds
+
     def authenticate(self, database, username, password, mechanism="DEFAULT"):
+        self.__auth_creds[str(database)] = (username, password, mechanism)
+
         def fail(failure):
             failure.trap(defer.FirstError)
             raise failure.value.subFailure.value
@@ -547,9 +553,16 @@ class ConnectionPool:
         self.__server_sessions_cache.appendleft(server_session)
 
     def start_session(self, options: SessionOptions = None) -> ClientSession:
+        if len(self.__auth_creds) > 1:
+            raise ValueError(
+                "TxMongo: Cannot use sessions when multiple users are authenticated"
+            )
         return ClientSession(self, options, implicit=False)
 
-    def _create_implicit_session(self) -> ClientSession:
+    def _get_implicit_session(self) -> Optional[ClientSession]:
+        """May return None if multiple users are authenticated"""
+        if len(self.__auth_creds) > 1:
+            return None
         return ClientSession(self, None, implicit=True)
 
     @property
@@ -564,8 +577,12 @@ class ConnectionPool:
             raise ValueError(
                 "TxMongo: Cannot use unacknowledged write concern with an explicit session"
             )
+        if session and len(self.__auth_creds) > 1:
+            raise ValueError(
+                "TxMongo: Cannot use sessions when multiple users are authenticated"
+            )
         if session is None and write_concern.acknowledged:
-            session = self._create_implicit_session()
+            session = self._get_implicit_session()
         try:
             yield session
         finally:

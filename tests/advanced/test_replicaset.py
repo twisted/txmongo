@@ -15,17 +15,16 @@
 
 import signal
 from time import time
-from unittest.mock import patch
 
 import bson
-from bson import SON, CodecOptions, UuidRepresentation
+from bson import SON
 from pymongo.errors import AutoReconnect, ConfigurationError, NotPrimaryError
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
 
 from tests.conf import MongoConf
 from tests.mongod import create_mongod
-from tests.utils import patch_send_msg
+from tests.utils import catch_sent_msgs
 from txmongo.connection import ConnectionPool
 from txmongo.errors import TimeExceeded
 from txmongo.protocol import QUERY_SLAVE_OK, MongoProtocol
@@ -381,20 +380,13 @@ class TestReplicaSet(unittest.TestCase):
             cluster_time = conn.cluster_time
             self.assertLess(abs(time() - cluster_time["clusterTime"].time), 10)
 
-            with patch_send_msg() as mock:
+            with catch_sent_msgs() as get_messages:
                 await conn.db.coll.insert_one({"x": 2})
                 await conn.db.coll.insert_one({"x": 3})
 
-            self.assertEqual(mock.call_count, 2)
-            cmd_times = [
-                bson.decode(
-                    call.args[1].body,
-                    codec_options=CodecOptions(
-                        uuid_representation=UuidRepresentation.STANDARD
-                    ),
-                )["$clusterTime"]
-                for call in mock.call_args_list
-            ]
+            messages = get_messages()
+            self.assertEqual(len(messages), 2)
+            cmd_times = [msg.to_dict()["$clusterTime"] for msg in messages]
             # First command should contain the same clusterTime that was returned by the previous one.
             # Second command should have clusterTime greater than first one: this confirms that
             # connection's clusterTime is updated.
@@ -414,22 +406,22 @@ class TestReplicaSet(unittest.TestCase):
 
             time_in_future = int(time()) + 60 * 60
             # Some random cluster time from future
-            fake_cluster_time = {"clusterTime": bson.Timestamp(time_in_future, 1)}
+            fake_cluster_time = {
+                "clusterTime": bson.Timestamp(time_in_future, 1),
+                "signature": {
+                    "hash": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+                    "keyId": 0,
+                },
+            }
             session.advance_cluster_time(fake_cluster_time)
             # Session cluster_time is updated, but connection's one is not
             self.assertEqual(session.cluster_time, fake_cluster_time)
             self.assertNotEqual(conn.cluster_time, fake_cluster_time)
 
-            with patch_send_msg() as mock:
+            with catch_sent_msgs() as get_messages:
                 await conn.db.coll.insert_one({"x": 2}, session=session)
-
-            mock.assert_called_once()
-            cmd_time = bson.decode(
-                mock.call_args[0][1].body,
-                codec_options=CodecOptions(
-                    uuid_representation=UuidRepresentation.STANDARD
-                ),
-            )["$clusterTime"]
+            [msg] = get_messages()
+            cmd_time = msg.to_dict()["$clusterTime"]
             # Check that command was sent with session's cluster_time
             self.assertEqual(cmd_time, fake_cluster_time)
             # Check that session's cluster_time was updated from server

@@ -39,3 +39,12 @@ def patch_send_msg():
         MongoProtocol, "send_msg", side_effect=MongoProtocol.send_msg, autospec=True
     ) as mock:
         yield mock
+
+
+@contextmanager
+def catch_sent_msgs():
+    def get_messages():
+        return [call.args[1] for call in mock.call_args_list]
+
+    with patch_send_msg() as mock:
+        yield get_messages
