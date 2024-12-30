@@ -285,7 +285,7 @@ class Msg(BaseMessage):
             payload=encoded_payload,
         )
 
-    def to_dict(self, codec_options: CodecOptions = None) -> dict:
+    def to_dict(self, codec_options: CodecOptions = DEFAULT_CODEC_OPTIONS) -> dict:
         reply = bson.decode(self.body, codec_options)
         for key, bin_docs in self.payload.items():
             reply[key] = [bson.decode(doc, codec_options) for doc in bin_docs]
