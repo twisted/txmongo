@@ -49,9 +49,13 @@ class _Connection(ReconnectingClientFactory):
         self.initialDelay = initial_delay
         self.maxDelay = max_delay
 
+    @property
+    def pool(self):
+        return self.__pool
+
     def buildProtocol(self, addr):
         # Build the protocol.
-        p = ReconnectingClientFactory.buildProtocol(self, addr)
+        p = super().buildProtocol(addr)
         self._initializeProto(p)
         return p
 
@@ -458,6 +462,7 @@ class ConnectionPool:
                         acknowledged=write_concern.acknowledged,
                     ),
                     codec_options,
+                    session,
                     check=check,
                     allowable_errors=allowable_errors,
                 )
@@ -470,8 +475,6 @@ class ConnectionPool:
                     *e.args[1:],
                 )
                 raise e
-            if reply:
-                self._advance_cluster_time(session, reply)
             return reply
 
     # Pingers are persistent connections that are established to each

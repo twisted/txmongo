@@ -11,7 +11,7 @@ from operator import itemgetter
 from typing import Iterable, List, Mapping, Optional, Union
 
 from bson import ObjectId
-from bson.codec_options import CodecOptions
+from bson.codec_options import DEFAULT_CODEC_OPTIONS, CodecOptions
 from bson.son import SON
 from pymongo.collection import ReturnDocument
 from pymongo.common import (
@@ -423,7 +423,7 @@ class Cursor(Deferred):
     def _after_connection(self, proto: MongoProtocol, _deadline: Optional[float]):
         self._command_sent = True
         return proto.send_msg(
-            self._build_command(), self._collection.codec_options
+            self._build_command(), self._collection.codec_options, self._session
         ).addCallback(self._after_reply, _deadline)
 
     def _get_more(self, proto: MongoProtocol, _deadline: Optional[float]):
@@ -441,10 +441,10 @@ class Cursor(Deferred):
         return proto.send_msg(
             Msg.create(get_more, codec_options=self._collection.codec_options),
             self._collection.codec_options,
+            self._session,
         ).addCallback(self._after_reply, _deadline)
 
     def _after_reply(self, reply: dict, _deadline: Optional[float]):
-        self._collection.database.connection._advance_cluster_time(self._session, reply)
         check_deadline(_deadline)
 
         try:
@@ -905,7 +905,9 @@ class Collection:
                     "cursors": [cursor_id],
                 },
                 acknowledged=False,
-            )
+            ),
+            DEFAULT_CODEC_OPTIONS,
+            session=None,
         )
 
     @timeout
@@ -1040,9 +1042,10 @@ class Collection:
 
             proto = yield self._database.connection.getprotocol()
             check_deadline(_deadline)
-            reply: Optional[dict] = yield proto.send_msg(msg, self.codec_options)
+            reply: Optional[dict] = yield proto.send_msg(
+                msg, self.codec_options, session
+            )
             if reply:
-                self.database.connection._advance_cluster_time(session, reply)
                 _check_write_command_response(reply)
             return InsertOneResult(inserted_id, self.write_concern.acknowledged)
 
@@ -1125,9 +1128,8 @@ class Collection:
 
             proto = yield self._database.connection.getprotocol()
             check_deadline(_deadline)
-            reply = yield proto.send_msg(msg, self.codec_options)
+            reply = yield proto.send_msg(msg, self.codec_options, session)
             if reply:
-                self.database.connection._advance_cluster_time(session, reply)
                 _check_write_command_response(reply)
                 if reply.get("n") and "upserted" in reply:
                     # MongoDB >= 2.6.0 returns the upsert _id in an array
@@ -1303,9 +1305,8 @@ class Collection:
 
             proto = yield self._database.connection.getprotocol()
             check_deadline(_deadline)
-            reply = yield proto.send_msg(msg, self.codec_options)
+            reply = yield proto.send_msg(msg, self.codec_options, session)
             if reply:
-                self.database.connection._advance_cluster_time(session, reply)
                 _check_write_command_response(reply)
 
             return DeleteResult(reply, self.write_concern.acknowledged)
@@ -1682,7 +1683,6 @@ class Collection:
         }
 
         def accumulate_response(response: dict, run: _Run, idx_offset: int) -> dict:
-            self.database.connection._advance_cluster_time(session, response)
             _merge_command(run, full_result, idx_offset, response)
             return response
 
@@ -1700,13 +1700,10 @@ class Collection:
                     self.database.connection._get_session_command_fields(session),
                 ):
                     check_deadline(_deadline)
-                    deferred = proto.send_msg(msg, self.codec_options)
+                    deferred = proto.send_msg(msg, self.codec_options, session)
                     if effective_write_concern.acknowledged:
                         if bulk.ordered:
                             reply = yield deferred
-                            self.database.connection._advance_cluster_time(
-                                session, reply
-                            )
                             accumulate_response(reply, run, doc_offset)
                             if "writeErrors" in reply:
                                 got_error = True
