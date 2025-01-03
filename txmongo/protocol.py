@@ -42,6 +42,7 @@ from twisted.python import failure, log
 
 from txmongo.pymongo_errors import _NOT_MASTER_CODES
 from txmongo.pymongo_internals import _check_command_response
+from txmongo.sessions import ClientSession
 from txmongo.types import Document
 
 try:
@@ -569,7 +570,8 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
     def send_msg(
         self,
         msg: Msg,
-        codec_options: CodecOptions = DEFAULT_CODEC_OPTIONS,
+        codec_options: CodecOptions,
+        session: Optional[ClientSession],
         *,
         check: bool = True,
         allowable_errors=None,
@@ -581,6 +583,8 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
             return
 
         reply = response.to_dict(codec_options)
+
+        self.factory.pool._advance_cluster_time(session, reply)
 
         if reply.get("ok") == 0:
             if reply.get("code") in _NOT_MASTER_CODES:
