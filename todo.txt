@@ -1,8 +1,9 @@
 [x] Extract mocking send_msg to something convenient
 [x] sessions in find_one_and_*
 [x] Validate that explicit session cannot be used with unack writes
-[ ] do advance_cluster_time in send_msg?
-[ ] mark_as_dirty in case of errors
+[x] do advance_cluster_time in send_msg?
+[x] mark_as_dirty in case of errors
+[ ] Add session-related parameters to command in send_msg. Maybe make Msg.body to a dict, not bytes?
 [x] check auth behavior
 [ ] snapshot support (?)
 [ ] causal consistency support

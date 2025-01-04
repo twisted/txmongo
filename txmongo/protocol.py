@@ -578,7 +578,13 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
     ) -> defer.Deferred[Optional[dict]]:
         """Send OP_MSG and return parsed response as dict."""
 
-        response = yield self._send_raw_msg(msg)
+        try:
+            response = yield self._send_raw_msg(msg)
+        except ConnectionFailure:
+            if session:
+                session.mark_dirty()
+            raise
+
         if response is None:
             return
 

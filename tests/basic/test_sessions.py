@@ -1,12 +1,15 @@
 from contextlib import contextmanager
 from typing import Callable, ContextManager, Optional, Set
+from unittest.mock import patch
 from uuid import UUID
 
 from bson import CodecOptions, UuidRepresentation
 from bson.raw_bson import RawBSONDocument
 from pymongo import InsertOne, UpdateOne, WriteConcern
+from pymongo.errors import AutoReconnect, ConnectionFailure
 
 from tests.utils import SingleCollectionTest, catch_sent_msgs
+from txmongo import MongoProtocol
 from txmongo.collection import Collection
 from txmongo.sessions import ClientSession
 
@@ -201,3 +204,23 @@ class TestClientSessions(SingleCollectionTest):
         for op in self.coll_writes:
             with self.assertRaises(ValueError):
                 await op(coll_unack, self.db.connection.start_session())
+
+    async def test_discard_dirty_session(self):
+        """Test that dirty session is discarded"""
+
+        session = self.db.connection.start_session()
+        session_id = session.session_id
+        await self.coll.insert_one({"_id": 1}, session=session)
+        with self.assertRaises(ConnectionFailure):
+            with patch.object(
+                MongoProtocol,
+                "_send_raw_msg",
+                side_effect=AutoReconnect(),
+                autospec=True,
+            ):
+                await self.coll.insert_one({"_id": 2}, session=session)
+        session.end_session()
+
+        new_session = self.db.connection.start_session()
+        self.assertNotEqual(session_id, new_session.session_id)
+        new_session.end_session()
