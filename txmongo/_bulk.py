@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterator, List, Tuple, Union
+from typing import TYPE_CHECKING, Any, Iterator, List, Tuple, Union
 
 import bson
 from bson import CodecOptions, ObjectId
@@ -29,6 +29,10 @@ from txmongo._bulk_constants import (
 )
 from txmongo.protocol import MongoProtocol, Msg
 from txmongo.types import Document
+
+if TYPE_CHECKING:
+    from .collection import Collection
+    from .sessions import ClientSession
 
 _WriteOp = Union[InsertOne, UpdateOne, UpdateMany, ReplaceOne, DeleteOne, DeleteMany]
 
@@ -59,26 +63,24 @@ class _Run:
 
     def gen_messages(
         self,
-        database_name: str,
-        collection_name: str,
+        collection: Collection,
+        session: ClientSession,
         write_concern: WriteConcern,
         proto: MongoProtocol,
         codec_options: CodecOptions,
-        session_fields: dict,
     ) -> Iterator[Tuple[int, Msg]]:
         payload_arg_name = PAYLOAD_ARG_NAME[self.op_type]
-        msg = Msg(
-            flag_bits=Msg.create_flag_bits(write_concern.acknowledged),
-            body=bson.encode(
-                {
-                    COMMAND_NAME[self.op_type]: collection_name,
-                    "$db": database_name,
-                    "ordered": self.ordered,
-                    "writeConcern": write_concern.document,
-                    **session_fields,
-                }
-            ),
+        msg = collection.connection._create_message(
+            session,
+            body={
+                COMMAND_NAME[self.op_type]: collection.name,
+                "$db": collection.database.name,
+                "ordered": self.ordered,
+                "writeConcern": write_concern.document,
+            },
             payload={payload_arg_name: []},
+            codec_options=codec_options,
+            acknowledged=write_concern.acknowledged,
         )
         docs_offset = 0
         msg_doc_count = 0

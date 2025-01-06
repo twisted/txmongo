@@ -398,12 +398,9 @@ class Cursor(Deferred):
             cmd = {"explain": cmd}
 
         cmd["$db"] = db_name
-        cmd.update(
-            self._collection.database.connection._get_session_command_fields(
-                self._session
-            )
+        return self._collection.connection._create_message(
+            self._session, cmd, codec_options=self._collection.codec_options
         )
-        return Msg.create(cmd, codec_options=self._collection.codec_options)
 
     def _build_command(self) -> Msg:
         projection = _normalize_fields_projection(self._projection)
@@ -431,15 +428,14 @@ class Cursor(Deferred):
             "getMore": self._cursor_id,
             "$db": self._collection.database.name,
             "collection": self._collection.name,
-            **self._collection.database.connection._get_session_command_fields(
-                self._session
-            ),
         }
         if self._batch_size:
             get_more["batchSize"] = self._batch_size
 
         return proto.send_msg(
-            Msg.create(get_more, codec_options=self._collection.codec_options),
+            self._collection.connection._create_message(
+                self._session, get_more, codec_options=self._collection.codec_options
+            ),
             self._collection.codec_options,
             self._session,
         ).addCallback(self._after_reply, _deadline)
@@ -624,6 +620,11 @@ class Collection:
         """The :class:`~txmongo.database.Database` that this :class:`Collection`
         is a part of."""
         return self._database
+
+    @property
+    def connection(self):
+        """The :class:`~txmongo.connection.ConnectionPool` that this :class:`Collection` is instantiated from"""
+        return self._database.connection
 
     def __getitem__(self, collection_name):
         """Get a sub-collection of this collection by name."""
@@ -898,8 +899,9 @@ class Collection:
 
     def _close_cursor_without_response(self, proto: MongoProtocol, cursor_id: int):
         proto.send_msg(
-            Msg.create(
-                {
+            self.connection._create_message(
+                session=None,
+                body={
                     "killCursors": self.name,
                     "$db": self._database.name,
                     "cursors": [cursor_id],
@@ -1024,23 +1026,20 @@ class Collection:
             document["_id"] = ObjectId()
         inserted_id = document["_id"]
 
-        with self.database.connection._using_session(
-            session, self.write_concern
-        ) as session:
-            body = {
-                "insert": self.name,
-                "$db": self.database.name,
-                "writeConcern": self.write_concern.document,
-                **self.database.connection._get_session_command_fields(session),
-            }
-            msg = Msg.create(
-                body,
+        with self.connection._using_session(session, self.write_concern) as session:
+            msg = self.connection._create_message(
+                session,
+                {
+                    "insert": self.name,
+                    "$db": self.database.name,
+                    "writeConcern": self.write_concern.document,
+                },
                 {"documents": [document]},
                 codec_options=self.codec_options,
                 acknowledged=self.write_concern.acknowledged,
             )
 
-            proto = yield self._database.connection.getprotocol()
+            proto = yield self.connection.getprotocol()
             check_deadline(_deadline)
             reply: Optional[dict] = yield proto.send_msg(
                 msg, self.codec_options, session
@@ -1102,15 +1101,13 @@ class Collection:
     def _update(
         self, filter, update, upsert, multi, session: Optional[ClientSession], _deadline
     ):
-        with self.database.connection._using_session(
-            session, self.write_concern
-        ) as session:
-            msg = Msg.create(
+        with self.connection._using_session(session, self.write_concern) as session:
+            msg = self.connection._create_message(
+                session,
                 {
                     "update": self.name,
                     "$db": self.database.name,
                     "writeConcern": self.write_concern.document,
-                    **self.database.connection._get_session_command_fields(session),
                 },
                 {
                     "updates": [
@@ -1126,7 +1123,7 @@ class Collection:
                 acknowledged=self.write_concern.acknowledged,
             )
 
-            proto = yield self._database.connection.getprotocol()
+            proto = yield self.connection.getprotocol()
             check_deadline(_deadline)
             reply = yield proto.send_msg(msg, self.codec_options, session)
             if reply:
@@ -1283,27 +1280,25 @@ class Collection:
         session: Optional[ClientSession],
         _deadline: Optional[float],
     ):
-        with self.database.connection._using_session(
-            session, self.write_concern
-        ) as session:
+        with self.connection._using_session(session, self.write_concern) as session:
             body = {
                 "delete": self.name,
                 "$db": self.database.name,
                 "writeConcern": self.write_concern.document,
-                **self.database.connection._get_session_command_fields(session),
             }
 
             if let:
                 body["let"] = let
 
-            msg = Msg.create(
+            msg = self.connection._create_message(
+                session,
                 body,
                 {"deletes": [{"q": filter, "limit": 0 if multi else 1}]},
                 codec_options=self.codec_options,
                 acknowledged=self.write_concern.acknowledged,
             )
 
-            proto = yield self._database.connection.getprotocol()
+            proto = yield self.connection.getprotocol()
             check_deadline(_deadline)
             reply = yield proto.send_msg(msg, self.codec_options, session)
             if reply:
@@ -1547,7 +1542,7 @@ class Collection:
 
         no_obj_error = "No matching object found"
 
-        return self._database.connection.command(
+        return self.connection.command(
             self._database.name,
             cmd,
             allowable_errors=[no_obj_error],
@@ -1650,7 +1645,7 @@ class Collection:
         if not bulk.ops:
             raise InvalidOperation("No operations to execute")
 
-        proto = yield self._database.connection.getprotocol()
+        proto = yield self.connection.getprotocol()
         check_deadline(_deadline)
 
         # There are four major cases with different behavior of bulk_write:
@@ -1686,18 +1681,11 @@ class Collection:
             _merge_command(run, full_result, idx_offset, response)
             return response
 
-        with self.database.connection._using_session(
-            session, self.write_concern
-        ) as session:
+        with self.connection._using_session(session, self.write_concern) as session:
             got_error = False
             for run in bulk.gen_runs():
                 for doc_offset, msg in run.gen_messages(
-                    self._database.name,
-                    self.name,
-                    effective_write_concern,
-                    proto,
-                    self.codec_options,
-                    self.database.connection._get_session_command_fields(session),
+                    self, session, effective_write_concern, proto, self.codec_options
                 ):
                     check_deadline(_deadline)
                     deferred = proto.send_msg(msg, self.codec_options, session)
