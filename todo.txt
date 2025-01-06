@@ -3,7 +3,7 @@
 [x] Validate that explicit session cannot be used with unack writes
 [x] do advance_cluster_time in send_msg?
 [x] mark_as_dirty in case of errors
-[ ] Add session-related parameters to command in send_msg. Maybe make Msg.body to a dict, not bytes?
+[x] Add session-related parameters to command in send_msg. Maybe make Msg.body to a dict, not bytes?
 [x] check auth behavior
 [ ] snapshot support (?)
 [ ] causal consistency support

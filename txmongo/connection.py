@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from collections import deque
 from contextlib import contextmanager
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from bson.binary import UuidRepresentation
-from bson.codec_options import CodecOptions
+from bson.codec_options import DEFAULT_CODEC_OPTIONS, CodecOptions
 from pymongo.common import validate_is_mapping
 from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from pymongo.read_preferences import ReadPreference
@@ -450,13 +450,13 @@ class ConnectionPool:
             write_concern = self.write_concern
 
         with self._using_session(session, write_concern) as session:
-            command.update(self._get_session_command_fields(session))
             proto = yield self.getprotocol()
             check_deadline(_deadline)
 
             try:
                 reply = yield proto.send_msg(
-                    Msg.create(
+                    self._create_message(
+                        session,
                         command,
                         codec_options=codec_options,
                         acknowledged=write_concern.acknowledged,
@@ -572,6 +572,27 @@ class ConnectionPool:
     def cluster_time(self) -> Optional[Document]:
         return self._cluster_time
 
+    def _create_message(
+        self,
+        session: Optional[ClientSession],
+        body: Document,
+        payload: Dict[str, List[Document]] = None,
+        *,
+        codec_options: CodecOptions = DEFAULT_CODEC_OPTIONS,
+        acknowledged: bool = True,
+    ) -> Msg:
+        """Create Msg instance adding Cluster Time gossiping and session id. Mutates the body argument!"""
+        if cluster_time := self._get_cluster_time(session):
+            body["$clusterTime"] = cluster_time
+        if session:
+            body["lsid"] = session._use_session_id()
+        return Msg.create(
+            body,
+            payload,
+            codec_options=codec_options,
+            acknowledged=acknowledged,
+        )
+
     @contextmanager
     def _using_session(
         self, session: Optional[ClientSession], write_concern: WriteConcern
@@ -593,14 +614,6 @@ class ConnectionPool:
 
             if session and session.implicit:
                 session.end_session()
-
-    def _get_session_command_fields(self, session: Optional[ClientSession]) -> dict:
-        fields = {}
-        if cluster_time := self._get_cluster_time(session):
-            fields["$clusterTime"] = cluster_time
-        if session:
-            fields["lsid"] = session._use_session_id()
-        return fields
 
     def _get_cluster_time(self, session: Optional[ClientSession]) -> Optional[Document]:
         session_ct = session.cluster_time if session else None
