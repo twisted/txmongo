@@ -100,41 +100,41 @@ class TestClientSessions(SingleCollectionTest):
         for op in self.db_operations:
             with self._test_has_lsid(session.session_id):
                 await op(self.db, session)
-        session.end_session()
+        await session.end_session()
 
-    def test_session_reuse(self):
+    async def test_session_reuse(self):
         """Session ID is reused after end_session()"""
         s = self.db.connection.start_session()
         id1 = s.session_id
-        s.end_session()
+        await s.end_session()
         s = self.db.connection.start_session()
         id2 = s.session_id
-        s.end_session()
+        await s.end_session()
         self.assertEqual(id1, id2)
 
-    def test_id_of_ended_session_raises(self):
+    async def test_id_of_ended_session_raises(self):
         s = self.db.connection.start_session()
         self.assertFalse(s.is_ended)
-        s.end_session()
+        await s.end_session()
         self.assertTrue(s.is_ended)
         with self.assertRaises(ValueError):
             _ = s.session_id
 
-    def test_session_cache_is_lifo(self):
+    async def test_session_cache_is_lifo(self):
         """Session ID cache is LIFO"""
         s1 = self.db.connection.start_session()
         id1 = s1.session_id
         s2 = self.db.connection.start_session()
         id2 = s2.session_id
-        s1.end_session()
-        s2.end_session()
+        await s1.end_session()
+        await s2.end_session()
 
         s3 = self.db.connection.start_session()
         id3 = s3.session_id
         s4 = self.db.connection.start_session()
         id4 = s4.session_id
-        s3.end_session()
-        s4.end_session()
+        await s3.end_session()
+        await s4.end_session()
 
         self.assertEqual(id3, id2)
         self.assertEqual(id4, id1)
@@ -219,8 +219,8 @@ class TestClientSessions(SingleCollectionTest):
                 autospec=True,
             ):
                 await self.coll.insert_one({"_id": 2}, session=session)
-        session.end_session()
+        await session.end_session()
 
         new_session = self.db.connection.start_session()
         self.assertNotEqual(session_id, new_session.session_id)
-        new_session.end_session()
+        await new_session.end_session()

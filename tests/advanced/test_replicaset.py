@@ -435,6 +435,6 @@ class TestReplicaSet(unittest.TestCase):
                 fake_cluster_time["clusterTime"].inc,
             )
 
-            session.end_session()
+            await session.end_session()
         finally:
             await conn.disconnect()

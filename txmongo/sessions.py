@@ -78,6 +78,12 @@ class ClientSession:
         self.options = options
         self._implicit = implicit
 
+    async def __aenter__(self) -> ClientSession:
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.end_session()
+
     @property
     def implicit(self) -> bool:
         return self._implicit
@@ -103,7 +109,7 @@ class ClientSession:
         self._server_session.update_last_use()
         return session_id
 
-    def end_session(self) -> None:
+    async def end_session(self) -> None:
         self._is_ended = True
 
         if self._server_session is None:
