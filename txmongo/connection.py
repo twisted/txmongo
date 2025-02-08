@@ -610,8 +610,6 @@ class ConnectionPool:
         try:
             yield session
         finally:
-            # FIXME: we should discard the session if there was an error in response
-
             if session and session.implicit:
                 session.end_session()
 
