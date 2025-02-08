@@ -31,7 +31,13 @@ from pymongo.results import (
 )
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer
-from twisted.internet.defer import Deferred, FirstError, gatherResults, inlineCallbacks
+from twisted.internet.defer import (
+    Deferred,
+    FirstError,
+    ensureDeferred,
+    gatherResults,
+    inlineCallbacks,
+)
 from twisted.python.compat import comparable
 
 from txmongo import filter as qf
@@ -456,7 +462,7 @@ class Cursor(Deferred):
                 return cursor["nextBatch" if "nextBatch" in cursor else "firstBatch"]
         finally:
             if self._exhausted and self._session and self._session.implicit:
-                self._session.end_session()
+                ensureDeferred(self._session.end_session())
 
     @_timeout_decorator
     def next_batch(self, _deadline: Optional[float]) -> Deferred[List[dict]]:
@@ -510,7 +516,7 @@ class Cursor(Deferred):
         be sure to close cursor if you stop iterating before the cursor is exhausted.
         """
         if self._session and self._session.implicit:
-            self._session.end_session()
+            ensureDeferred(self._session.end_session())
         if not self._cursor_id:
             return defer.succeed(None)
         return self._collection.database.connection.getprotocol().addCallback(
@@ -1013,10 +1019,9 @@ class Collection:
             :class:`pymongo.results.InsertOneResult`
         """
         validate_is_document_type("document", document)
-        return self._insert_one(document, session, _deadline)
+        return ensureDeferred(self._insert_one(document, session, _deadline))
 
-    @defer.inlineCallbacks
-    def _insert_one(
+    async def _insert_one(
         self,
         document: Document,
         session: Optional[ClientSession],
@@ -1026,7 +1031,9 @@ class Collection:
             document["_id"] = ObjectId()
         inserted_id = document["_id"]
 
-        with self.connection._using_session(session, self.write_concern) as session:
+        async with self.connection._using_session(
+            session, self.write_concern
+        ) as session:
             msg = self.connection._create_message(
                 session,
                 {
@@ -1039,9 +1046,9 @@ class Collection:
                 acknowledged=self.write_concern.acknowledged,
             )
 
-            proto = yield self.connection.getprotocol()
+            proto = await self.connection.getprotocol()
             check_deadline(_deadline)
-            reply: Optional[dict] = yield proto.send_msg(
+            reply: Optional[dict] = await proto.send_msg(
                 msg, self.codec_options, session
             )
             if reply:
@@ -1093,15 +1100,16 @@ class Collection:
 
         bulk = _Bulk(ordered)
         bulk.ops = list(gen())
-        return self._execute_bulk(bulk, session, _deadline).addCallback(
+        return ensureDeferred(self._execute_bulk(bulk, session, _deadline)).addCallback(
             lambda _: InsertManyResult(inserted_ids, self.write_concern.acknowledged)
         )
 
-    @defer.inlineCallbacks
-    def _update(
+    async def _update(
         self, filter, update, upsert, multi, session: Optional[ClientSession], _deadline
     ):
-        with self.connection._using_session(session, self.write_concern) as session:
+        async with self.connection._using_session(
+            session, self.write_concern
+        ) as session:
             msg = self.connection._create_message(
                 session,
                 {
@@ -1123,9 +1131,9 @@ class Collection:
                 acknowledged=self.write_concern.acknowledged,
             )
 
-            proto = yield self.connection.getprotocol()
+            proto = await self.connection.getprotocol()
             check_deadline(_deadline)
-            reply = yield proto.send_msg(msg, self.codec_options, session)
+            reply = await proto.send_msg(msg, self.codec_options, session)
             if reply:
                 _check_write_command_response(reply)
                 if reply.get("n") and "upserted" in reply:
@@ -1180,7 +1188,9 @@ class Collection:
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
 
-        return self._update(filter, update, upsert, False, session, _deadline)
+        return ensureDeferred(
+            self._update(filter, update, upsert, False, session, _deadline)
+        )
 
     @timeout
     def update_many(
@@ -1226,7 +1236,9 @@ class Collection:
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
 
-        return self._update(filter, update, upsert, True, session, _deadline)
+        return ensureDeferred(
+            self._update(filter, update, upsert, True, session, _deadline)
+        )
 
     @timeout
     def replace_one(
@@ -1269,10 +1281,11 @@ class Collection:
         validate_is_mapping("filter", filter)
         validate_boolean("upsert", upsert)
 
-        return self._update(filter, replacement, upsert, False, session, _deadline)
+        return ensureDeferred(
+            self._update(filter, replacement, upsert, False, session, _deadline)
+        )
 
-    @defer.inlineCallbacks
-    def _delete(
+    async def _delete(
         self,
         filter: dict,
         let: Optional[dict],
@@ -1280,7 +1293,9 @@ class Collection:
         session: Optional[ClientSession],
         _deadline: Optional[float],
     ):
-        with self.connection._using_session(session, self.write_concern) as session:
+        async with self.connection._using_session(
+            session, self.write_concern
+        ) as session:
             body = {
                 "delete": self.name,
                 "$db": self.database.name,
@@ -1298,9 +1313,9 @@ class Collection:
                 acknowledged=self.write_concern.acknowledged,
             )
 
-            proto = yield self.connection.getprotocol()
+            proto = await self.connection.getprotocol()
             check_deadline(_deadline)
-            reply = yield proto.send_msg(msg, self.codec_options, session)
+            reply = await proto.send_msg(msg, self.codec_options, session)
             if reply:
                 _check_write_command_response(reply)
 
@@ -1319,8 +1334,8 @@ class Collection:
         validate_is_mapping("filter", filter)
         if let:
             validate_is_mapping("let", let)
-        return self._delete(
-            filter, let, multi=False, session=session, _deadline=_deadline
+        return ensureDeferred(
+            self._delete(filter, let, multi=False, session=session, _deadline=_deadline)
         )
 
     @timeout
@@ -1336,8 +1351,8 @@ class Collection:
         validate_is_mapping("filter", filter)
         if let:
             validate_is_mapping("let", let)
-        return self._delete(
-            filter, let, multi=True, session=session, _deadline=_deadline
+        return ensureDeferred(
+            self._delete(filter, let, multi=True, session=session, _deadline=_deadline)
         )
 
     @timeout
@@ -1633,10 +1648,9 @@ class Collection:
         bulk = _Bulk(ordered)
         for request in requests:
             bulk.add_write_op(request)
-        return self._execute_bulk(bulk, session, _deadline)
+        return ensureDeferred(self._execute_bulk(bulk, session, _deadline))
 
-    @inlineCallbacks
-    def _execute_bulk(
+    async def _execute_bulk(
         self,
         bulk: _Bulk,
         session: Optional[ClientSession],
@@ -1645,7 +1659,7 @@ class Collection:
         if not bulk.ops:
             raise InvalidOperation("No operations to execute")
 
-        proto = yield self.connection.getprotocol()
+        proto = await self.connection.getprotocol()
         check_deadline(_deadline)
 
         # There are four major cases with different behavior of bulk_write:
@@ -1681,7 +1695,9 @@ class Collection:
             _merge_command(run, full_result, idx_offset, response)
             return response
 
-        with self.connection._using_session(session, self.write_concern) as session:
+        async with self.connection._using_session(
+            session, self.write_concern
+        ) as session:
             got_error = False
             for run in bulk.gen_runs():
                 for doc_offset, msg in run.gen_messages(
@@ -1691,7 +1707,7 @@ class Collection:
                     deferred = proto.send_msg(msg, self.codec_options, session)
                     if effective_write_concern.acknowledged:
                         if bulk.ordered:
-                            reply = yield deferred
+                            reply = await deferred
                             accumulate_response(reply, run, doc_offset)
                             if "writeErrors" in reply:
                                 got_error = True
@@ -1708,7 +1724,7 @@ class Collection:
 
             if effective_write_concern.acknowledged and not bulk.ordered:
                 try:
-                    yield gatherResults(all_responses, consumeErrors=True)
+                    await gatherResults(all_responses, consumeErrors=True)
                 except FirstError as exc:
                     exc.subFailure.raiseException()
 

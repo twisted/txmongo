@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from collections import deque
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from typing import Dict, List, Optional, Tuple
 
 from bson.binary import UuidRepresentation
@@ -429,8 +429,32 @@ class ConnectionPool:
         return self.__uri
 
     @timeout
-    @defer.inlineCallbacks
     def command(
+        self,
+        dbname: str,
+        command: Document,
+        *,
+        allowable_errors=None,
+        check=True,
+        codec_options: CodecOptions = None,
+        write_concern: WriteConcern = None,
+        session: ClientSession = None,
+        _deadline=None,
+    ):
+        return defer.ensureDeferred(
+            self._command(
+                dbname,
+                command,
+                allowable_errors=allowable_errors,
+                check=check,
+                codec_options=codec_options,
+                write_concern=write_concern,
+                session=session,
+                _deadline=_deadline,
+            )
+        )
+
+    async def _command(
         self,
         dbname: str,
         command: Document,
@@ -449,12 +473,12 @@ class ConnectionPool:
         if write_concern is None:
             write_concern = self.write_concern
 
-        with self._using_session(session, write_concern) as session:
-            proto = yield self.getprotocol()
+        async with self._using_session(session, write_concern) as session:
+            proto = await self.getprotocol()
             check_deadline(_deadline)
 
             try:
-                reply = yield proto.send_msg(
+                reply = await proto.send_msg(
                     self._create_message(
                         session,
                         command,
@@ -593,8 +617,8 @@ class ConnectionPool:
             acknowledged=acknowledged,
         )
 
-    @contextmanager
-    def _using_session(
+    @asynccontextmanager
+    async def _using_session(
         self, session: Optional[ClientSession], write_concern: WriteConcern
     ) -> Optional[ClientSession]:
         if session is not None and not write_concern.acknowledged:
@@ -611,7 +635,7 @@ class ConnectionPool:
             yield session
         finally:
             if session and session.implicit:
-                session.end_session()
+                await session.end_session()
 
     def _get_cluster_time(self, session: Optional[ClientSession]) -> Optional[Document]:
         session_ct = session.cluster_time if session else None
