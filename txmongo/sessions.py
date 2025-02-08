@@ -112,7 +112,6 @@ class ClientSession:
         self.connection._return_server_session(self._server_session)
         self._server_session = None
 
-    # FIXME: not used yet
     def mark_dirty(self) -> None:
         if self._server_session:
             self._server_session.mark_dirty()
