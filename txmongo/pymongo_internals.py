@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Mapping, MutableMapping, Optional
+from typing import TYPE_CHECKING, Any, Mapping, MutableMapping, NoReturn, Optional
 
 from pymongo.errors import (
     CursorNotFound,
@@ -162,3 +162,9 @@ def _check_command_response(
                 raise CursorNotFound(errmsg, code, response)
 
             raise OperationFailure(errmsg, code, response)
+
+
+def _reraise_with_unknown_commit(exc: Any) -> NoReturn:
+    """Re-raise an exception with the UnknownTransactionCommitResult label."""
+    exc._add_error_label("UnknownTransactionCommitResult")
+    raise

@@ -609,7 +609,7 @@ class ConnectionPool:
         if cluster_time := self._get_cluster_time(session):
             body["$clusterTime"] = cluster_time
         if session:
-            body["lsid"] = session._use_session_id()
+            session._apply_to_command(body)
         return Msg.create(
             body,
             payload,

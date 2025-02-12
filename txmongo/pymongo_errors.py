@@ -30,5 +30,16 @@ _RETRYABLE_ERROR_CODES = _NOT_MASTER_CODES | frozenset(
         6,  # HostUnreachable
         89,  # NetworkTimeout
         9001,  # SocketException
+        262,  # ExceededTimeLimit
+        134,  # ReadConcernMajorityNotAvailableYet
+    ]
+)
+
+# From the transactions spec, all the retryable writes errors plus
+# WriteConcernFailed.
+_UNKNOWN_COMMIT_ERROR_CODES: frozenset = _RETRYABLE_ERROR_CODES | frozenset(
+    [
+        64,  # WriteConcernFailed
+        50,  # MaxTimeMSExpired
     ]
 )
