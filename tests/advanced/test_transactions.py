@@ -1,8 +1,11 @@
+from pymongo import WriteConcern
+from pymongo.errors import ConfigurationError
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
 
 from tests.conf import MongoConf
 from tests.mongod import create_mongod
+from tests.utils import catch_sent_msgs
 from txmongo import Database
 from txmongo.collection import Collection
 from txmongo.connection import ConnectionPool
@@ -104,17 +107,24 @@ class TestTransactions(unittest.TestCase):
 
     async def test_commit_context_manager(self):
         async with self.conn.start_session() as session:
-            async with session.start_transaction():
-                await self.coll.insert_one({"x": 1}, session=session)
+            with catch_sent_msgs() as get_messages:
+                async with session.start_transaction():
+                    await self.coll.insert_one({"x": 1}, session=session)
 
-                cnt_in_transaction = len(await self.coll.find(session=session))
-                self.assertEqual(cnt_in_transaction, 1)
+                    cnt_in_transaction = len(await self.coll.find(session=session))
+                    self.assertEqual(cnt_in_transaction, 1)
 
-                cnt_outside_transaction = len(await self.coll.find())
-                self.assertEqual(cnt_outside_transaction, 0)
+                    cnt_outside_transaction = len(await self.coll.find())
+                    self.assertEqual(cnt_outside_transaction, 0)
 
         count_after_commit = len(await self.coll.find())
         self.assertEqual(count_after_commit, 1)
+
+        [insert, find1, find2, commit] = get_messages()
+        self.assertIn("insert", insert.to_dict())
+        self.assertIn("find", find1.to_dict())
+        self.assertIn("find", find2.to_dict())
+        self.assertIn("commitTransaction", commit.to_dict())
 
     async def test_abort_plain(self):
         session = self.conn.start_session()
@@ -134,15 +144,70 @@ class TestTransactions(unittest.TestCase):
     async def test_abort_by_exception(self):
         try:
             async with self.conn.start_session() as session:
-                async with session.start_transaction():
-                    await self.coll.insert_one({"x": 1}, session=session)
+                with catch_sent_msgs() as get_messages:
+                    async with session.start_transaction():
+                        await self.coll.insert_one({"x": 1}, session=session)
 
-                    count = len(await self.coll.find(session=session))
-                    self.assertEqual(count, 1)
+                        count = len(await self.coll.find(session=session))
+                        self.assertEqual(count, 1)
 
-                    raise ZeroDivisionError("Boom")
+                        raise ZeroDivisionError("Boom")
         except ZeroDivisionError:
             pass
 
         count = len(await self.coll.find())
         self.assertEqual(count, 0)
+
+        [insert, find, abort] = get_messages()
+        self.assertIn("insert", insert.to_dict())
+        self.assertIn("find", find.to_dict())
+        self.assertIn("abortTransaction", abort.to_dict())
+
+    async def test_ignore_write_concern(self):
+        """Driver must ignore write concern on operations in transaction and only send WC with commit/abort_transaction"""
+        async with self.conn.start_session() as session:
+            async with session.start_transaction():
+                with catch_sent_msgs() as get_messages:
+                    coll_wc = self.coll.with_options(write_concern=WriteConcern(w=1))
+                    await coll_wc.insert_one({"x": 1}, session=session)
+
+        [insert] = get_messages()
+        self.assertNotIn("writeConcern", insert.to_dict())
+
+    def test_no_unacknowledged(self):
+        """Unacknowledged WC is not supported by start_transaction"""
+        session = self.conn.start_session()
+        with self.assertRaises(ConfigurationError):
+            session.start_transaction(write_concern=WriteConcern(w=0))
+
+    async def test_commit_write_concern(self):
+        """WC from transaction options is sent along with commit_transaction"""
+        async with self.conn.start_session() as session:
+            with catch_sent_msgs() as get_messages:
+                async with session.start_transaction(
+                    write_concern=WriteConcern(w=1, wtimeout=123)
+                ):
+                    await self.coll.insert_one({"x": 1}, session=session)
+
+        [insert, commit] = get_messages()
+        self.assertNotIn("writeConcern", insert.to_dict())
+        self.assertIn("commitTransaction", commit.to_dict())
+        self.assertEqual(commit.to_dict()["writeConcern"], {"w": 1, "wtimeout": 123})
+
+    async def test_abort_write_concern(self):
+        """WC from transaction options is sent along with commit_transaction"""
+        try:
+            async with self.conn.start_session() as session:
+                with catch_sent_msgs() as get_messages:
+                    async with session.start_transaction(
+                        write_concern=WriteConcern(w=1, wtimeout=123)
+                    ):
+                        await self.coll.insert_one({"x": 1}, session=session)
+                        raise NotImplementedError()
+        except NotImplementedError:
+            pass
+
+        [insert, abort] = get_messages()
+        self.assertNotIn("writeConcern", insert.to_dict())
+        self.assertIn("abortTransaction", abort.to_dict())
+        self.assertEqual(abort.to_dict()["writeConcern"], {"w": 1, "wtimeout": 123})

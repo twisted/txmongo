@@ -403,9 +403,12 @@ class Cursor(Deferred):
             cmd.pop("$explain")
             cmd = {"explain": cmd}
 
-        cmd["$db"] = db_name
         return self._collection.connection._create_message(
-            self._session, cmd, codec_options=self._collection.codec_options
+            self._session,
+            db_name,
+            cmd,
+            write_concern=None,
+            codec_options=self._collection.codec_options,
         )
 
     def _build_command(self) -> Msg:
@@ -432,7 +435,6 @@ class Cursor(Deferred):
     def _get_more(self, proto: MongoProtocol, _deadline: Optional[float]):
         get_more = {
             "getMore": self._cursor_id,
-            "$db": self._collection.database.name,
             "collection": self._collection.name,
         }
         if self._batch_size:
@@ -440,7 +442,11 @@ class Cursor(Deferred):
 
         return proto.send_msg(
             self._collection.connection._create_message(
-                self._session, get_more, codec_options=self._collection.codec_options
+                self._session,
+                self._collection.database,
+                get_more,
+                write_concern=None,
+                codec_options=self._collection.codec_options,
             ),
             self._collection.codec_options,
             self._session,
@@ -907,11 +913,12 @@ class Collection:
         proto.send_msg(
             self.connection._create_message(
                 session=None,
+                db=self._database,
                 body={
                     "killCursors": self.name,
-                    "$db": self._database.name,
                     "cursors": [cursor_id],
                 },
+                write_concern=None,
                 acknowledged=False,
             ),
             DEFAULT_CODEC_OPTIONS,
@@ -1036,12 +1043,10 @@ class Collection:
         ) as session:
             msg = self.connection._create_message(
                 session,
-                {
-                    "insert": self.name,
-                    "$db": self.database.name,
-                    "writeConcern": self.write_concern.document,
-                },
+                self.database,
+                {"insert": self.name},
                 {"documents": [document]},
+                write_concern=self.write_concern,
                 codec_options=self.codec_options,
                 acknowledged=self.write_concern.acknowledged,
             )
@@ -1112,11 +1117,8 @@ class Collection:
         ) as session:
             msg = self.connection._create_message(
                 session,
-                {
-                    "update": self.name,
-                    "$db": self.database.name,
-                    "writeConcern": self.write_concern.document,
-                },
+                self.database,
+                {"update": self.name},
                 {
                     "updates": [
                         {
@@ -1127,6 +1129,7 @@ class Collection:
                         }
                     ],
                 },
+                write_concern=self.write_concern,
                 codec_options=self.codec_options,
                 acknowledged=self.write_concern.acknowledged,
             )
@@ -1296,19 +1299,17 @@ class Collection:
         async with self.connection._using_session(
             session, self.write_concern
         ) as session:
-            body = {
-                "delete": self.name,
-                "$db": self.database.name,
-                "writeConcern": self.write_concern.document,
-            }
+            body = {"delete": self.name}
 
             if let:
                 body["let"] = let
 
             msg = self.connection._create_message(
                 session,
+                self.database,
                 body,
                 {"deletes": [{"q": filter, "limit": 0 if multi else 1}]},
+                write_concern=self.write_concern,
                 codec_options=self.codec_options,
                 acknowledged=self.write_concern.acknowledged,
             )

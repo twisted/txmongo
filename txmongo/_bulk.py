@@ -72,13 +72,13 @@ class _Run:
         payload_arg_name = PAYLOAD_ARG_NAME[self.op_type]
         msg = collection.connection._create_message(
             session,
+            collection.database,
             body={
                 COMMAND_NAME[self.op_type]: collection.name,
-                "$db": collection.database.name,
                 "ordered": self.ordered,
-                "writeConcern": write_concern.document,
             },
             payload={payload_arg_name: []},
+            write_concern=write_concern,
             codec_options=codec_options,
             acknowledged=write_concern.acknowledged,
         )
