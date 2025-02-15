@@ -10,7 +10,13 @@ from typing import TYPE_CHECKING, Optional, Type
 import bson
 from bson import Int64, UuidRepresentation
 from bson.raw_bson import DEFAULT_RAW_BSON_OPTIONS, RawBSONDocument
-from pymongo.errors import ConnectionFailure, InvalidOperation, OperationFailure
+from pymongo import WriteConcern
+from pymongo.errors import (
+    ConfigurationError,
+    ConnectionFailure,
+    InvalidOperation,
+    OperationFailure,
+)
 
 from txmongo.pymongo_errors import _UNKNOWN_COMMIT_ERROR_CODES
 from txmongo.pymongo_internals import _reraise_with_unknown_commit
@@ -77,6 +83,22 @@ class ServerSession:
 class SessionOptions: ...
 
 
+@dataclass(frozen=True)
+class TransactionOptions:
+    write_concern: Optional[WriteConcern] = None
+
+    def __post_init__(self):
+        if self.write_concern:
+            if not isinstance(self.write_concern, WriteConcern):
+                raise TypeError(
+                    f"write_concern must be an instance of pymongo.write_concern.WriteConcern, not: {self.write_concern!r}"
+                )
+            if not self.write_concern.acknowledged:
+                raise ConfigurationError(
+                    f"transactions do not support unacknowledged write concern: {self.write_concern!r}"
+                )
+
+
 class _TransactionContext:
     """Internal transaction context manager for start_transaction."""
 
@@ -111,6 +133,7 @@ class ClientSession:
     _cluster_time: Optional[Document] = None
 
     _txn_state: TxnState = TxnState.NONE
+    _txn_options: TransactionOptions = TransactionOptions()
 
     def __init__(
         self,
@@ -189,13 +212,16 @@ class ClientSession:
     def in_transaction(self) -> bool:
         return self._txn_state in {TxnState.STARTING, TxnState.IN_PROGRESS}
 
-    def start_transaction(self) -> _TransactionContext:
+    def start_transaction(
+        self, write_concern: WriteConcern = None
+    ) -> _TransactionContext:
         self._check_ended()
 
         if self.in_transaction():
             raise InvalidOperation("Transaction already in progress")
 
         self._txn_state = TxnState.STARTING
+        self._txn_options = TransactionOptions(write_concern=write_concern)
         # FIXME: ↓ materialize server session. Make this more explicit.
         self.get_session_id()
         self._server_session.inc_transaction_id()
@@ -262,9 +288,13 @@ class ClientSession:
 
     async def _finish_transaction(self, command_name: str):
         # FIXME: obey maxTimeMS from transaction options
-        # FIXME: obey writeConcern from transaction options
 
-        self.connection.admin.command({command_name: 1}, session=self)
+        wc = self._txn_options.write_concern or self.connection.write_concern
+
+        return await self.connection.admin.command(
+            {command_name: 1, "writeConcern": wc.document},
+            session=self,
+        )
 
     def _apply_to_command(self, body: Document) -> None:
         """

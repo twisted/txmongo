@@ -437,7 +437,7 @@ class ConnectionPool:
         allowable_errors=None,
         check=True,
         codec_options: CodecOptions = None,
-        write_concern: WriteConcern = None,
+        write_concern: WriteConcern = None,  # Note: write_concern is not added to the command body
         session: ClientSession = None,
         _deadline=None,
     ):
@@ -467,7 +467,6 @@ class ConnectionPool:
         _deadline=None,
     ):
         validate_is_mapping("command", command)
-        command["$db"] = dbname
         if codec_options is None:
             codec_options = self.codec_options
         if write_concern is None:
@@ -481,7 +480,9 @@ class ConnectionPool:
                 reply = await proto.send_msg(
                     self._create_message(
                         session,
+                        dbname,
                         command,
+                        write_concern=None,
                         codec_options=codec_options,
                         acknowledged=write_concern.acknowledged,
                     ),
@@ -599,17 +600,22 @@ class ConnectionPool:
     def _create_message(
         self,
         session: Optional[ClientSession],
+        db: str | Database,
         body: Document,
         payload: Dict[str, List[Document]] = None,
         *,
+        write_concern: Optional[WriteConcern],
         codec_options: CodecOptions = DEFAULT_CODEC_OPTIONS,
         acknowledged: bool = True,
     ) -> Msg:
         """Create Msg instance adding Cluster Time gossiping and session id. Mutates the body argument!"""
+        body["$db"] = str(db)
         if cluster_time := self._get_cluster_time(session):
             body["$clusterTime"] = cluster_time
         if session:
             session._apply_to_command(body)
+        if write_concern and not (session and session.in_transaction()):
+            body["writeConcern"] = write_concern.document
         return Msg.create(
             body,
             payload,
