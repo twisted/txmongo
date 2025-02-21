@@ -86,6 +86,7 @@ class SessionOptions: ...
 @dataclass(frozen=True)
 class TransactionOptions:
     write_concern: Optional[WriteConcern] = None
+    max_commit_time_ms: Optional[int] = None
 
     def __post_init__(self):
         if self.write_concern:
@@ -97,6 +98,10 @@ class TransactionOptions:
                 raise ConfigurationError(
                     f"transactions do not support unacknowledged write concern: {self.write_concern!r}"
                 )
+
+        if self.max_commit_time_ms is not None:
+            if not isinstance(self.max_commit_time_ms, int):
+                raise TypeError("max_commit_time_ms must be an integer or None")
 
 
 class _TransactionContext:
@@ -213,7 +218,7 @@ class ClientSession:
         return self._txn_state in {TxnState.STARTING, TxnState.IN_PROGRESS}
 
     def start_transaction(
-        self, write_concern: WriteConcern = None
+        self, write_concern: WriteConcern = None, max_commit_time_ms: int = None
     ) -> _TransactionContext:
         self._check_ended()
 
@@ -221,7 +226,10 @@ class ClientSession:
             raise InvalidOperation("Transaction already in progress")
 
         self._txn_state = TxnState.STARTING
-        self._txn_options = TransactionOptions(write_concern=write_concern)
+        self._txn_options = TransactionOptions(
+            write_concern=write_concern,
+            max_commit_time_ms=max_commit_time_ms,
+        )
         # FIXME: ↓ materialize server session. Make this more explicit.
         self.get_session_id()
         self._server_session.inc_transaction_id()
@@ -287,12 +295,13 @@ class ClientSession:
         await self._finish_transaction(command_name)
 
     async def _finish_transaction(self, command_name: str):
-        # FIXME: obey maxTimeMS from transaction options
-
+        assert self._txn_options is not None
         wc = self._txn_options.write_concern or self.connection.write_concern
-
+        body = {command_name: 1, "writeConcern": wc.document}
+        if command_name == "commitTransaction" and self._txn_options.max_commit_time_ms:
+            body["maxTimeMS"] = self._txn_options.max_commit_time_ms
         return await self.connection.admin.command(
-            {command_name: 1, "writeConcern": wc.document},
+            body,
             session=self,
         )
 

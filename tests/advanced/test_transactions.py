@@ -211,3 +211,13 @@ class TestTransactions(unittest.TestCase):
         self.assertNotIn("writeConcern", insert.to_dict())
         self.assertIn("abortTransaction", abort.to_dict())
         self.assertEqual(abort.to_dict()["writeConcern"], {"w": 1, "wtimeout": 123})
+
+    async def test_max_commit_time_ms(self):
+        async with self.conn.start_session() as session:
+            with catch_sent_msgs() as get_messages:
+                async with session.start_transaction(max_commit_time_ms=1234):
+                    await self.coll.insert_one({"x": 1}, session=session)
+
+        [_, commit] = get_messages()
+        self.assertIn("commitTransaction", commit.to_dict())
+        self.assertEqual(commit.to_dict()["maxTimeMS"], 1234)
