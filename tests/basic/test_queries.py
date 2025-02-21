@@ -251,11 +251,11 @@ class TestFind(SingleCollectionTest):
         batch1, dfr = yield self.coll.find_with_cursor(
             {"$where": "sleep(100); true"}, batch_size=5, timeout=0.8
         )
-        with catch_sent_msgs() as get_messages:
+        with catch_sent_msgs() as messages:
             with self.assertRaises(TimeExceeded):
                 yield dfr
 
-        self.assertTrue(any(["killCursors" in msg.to_dict() for msg in get_messages()]))
+        self.assertTrue(any(["killCursors" in msg.to_dict() for msg in messages]))
 
         self.assertEqual(len(batch1), 5)
 
@@ -283,14 +283,14 @@ class TestFind(SingleCollectionTest):
 
     @defer.inlineCallbacks
     def test_AllowPartialResults(self):
-        with catch_sent_msgs() as get_messages:
+        with catch_sent_msgs() as messages:
             yield self.coll.find_one(allow_partial_results=True)
-        [msg] = get_messages()
+        [msg] = messages
         self.assertEqual(msg.to_dict()["allowPartialResults"], True)
 
-        with catch_sent_msgs() as get_messages:
+        with catch_sent_msgs() as messages:
             yield self.coll.find().limit(1).allow_partial_results()
-        [msg] = get_messages()
+        [msg] = messages
         self.assertEqual(msg.to_dict()["allowPartialResults"], True)
 
     async def test_FindIterate(self):
@@ -787,9 +787,9 @@ class TestInsertMany(SingleCollectionTest):
         # This call will trigger ismaster which we don't want to include in call count
         yield self.coll.count()
 
-        with catch_sent_msgs() as get_messages:
+        with catch_sent_msgs() as messages:
             result = yield self.coll.insert_many([small, huge])
-        [msg] = get_messages()
+        [msg] = messages
         self.assertEqual(len(msg.to_dict()["documents"]), 2)
         self.assertEqual(len(result.inserted_ids), 2)
 

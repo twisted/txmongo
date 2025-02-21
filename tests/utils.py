@@ -43,8 +43,9 @@ def patch_send_msg():
 
 @contextmanager
 def catch_sent_msgs():
-    def get_messages():
-        return [call.args[1] for call in mock.call_args_list]
-
-    with patch_send_msg() as mock:
-        yield get_messages
+    messages = []
+    try:
+        with patch_send_msg() as mock:
+            yield messages
+    finally:
+        messages.extend([call.args[1] for call in mock.call_args_list])

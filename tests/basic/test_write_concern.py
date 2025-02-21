@@ -32,10 +32,10 @@ class TestWriteConcern(unittest.TestCase):
 
     @contextmanager
     def assert_called_with_write_concern(self, write_concern: WriteConcern):
-        with catch_sent_msgs() as get_messages:
+        with catch_sent_msgs() as messages:
             yield
 
-        [msg] = get_messages()
+        [msg] = messages
         self.assertEqual(msg.to_dict()["writeConcern"], write_concern.document)
 
     @defer.inlineCallbacks
