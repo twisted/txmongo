@@ -23,10 +23,9 @@ async def iterate_find_with_cursor(coll: Collection, session: Optional[ClientSes
 class TestClientSessions(SingleCollectionTest):
     @contextmanager
     def _test_has_no_lsid(self):
-        with catch_sent_msgs() as get_messages:
+        with catch_sent_msgs() as messages:
             yield
 
-        messages = get_messages()
         self.assertGreater(len(messages), 0)
         for msg in messages:
             self.assertNotIn("lsid", msg.to_dict())
@@ -36,10 +35,9 @@ class TestClientSessions(SingleCollectionTest):
         self, session_id: RawBSONDocument = None
     ) -> ContextManager[Callable[[], Set[UUID]]]:
         session_ids = set()
-        with catch_sent_msgs() as get_messages:
+        with catch_sent_msgs() as messages:
             yield lambda: session_ids
 
-        messages = get_messages()
         self.assertGreater(len(messages), 0)
         for msg in messages:
             lsid = msg.to_dict(

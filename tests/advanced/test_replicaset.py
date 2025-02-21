@@ -380,11 +380,11 @@ class TestReplicaSet(unittest.TestCase):
             cluster_time = conn.cluster_time
             self.assertLess(abs(time() - cluster_time["clusterTime"].time), 10)
 
-            with catch_sent_msgs() as get_messages:
+            with catch_sent_msgs() as messages:
                 await conn.db.coll.insert_one({"x": 2})
                 await conn.db.coll.insert_one({"x": 3})
 
-            messages = get_messages()
+            messages = messages
             self.assertEqual(len(messages), 2)
             cmd_times = [msg.to_dict()["$clusterTime"] for msg in messages]
             # First command should contain the same clusterTime that was returned by the previous one.
@@ -418,9 +418,9 @@ class TestReplicaSet(unittest.TestCase):
             self.assertEqual(session.cluster_time, fake_cluster_time)
             self.assertNotEqual(conn.cluster_time, fake_cluster_time)
 
-            with catch_sent_msgs() as get_messages:
+            with catch_sent_msgs() as messages:
                 await conn.db.coll.insert_one({"x": 2}, session=session)
-            [msg] = get_messages()
+            [msg] = messages
             cmd_time = msg.to_dict()["$clusterTime"]
             # Check that command was sent with session's cluster_time
             self.assertEqual(cmd_time, fake_cluster_time)

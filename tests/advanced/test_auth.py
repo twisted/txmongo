@@ -277,16 +277,16 @@ class TestMongoAuth(unittest.TestCase, MongoAuth):
         try:
             yield conn[self.db1].authenticate(self.login1, self.password1)
 
-            with catch_sent_msgs() as get_messages:
+            with catch_sent_msgs() as messages:
                 yield conn[self.db1][self.coll].find_one()
-            [msg] = get_messages()
+            [msg] = messages
             self.assertIn("lsid", msg.to_dict())
 
             yield conn[self.db2].authenticate(self.login2, self.password2)
 
-            with catch_sent_msgs() as get_messages:
+            with catch_sent_msgs() as messages:
                 yield conn[self.db1][self.coll].find_one()
-            [msg] = get_messages()
+            [msg] = messages
             self.assertNotIn("lsid", msg.to_dict())
         finally:
             yield conn.disconnect()

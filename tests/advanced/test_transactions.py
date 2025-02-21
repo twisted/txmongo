@@ -107,7 +107,7 @@ class TestTransactions(unittest.TestCase):
 
     async def test_commit_context_manager(self):
         async with self.conn.start_session() as session:
-            with catch_sent_msgs() as get_messages:
+            with catch_sent_msgs() as messages:
                 async with session.start_transaction():
                     await self.coll.insert_one({"x": 1}, session=session)
 
@@ -120,7 +120,7 @@ class TestTransactions(unittest.TestCase):
         count_after_commit = len(await self.coll.find())
         self.assertEqual(count_after_commit, 1)
 
-        [insert, find1, find2, commit] = get_messages()
+        [insert, find1, find2, commit] = messages
         self.assertIn("insert", insert.to_dict())
         self.assertIn("find", find1.to_dict())
         self.assertIn("find", find2.to_dict())
@@ -144,7 +144,7 @@ class TestTransactions(unittest.TestCase):
     async def test_abort_by_exception(self):
         try:
             async with self.conn.start_session() as session:
-                with catch_sent_msgs() as get_messages:
+                with catch_sent_msgs() as messages:
                     async with session.start_transaction():
                         await self.coll.insert_one({"x": 1}, session=session)
 
@@ -158,7 +158,7 @@ class TestTransactions(unittest.TestCase):
         count = len(await self.coll.find())
         self.assertEqual(count, 0)
 
-        [insert, find, abort] = get_messages()
+        [insert, find, abort] = messages
         self.assertIn("insert", insert.to_dict())
         self.assertIn("find", find.to_dict())
         self.assertIn("abortTransaction", abort.to_dict())
@@ -167,11 +167,11 @@ class TestTransactions(unittest.TestCase):
         """Driver must ignore write concern on operations in transaction and only send WC with commit/abort_transaction"""
         async with self.conn.start_session() as session:
             async with session.start_transaction():
-                with catch_sent_msgs() as get_messages:
+                with catch_sent_msgs() as messages:
                     coll_wc = self.coll.with_options(write_concern=WriteConcern(w=1))
                     await coll_wc.insert_one({"x": 1}, session=session)
 
-        [insert] = get_messages()
+        [insert] = messages
         self.assertNotIn("writeConcern", insert.to_dict())
 
     def test_no_unacknowledged(self):
@@ -183,13 +183,13 @@ class TestTransactions(unittest.TestCase):
     async def test_commit_write_concern(self):
         """WC from transaction options is sent along with commit_transaction"""
         async with self.conn.start_session() as session:
-            with catch_sent_msgs() as get_messages:
+            with catch_sent_msgs() as messages:
                 async with session.start_transaction(
                     write_concern=WriteConcern(w=1, wtimeout=123)
                 ):
                     await self.coll.insert_one({"x": 1}, session=session)
 
-        [insert, commit] = get_messages()
+        [insert, commit] = messages
         self.assertNotIn("writeConcern", insert.to_dict())
         self.assertIn("commitTransaction", commit.to_dict())
         self.assertEqual(commit.to_dict()["writeConcern"], {"w": 1, "wtimeout": 123})
@@ -198,7 +198,7 @@ class TestTransactions(unittest.TestCase):
         """WC from transaction options is sent along with commit_transaction"""
         try:
             async with self.conn.start_session() as session:
-                with catch_sent_msgs() as get_messages:
+                with catch_sent_msgs() as messages:
                     async with session.start_transaction(
                         write_concern=WriteConcern(w=1, wtimeout=123)
                     ):
@@ -207,17 +207,17 @@ class TestTransactions(unittest.TestCase):
         except NotImplementedError:
             pass
 
-        [insert, abort] = get_messages()
+        [insert, abort] = messages
         self.assertNotIn("writeConcern", insert.to_dict())
         self.assertIn("abortTransaction", abort.to_dict())
         self.assertEqual(abort.to_dict()["writeConcern"], {"w": 1, "wtimeout": 123})
 
     async def test_max_commit_time_ms(self):
         async with self.conn.start_session() as session:
-            with catch_sent_msgs() as get_messages:
+            with catch_sent_msgs() as messages:
                 async with session.start_transaction(max_commit_time_ms=1234):
                     await self.coll.insert_one({"x": 1}, session=session)
 
-        [_, commit] = get_messages()
+        [_, commit] = messages
         self.assertIn("commitTransaction", commit.to_dict())
         self.assertEqual(commit.to_dict()["maxTimeMS"], 1234)
