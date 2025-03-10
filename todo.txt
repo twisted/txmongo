@@ -10,11 +10,10 @@
 [ ] causal consistency support
 [ ] transactions!
     [x] start_transaction returns context manager
-    [ ] don't allow writeConcern to transaction commands
     [ ] check each method's behavior against the spec
         [ ] start_transaction
         [ ] abort_transaction
         [ ] commit_transaction
     [x] retrying in commitTransaction and abortTransaction
     [x] tags on exceptions
-    [ ] writeConcert is only for commitTransaction and abortTransaction
+    [x] writeConcern is only for commitTransaction and abortTransaction
