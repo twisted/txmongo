@@ -12,10 +12,13 @@ from bson import Int64, UuidRepresentation
 from bson.raw_bson import DEFAULT_RAW_BSON_OPTIONS, RawBSONDocument
 from pymongo import WriteConcern
 from pymongo.errors import (
+    BulkWriteError,
     ConfigurationError,
     ConnectionFailure,
     InvalidOperation,
+    NotPrimaryError,
     OperationFailure,
+    PyMongoError,
 )
 
 from txmongo.pymongo_errors import _UNKNOWN_COMMIT_ERROR_CODES
@@ -291,17 +294,49 @@ class ClientSession:
             self._txn_state = TxnState.ABORTED
 
     async def _finish_transaction_with_retry(self, command_name: str):
-        # FIXME: add retrying
-        await self._finish_transaction(command_name)
+        for is_retry in [False, True]:
+            try:
+                await self._finish_transaction(command_name, is_retry)
+                break
+            except PyMongoError as exc:
+                is_retryable = False
 
-    async def _finish_transaction(self, command_name: str):
+                if isinstance(exc, ConnectionFailure) and not isinstance(
+                    exc, NotPrimaryError
+                ):
+                    is_retryable = True
+                else:
+                    error_details = None
+                    if isinstance(exc, BulkWriteError):
+                        wce = exc.details["writeConcernErrors"]
+                        error_details = wce[-1] if wce else None
+                    elif isinstance(exc, (NotPrimaryError, OperationFailure)):
+                        error_details = exc.details
+                    if error_details:
+                        labels = error_details.get("errorLabels", [])
+                        is_retryable = "RetryableWriteError" in labels
+
+                if not is_retry and is_retryable:
+                    continue
+                raise
+
+    async def _finish_transaction(self, command_name: str, is_retry: bool):
         assert self._txn_options is not None
         wc = self._txn_options.write_concern or self.connection.write_concern
-        body = {command_name: 1, "writeConcern": wc.document}
-        if command_name == "commitTransaction" and self._txn_options.max_commit_time_ms:
-            body["maxTimeMS"] = self._txn_options.max_commit_time_ms
+        body = {command_name: 1}
+
+        if command_name == "commitTransaction":
+            if self._txn_options.max_commit_time_ms:
+                body["maxTimeMS"] = self._txn_options.max_commit_time_ms
+
+            if is_retry:
+                wc_doc = wc.document
+                wc_doc["w"] = "majority"
+                wc_doc.setdefault("wtimeout", 10_000)
+                wc = WriteConcern(**wc_doc)
+
         return await self.connection.admin.command(
-            body,
+            {**body, "writeConcern": wc.document},
             session=self,
         )
 

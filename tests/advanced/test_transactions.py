@@ -1,12 +1,14 @@
+from unittest.mock import patch
+
 from pymongo import WriteConcern
-from pymongo.errors import ConfigurationError
+from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
 
 from tests.conf import MongoConf
 from tests.mongod import create_mongod
 from tests.utils import catch_sent_msgs
-from txmongo import Database
+from txmongo import Database, MongoProtocol
 from txmongo.collection import Collection
 from txmongo.connection import ConnectionPool
 
@@ -221,3 +223,43 @@ class TestTransactions(unittest.TestCase):
         [_, commit] = messages
         self.assertIn("commitTransaction", commit.to_dict())
         self.assertEqual(commit.to_dict()["maxTimeMS"], 1234)
+
+    async def test_retry(self):
+
+        def get_fake_send_msg():
+            orig_send_raw_msg = MongoProtocol._send_raw_msg
+            msg_no = 0
+
+            def fake_send_msg(self, msg):
+                nonlocal msg_no
+                msg_no += 1
+                if msg_no == 2:
+                    raise OperationFailure(
+                        "BOOM", 262, details={"errorLabels": ["RetryableWriteError"]}
+                    )
+
+                return orig_send_raw_msg(self, msg)
+
+            return fake_send_msg
+
+        async with self.conn.start_session() as session:
+            with patch.object(
+                MongoProtocol,
+                "_send_raw_msg",
+                side_effect=get_fake_send_msg(),
+                autospec=True,
+            ):
+                with catch_sent_msgs() as messages:
+                    session.start_transaction(write_concern=WriteConcern(w=1))
+                    await self.coll.insert_one({"x": 1}, session=session)
+                    await session.commit_transaction()
+
+        self.assertEqual(len(messages), 3)
+        self.assertIn("insert", messages[0].to_dict())
+        self.assertIn("commitTransaction", messages[1].to_dict())
+        self.assertIn("commitTransaction", messages[2].to_dict())
+        self.assertEqual(messages[1].to_dict()["writeConcern"], {"w": 1})
+        self.assertEqual(
+            messages[2].to_dict()["writeConcern"],
+            {"w": "majority", "wtimeout": 10000},
+        )
