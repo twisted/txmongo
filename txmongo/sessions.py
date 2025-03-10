@@ -174,13 +174,17 @@ class ClientSession:
     def session_id(self) -> RawBSONDocument:
         return self.get_session_id()
 
-    def get_session_id(self) -> RawBSONDocument:
+    def _materialize_server_session(self) -> ServerSession:
         if self._is_ended:
             raise ValueError("Cannot use an ended session")
 
         if not self._server_session:
             self._server_session = self.connection._acquire_server_session()
-        return self._server_session.session_id
+
+        return self._server_session
+
+    def get_session_id(self) -> RawBSONDocument:
+        return self._materialize_server_session().session_id
 
     def _use_session_id(self) -> RawBSONDocument:
         session_id = self.get_session_id()
@@ -233,8 +237,7 @@ class ClientSession:
             write_concern=write_concern,
             max_commit_time_ms=max_commit_time_ms,
         )
-        # FIXME: ↓ materialize server session. Make this more explicit.
-        self.get_session_id()
+        self._materialize_server_session()
         self._server_session.inc_transaction_id()
         return _TransactionContext(self)
 
