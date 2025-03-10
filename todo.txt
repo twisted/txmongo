@@ -15,6 +15,6 @@
         [ ] start_transaction
         [ ] abort_transaction
         [ ] commit_transaction
-    [ ] retrying in commitTransaction and abortTransaction
-    [ ] tags on exceptions
+    [x] retrying in commitTransaction and abortTransaction
+    [x] tags on exceptions
     [ ] writeConcert is only for commitTransaction and abortTransaction
