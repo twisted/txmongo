@@ -32,6 +32,7 @@ class TestTransactions(unittest.TestCase):
 
     @property
     def uri_secondary_ok(self) -> str:
+        # we use secondary-ok connection to set up the replicaset and to check its status
         return f"mongodb://localhost:{self.port}/?readPreference=secondaryPreferred"
 
     @property
