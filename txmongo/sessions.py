@@ -192,18 +192,19 @@ class ClientSession:
         return session_id
 
     async def end_session(self) -> None:
-        self._is_ended = True
+        try:
+            if self._server_session is None:
+                return
 
-        if self._server_session is None:
-            return
+            if self.in_transaction():
+                await self.abort_transaction()
 
-        if self.in_transaction():
-            await self.abort_transaction()
+            self.connection._return_server_session(self._server_session)
+        finally:
+            self._server_session = None
+            self._is_ended = True
 
-        self.connection._return_server_session(self._server_session)
-        self._server_session = None
-
-    def mark_dirty(self) -> None:
+    def _mark_dirty(self) -> None:
         if self._server_session:
             self._server_session.mark_dirty()
 
@@ -232,11 +233,12 @@ class ClientSession:
         if self.in_transaction():
             raise InvalidOperation("Transaction already in progress")
 
-        self._txn_state = TxnState.STARTING
+        # Note: ↓ this may raise due to validation
         self._txn_options = TransactionOptions(
             write_concern=write_concern,
             max_commit_time_ms=max_commit_time_ms,
         )
+        self._txn_state = TxnState.STARTING
         self._materialize_server_session()
         self._server_session.inc_transaction_id()
         return _TransactionContext(self)

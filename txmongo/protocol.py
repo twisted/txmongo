@@ -582,7 +582,7 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
             response = yield self._send_raw_msg(msg)
         except ConnectionFailure:
             if session:
-                session.mark_dirty()
+                session._mark_dirty()
             raise
 
         if response is None:
