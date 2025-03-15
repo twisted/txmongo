@@ -1,7 +1,8 @@
+from collections import Counter
 from unittest.mock import patch
 
 from pymongo import WriteConcern
-from pymongo.errors import AutoReconnect, ConfigurationError, OperationFailure
+from pymongo.errors import ConfigurationError, InvalidOperation, OperationFailure
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
 
@@ -144,6 +145,16 @@ class TestTransactions(unittest.TestCase):
 
         await session.end_session()
 
+    async def test_abort_by_end_session(self):
+        with catch_sent_msgs() as messages:
+            async with self.conn.start_session() as session:
+                session.start_transaction()
+                await self.coll.insert_one({"x": 1}, session=session)
+
+        count = len(await self.coll.find())
+        self.assertEqual(count, 0)
+        self.assertTrue(any("abortTransaction" in msg.to_dict() for msg in messages))
+
     async def test_abort_by_exception(self):
         try:
             async with self.conn.start_session() as session:
@@ -196,6 +207,17 @@ class TestTransactions(unittest.TestCase):
         self.assertNotIn("writeConcern", insert.to_dict())
         self.assertIn("commitTransaction", commit.to_dict())
         self.assertEqual(commit.to_dict()["writeConcern"], {"w": 1, "wtimeout": 123})
+
+    async def test_transaction_options_validation(self):
+        async with self.conn.start_session() as session:
+            with self.assertRaises(TypeError):
+                session.start_transaction(write_concern=123)
+            with self.assertRaises(TypeError):
+                session.start_transaction(write_concern={"w": 1})
+            with self.assertRaises(ConfigurationError):
+                session.start_transaction(write_concern=WriteConcern(w=0))
+            with self.assertRaises(TypeError):
+                session.start_transaction(max_commit_time_ms="5")
 
     async def test_abort_write_concern(self):
         """WC from transaction options is sent along with commit_transaction"""
@@ -264,3 +286,80 @@ class TestTransactions(unittest.TestCase):
             messages[2].to_dict()["writeConcern"],
             {"w": "majority", "wtimeout": 10000},
         )
+
+    async def test_transaction_on_ended_session(self):
+        async with self.conn.start_session() as session:
+            await self.coll.insert_one({"x": 1}, session=session)
+
+        with self.assertRaises(InvalidOperation):
+            session.start_transaction()
+
+        with self.assertRaises(InvalidOperation):
+            await session.abort_transaction()
+
+    async def test_transaction_already_active(self):
+        async with self.conn.start_session() as session:
+            async with session.start_transaction():
+                with self.assertRaises(InvalidOperation):
+                    session.start_transaction()
+
+    async def test_abort_no_transaction(self):
+        async with self.conn.start_session() as session:
+            with self.assertRaises(InvalidOperation):
+                await session.abort_transaction()
+
+    async def test_abort_after_commit(self):
+        async with self.conn.start_session() as session:
+            async with session.start_transaction():
+                await self.coll.insert_one({"x": 1}, session=session)
+            with self.assertRaises(InvalidOperation):
+                await session.abort_transaction()
+
+    async def test_commit_after_abort(self):
+        async with self.conn.start_session() as session:
+            session.start_transaction()
+            await self.coll.insert_one({"x": 1}, session=session)
+            await session.abort_transaction()
+            with self.assertRaises(InvalidOperation):
+                await session.commit_transaction()
+
+    async def test_empty_commit(self):
+        with catch_sent_msgs() as messages:
+            async with self.conn.start_session() as session:
+                async with session.start_transaction():
+                    pass
+
+        self.assertEqual(len(messages), 0)
+
+    async def test_commit_without_start(self):
+        async with self.conn.start_session() as session:
+            with self.assertRaises(InvalidOperation):
+                await session.commit_transaction()
+
+    async def test_empty_abort(self):
+        with catch_sent_msgs() as messages:
+            async with self.conn.start_session() as session:
+                session.start_transaction()
+                await session.abort_transaction()
+
+        self.assertEqual(len(messages), 0)
+
+    async def test_multiple_commit(self):
+        with catch_sent_msgs() as messages:
+            async with self.conn.start_session() as session:
+                session.start_transaction()
+                await self.coll.insert_one({"x": 1}, session=session)
+                await session.commit_transaction()
+                await session.commit_transaction()
+                await session.commit_transaction()
+
+        cmd_count = Counter(list(msg.to_dict().keys())[0] for msg in messages)
+        self.assertEqual(cmd_count, {"insert": 1, "commitTransaction": 3})
+
+    async def test_multiple_abort(self):
+        async with self.conn.start_session() as session:
+            session.start_transaction()
+            await self.coll.insert_one({"x": 1}, session=session)
+            await session.abort_transaction()
+            with self.assertRaises(InvalidOperation):
+                await session.abort_transaction()
