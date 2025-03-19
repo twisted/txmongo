@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from enum import Enum
 from types import TracebackType
-from typing import TYPE_CHECKING, Optional, Type
+from typing import TYPE_CHECKING, AsyncContextManager, Optional, Type
 
 import bson
 from bson import Int64, UuidRepresentation
@@ -28,6 +28,10 @@ if TYPE_CHECKING:
     from txmongo.connection import ConnectionPool
     from txmongo.types import Document
 
+
+__all__ = [
+    "ClientSession",
+]
 
 _codec_options = DEFAULT_RAW_BSON_OPTIONS.with_options(
     uuid_representation=UuidRepresentation.STANDARD
@@ -83,7 +87,10 @@ class ServerSession:
 
 
 @dataclass(frozen=True)
-class SessionOptions: ...
+class SessionOptions:
+    """Placeholder class for session options. Currently not used."""
+
+    pass
 
 
 @dataclass(frozen=True)
@@ -130,9 +137,29 @@ class _TransactionContext:
 
 
 class ClientSession:
+    """
+    A session for ordering sequential operations.
+
+    :class:`ClientSession` instances should not be instantiated directly. Instead, use
+    :meth:`ConnectionPool.start_session` to create a session.
+
+    :class:`ClientSession` can be used as async context manager. When used as a context manager,
+    it's :meth:`end_session()` method will be called automatically when exiting the context:
+    ::
+        async with conn.start_session() as session:
+            record = await conn.db.coll.find_one(..., session=session)
+            await conn.db.coll.update_one(..., session=session)
+
+    If you are not using :class:`ClientSession` with `async with`, you need to end the session explicitly:
+    ::
+        session = conn.start_session()
+        ...
+        await session.end_session()
+    """
+
     _implicit: bool = False
 
-    connection: ConnectionPool
+    _connection: ConnectionPool
     options: SessionOptions
 
     _server_session: ServerSession | None = None
@@ -150,7 +177,7 @@ class ClientSession:
         *,
         implicit: bool,
     ):
-        self.connection = connection
+        self._connection = connection
         if options is None:
             options = SessionOptions()
         self.options = options
@@ -163,16 +190,24 @@ class ClientSession:
         await self.end_session()
 
     @property
+    def connection(self) -> ConnectionPool:
+        """The :class:`ConnectionPool` that this session was created from."""
+        return self._connection
+
+    @property
     def implicit(self) -> bool:
+        """If this session is implicit. Application developers usually don't see implicit session objects."""
         return self._implicit
 
     @property
     def is_ended(self) -> bool:
+        """If this session is ended. :class:`ClientSession` objects cannot be reused after they are ended."""
         return self._is_ended
 
     @property
     def session_id(self) -> RawBSONDocument:
-        return self.get_session_id()
+        """A BSON document, the opaque server session identifier."""
+        return self._materialize_server_session().session_id
 
     def _materialize_server_session(self) -> ServerSession:
         if self._is_ended:
@@ -183,15 +218,16 @@ class ClientSession:
 
         return self._server_session
 
-    def get_session_id(self) -> RawBSONDocument:
-        return self._materialize_server_session().session_id
-
     def _use_session_id(self) -> RawBSONDocument:
-        session_id = self.get_session_id()
+        session_id = self._materialize_server_session().session_id
         self._server_session.update_last_use()
         return session_id
 
     async def end_session(self) -> None:
+        """Finish this session. If a transaction has started, abort it.
+
+        It is an error to use the session after the session has ended.
+        """
         try:
             if self._server_session is None:
                 return
@@ -210,9 +246,15 @@ class ClientSession:
 
     @property
     def cluster_time(self) -> Optional[Document]:
+        """The cluster time returned by the last operation executed in this session."""
         return self._cluster_time
 
     def advance_cluster_time(self, cluster_time: Document) -> None:
+        """Update the cluster time for this session.
+
+        :param cluster_time: The
+            :data:`ClientSession.cluster_time` from another `ClientSession` instance.
+        """
         if self._cluster_time is None:
             self._cluster_time = cluster_time
         elif self._cluster_time["clusterTime"] < cluster_time["clusterTime"]:
@@ -223,11 +265,36 @@ class ClientSession:
             raise InvalidOperation("Cannot use ended session")
 
     def in_transaction(self) -> bool:
+        """True if this session has an active multi-statement transaction."""
         return self._txn_state in {TxnState.STARTING, TxnState.IN_PROGRESS}
 
     def start_transaction(
-        self, write_concern: WriteConcern = None, max_commit_time_ms: int = None
-    ) -> _TransactionContext:
+        self, *, write_concern: WriteConcern = None, max_commit_time_ms: int = None
+    ) -> AsyncContextManager:
+        """Start a multi-statement transaction.
+
+        When used as an async context manager, automatically commits the transaction if
+        no exception is raised, and automatically aborts the transaction in case of exception.
+        ::
+            async with conn.start_session() as session:
+                async with session.start_transaction():
+                    await conn.db.coll.insert_one({"x": 1}, session=session)
+
+        Can also be used without `async with`. In this case you must call `commit_transaction` or
+        `abort_transaction` explicitly.
+        ::
+            session = conn.start_session()
+            session.start_transaction()
+            await conn.db.coll.insert_one({"x": 1}, session=session)
+            await session.commit_transaction()
+            await session.end_session()
+
+        :param write_concern:
+            If provided, this write concern will be used for `commitTransaction` and `abortTransaction` commands.
+
+        :param max_commit_time_ms:
+            The maximum amount of time to allow a single commitTransaction command to run.
+        """
         self._check_ended()
 
         if self.in_transaction():
@@ -244,6 +311,8 @@ class ClientSession:
         return _TransactionContext(self)
 
     async def commit_transaction(self) -> None:
+        """Commit a multi-statement transaction."""
+
         self._check_ended()
 
         if self._txn_state == TxnState.NONE:
@@ -277,6 +346,7 @@ class ClientSession:
             self._txn_state = TxnState.COMMITTED
 
     async def abort_transaction(self) -> None:
+        """Abort a multi-statement transaction."""
         self._check_ended()
 
         if self._txn_state == TxnState.NONE:
