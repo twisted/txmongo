@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 24.2.0 (unspecified)
+Release 25.0.0 (unspecified)
 ----------------------------
 
 Features
