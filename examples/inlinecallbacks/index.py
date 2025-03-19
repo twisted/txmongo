@@ -13,7 +13,7 @@ from txmongo import filter
 
 @defer.inlineCallbacks
 def example():
-    mongo = yield txmongo.MongoConnection()
+    mongo = txmongo.MongoConnection()
 
     foo = mongo.foo  # `foo` database
     test = foo.test  # `test` collection
