@@ -20,6 +20,14 @@ txmongo.connection module
     :undoc-members:
     :show-inheritance:
 
+txmongo.sessions module
+-------------------------
+
+.. automodule:: txmongo.sessions
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 txmongo.database module
 -----------------------
 

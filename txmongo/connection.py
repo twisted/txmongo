@@ -580,12 +580,29 @@ class ConnectionPool:
             return
         self.__server_sessions_cache.appendleft(server_session)
 
-    def start_session(self, options: SessionOptions = None) -> ClientSession:
+    def start_session(self) -> ClientSession:
+        """Start a logical session.
+
+        Returns :class:`ClientSession` instance.
+
+        :class:`ClientSession` can be used as async context manager. When used as a context manager,
+        it's :meth:`end_session()` method will be called automatically when exiting the context:
+        ::
+            async with conn.start_session() as session:
+                record = await conn.db.coll.find_one(..., session=session)
+                await conn.db.coll.update_one(..., session=session)
+
+        If you are not using :class:`ClientSession` with `async with`, you need to end the session explicitly:
+        ::
+            session = conn.start_session()
+            ...
+            await session.end_session()
+        """
         if len(self.__auth_creds) > 1:
             raise ValueError(
                 "TxMongo: Cannot use sessions when multiple users are authenticated"
             )
-        return ClientSession(self, options, implicit=False)
+        return ClientSession(self, options=None, implicit=False)
 
     def _get_implicit_session(self) -> Optional[ClientSession]:
         """May return None if multiple users are authenticated"""
@@ -595,6 +612,7 @@ class ConnectionPool:
 
     @property
     def cluster_time(self) -> Optional[Document]:
+        """The cluster time returned by the last operation executed by this ConnectionPool."""
         return self._cluster_time
 
     def _create_message(
