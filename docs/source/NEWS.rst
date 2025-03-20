@@ -7,7 +7,18 @@ Release 25.0.0 (unspecified)
 Features
 ^^^^^^^^
 
-- Client sessions support
+- Client sessions and Transactions support
+  - Use `ConnectionPool.start_session()` to start a new session and then pass pass `session`
+    argument to any method that supports sessions
+  - You can also use `ConnectionPool.start_session()` as an async context manager that will
+    automatically end the session when exiting the context.
+  - Use `ClientSession.start_transaction()` to start a transaction for this session and then
+    call `commit_transaction()` or `abort_transaction()` to finish the transaction.
+  - `ClientSession.start_transaction()` can also be used as an async context manager that will
+    automatically commit the transaction when exiting the context or abort it in case of exception.
+  - Limitations:
+    - No session options are supported for `start_session()` yet
+    - Only `write_concern` and `max_commit_time_ms` options are supported for `start_transaction()`
 
 API Changes
 ^^^^^^^^^^^
