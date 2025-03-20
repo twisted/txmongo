@@ -90,6 +90,9 @@ class ServerSession:
 class SessionOptions:
     """Placeholder class for session options. Currently not used."""
 
+    # TODO: implement defaultTransactionOptions
+    #       https://github.com/twisted/txmongo/issues/303
+
     pass
 
 
