@@ -16,8 +16,8 @@ Features
     call `commit_transaction()` or `abort_transaction()` to finish the transaction.
   - `ClientSession.start_transaction()` can also be used as an async context manager that will
     automatically commit the transaction when exiting the context or abort it in case of exception.
+  - You can find an example using transactions in `examples/transactions.py`
   - Limitations:
-    - No session options are supported for `start_session()` yet
     - Only `write_concern` and `max_commit_time_ms` options are supported for `start_transaction()`
 
 API Changes
