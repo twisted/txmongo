@@ -973,6 +973,8 @@ class Collection:
     def count(self, filter=None, **kwargs):
         """Get the number of documents in this collection.
 
+        This method is deprecated. Please use :meth:`count_documents` or :meth:`estimated_document_count` instead.
+
         :param filter:
             argument is a query document that selects which documents to
             count in the collection.
@@ -989,6 +991,11 @@ class Collection:
         :returns: a :class:`Deferred` that called back with a number of
                   documents matching the criteria.
         """
+        warnings.warn(
+            "TxMongo: count() method is deprecated. Please use count_documents() or estimated_document_count() methods instead.",
+            DeprecationWarning,
+        )
+
         if "hint" in kwargs:
             hint = kwargs["hint"]
             if not isinstance(hint, qf.hint):
@@ -998,6 +1005,29 @@ class Collection:
         return self._database.command(
             "count", self._collection_name, query=filter or SON(), **kwargs
         ).addCallback(lambda result: int(result["n"]))
+
+    @timeout
+    def estimated_document_count(
+        self, *, comment: str = None, max_time_ms: int = None, _deadline=None
+    ) -> Deferred[int]:
+        """Get an estimate of the number of documents in this collection using collection metadata.
+
+        :returns: a :class:`Deferred` that called back with an estimated number of documents in the collection.
+        """
+
+        cmd = {"count": self.name}
+        if comment is not None:
+            if not isinstance(comment, str):
+                raise TypeError("comment must be an instance of str")
+            cmd["comment"] = comment
+        if max_time_ms is not None:
+            if not isinstance(max_time_ms, int):
+                raise TypeError("max_time_ms must be an instance of int")
+            cmd["maxTimeMS"] = max_time_ms
+
+        return self._database.command(cmd, _deadline=_deadline).addCallback(
+            lambda result: int(result["n"])
+        )
 
     @timeout
     def filemd5(self, spec, **kwargs):

@@ -19,6 +19,8 @@ Features
   - Limitations:
     - No session options are supported for `start_session()` yet
     - Only `write_concern` and `max_commit_time_ms` options are supported for `start_transaction()`
+- `Collection.count()` method is deprecated
+  - Please use new `Collection.count_documents()` and `Collection.estimated_document_count()` methods.
 
 API Changes
 ^^^^^^^^^^^

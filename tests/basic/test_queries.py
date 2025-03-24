@@ -1321,3 +1321,48 @@ class TestCount(SingleCollectionTest):
 
         cnt = yield self.coll.count(skip=1)
         self.assertEqual(cnt, 2)
+
+
+class TestEstimateDocumentCount(SingleCollectionTest):
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super().setUp()
+        yield self.coll.insert_many([{"x": 1} for _ in range(100)])
+        yield self.db.command("profile", 2)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.db.command("profile", 0)
+        yield self.db.system.profile.drop()
+        yield super().tearDown()
+
+    async def test_estimated_document_count(self):
+        self.assertEqual((await self.coll.estimated_document_count()), 100)
+        cmds = await self.db.system.profile.find({"command.count": self.coll.name})
+        self.assertEqual(len(cmds), 1)
+        cmd = cmds[0]
+        self.assertEqual(cmd["planSummary"], "RECORD_STORE_FAST_COUNT")
+
+    async def test_non_existing_collection(self):
+        cnt = await self.db.non_existing_coll.estimated_document_count()
+        self.assertEqual(cnt, 0)
+
+    async def test_comment(self):
+        await self.db.coll.estimated_document_count(comment="Test comment")
+        cmds = await self.db.system.profile.count({"command.comment": "Test comment"})
+        self.assertEqual(cmds, 1)
+
+    def test_comment_type(self):
+        self.assertRaises(TypeError, self.coll.estimated_document_count, comment=123)
+        self.assertRaises(TypeError, self.coll.estimated_document_count, comment=[])
+
+    async def test_max_time_ms(self):
+        await self.db.coll.estimated_document_count(max_time_ms=1234)
+        cmds = await self.db.system.profile.count({"command.maxTimeMS": 1234})
+        self.assertEqual(cmds, 1)
+
+    def test_max_time_ms_type(self):
+        self.assertRaises(
+            TypeError, self.coll.estimated_document_count, max_time_ms="1234"
+        )
+        self.assertRaises(TypeError, self.coll.estimated_document_count, max_time_ms=[])
