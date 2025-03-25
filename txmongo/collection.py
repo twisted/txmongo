@@ -1550,7 +1550,25 @@ class Collection:
         session: ClientSession = None,
         _deadline=None,
     ):
-        """aggregate(pipeline, full_response=False, *, comment: str = None, max_time_ms: int = None, hint: txmongo.filters.hint = None, session: ClientSession=None)"""
+        """aggregate(pipeline, full_response=False, *, comment: str = None, max_time_ms: int = None, hint: txmongo.filters.hint = None, session: ClientSession=None)
+
+        Perform an aggregation using the aggregation framework on this collection.
+
+        :param pipeline:
+            a list of aggregation pipeline stages.
+        :param full_response:
+            if True, the result will include the full response from the server.
+        :param initial_batch_size:
+            the number of documents to return in the first batch.
+        :param comment:
+            a string to attach to the command for debugging purposes.
+        :param max_time_ms:
+            the maximum amount of time (ms) to allow the operation to run.
+        :param hint:
+            an index to use for the aggregation. Must be a :class:`txmongo.filter.hint` instance.
+        :param session:
+            Optional :class:`~txmongo.sessions.ClientSession` to use for this operation.
+        """
 
         def on_ok(raw, data=None):
             if data is None:
