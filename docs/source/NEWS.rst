@@ -19,13 +19,13 @@ Features
   - Limitations:
     - No session options are supported for `start_session()` yet
     - Only `write_concern` and `max_commit_time_ms` options are supported for `start_transaction()`
-- `Collection.count()` method is deprecated
-  - Please use new `Collection.count_documents()` and `Collection.estimated_document_count()` methods.
 
 API Changes
 ^^^^^^^^^^^
 
 - find_one_and_* methods now returns None if called with unacknowledged write_concern.
+- `Collection.count()` method is deprecated
+  - Please use new `Collection.count_documents()` and `Collection.estimated_document_count()` methods.
 
 Release 24.1.0 (2024-11-13)
 ---------------------------
