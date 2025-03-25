@@ -427,7 +427,7 @@ class TestUuid(unittest.TestCase):
         self.assertEqual(doc["task_id"], new)
 
         yield self.coll.delete_one({"task_id": new})
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 0)
 
     @defer.inlineCallbacks

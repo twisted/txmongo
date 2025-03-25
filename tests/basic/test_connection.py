@@ -104,7 +104,7 @@ class TestDropDatabase(unittest.TestCase):
 
     @defer.inlineCallbacks
     def assert_coll_count(self, n):
-        self.assertEqual((yield self.coll.count()), n)
+        self.assertEqual((yield self.coll.count_documents({})), n)
 
     @defer.inlineCallbacks
     def test_by_name(self):

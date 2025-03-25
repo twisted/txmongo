@@ -133,7 +133,7 @@ class TestMongoAuth(unittest.TestCase, MongoAuth):
 
             yield defer.gatherResults([coll.insert_one({"x": 42}) for _ in range(n)])
 
-            cnt = yield coll.count()
+            cnt = yield coll.count_documents({})
             self.assertEqual(cnt, n)
         finally:
             yield conn.disconnect()
@@ -155,7 +155,7 @@ class TestMongoAuth(unittest.TestCase, MongoAuth):
         try:
             yield defer.gatherResults([coll.insert_one({"x": 42}) for _ in range(n)])
 
-            cnt = yield coll.count()
+            cnt = yield coll.count_documents({})
             self.assertEqual(cnt, n)
         finally:
             yield conn.disconnect()
@@ -555,7 +555,7 @@ SJob7FjDAWWJeLCfsmu6Vy2OVg==
                 self.client_subject, "", mechanism="MONGODB-X509"
             )
             yield conn.db.coll.insert_one({"x": 42})
-            cnt = yield conn.db.coll.count()
+            cnt = yield conn.db.coll.count_documents({})
             self.assertEqual(cnt, 1)
         finally:
             yield conn.disconnect()

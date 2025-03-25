@@ -192,7 +192,7 @@ class GridFS(object):
         :Parameters:
           - `filename`: ``"filename"`` of the file to get version count of
         """
-        return self.__files.count({"filename": filename})
+        return self.__files.count_documents({"filename": filename})
 
     def get_last_version(self, filename):
         """Get a file from GridFS by ``"filename"``.

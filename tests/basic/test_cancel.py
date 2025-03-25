@@ -149,7 +149,7 @@ class TestCancelIntegrated(unittest.TestCase):
         # If ConnectionPool picks already active connection, the query is sent
         # to MongoDB immediately and there is no way to cancel it
 
-        yield self.coll.count()
+        yield self.coll.count_documents({})
 
         d = self.coll.insert_one({"x": 42})
         d.cancel()
@@ -158,5 +158,5 @@ class TestCancelIntegrated(unittest.TestCase):
 
         self.failureResultOf(d, defer.CancelledError)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 1)

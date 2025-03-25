@@ -194,7 +194,7 @@ class GridIn:
         def on_md5(md5):
             self._file["md5"] = md5
             self._file["length"] = self._position
-            self._file["uploadDate"] = datetime.datetime.utcnow()
+            self._file["uploadDate"] = datetime.datetime.now(datetime.UTC)
             return self._coll.files.insert_one(self._file)
 
         return (

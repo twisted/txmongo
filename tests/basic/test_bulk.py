@@ -18,7 +18,7 @@ class TestArgsValidation(SingleCollectionTest):
     def test_Generator(self):
         # bulk_write should accept comprehensions because they're cool
         yield self.coll.bulk_write(InsertOne({"x": i}) for i in range(10))
-        self.assertEqual((yield self.coll.count()), 10)
+        self.assertEqual((yield self.coll.count_documents({})), 10)
 
     def test_Types(self):
         # requests argument must be iterable of _WriteOps
@@ -39,7 +39,7 @@ class TestErrorHandling(SingleCollectionTest):
             [InsertOne({"_id": 2}), InsertOne({"_id": 1}), InsertOne({"_id": 3})]
         )
         yield self.assertFailure(result, BulkWriteError)
-        self.assertEqual((yield self.coll.count()), 2)
+        self.assertEqual((yield self.coll.count_documents({})), 2)
 
     @defer.inlineCallbacks
     def test_Insert_Unordered_Ack(self):
@@ -49,7 +49,7 @@ class TestErrorHandling(SingleCollectionTest):
         )
 
         yield self.assertFailure(result, BulkWriteError)
-        self.assertEqual((yield self.coll.count()), 3)
+        self.assertEqual((yield self.coll.count_documents({})), 3)
 
     @defer.inlineCallbacks
     def test_Insert_Ordered_Unack(self):
@@ -57,7 +57,7 @@ class TestErrorHandling(SingleCollectionTest):
         yield w0.bulk_write(
             [InsertOne({"_id": 2}), InsertOne({"_id": 1}), InsertOne({"_id": 3})]
         )
-        self.assertEqual((yield self.coll.count()), 2)
+        self.assertEqual((yield self.coll.count_documents({})), 2)
 
     @defer.inlineCallbacks
     def test_Insert_Unordered_Unack(self):
@@ -66,7 +66,7 @@ class TestErrorHandling(SingleCollectionTest):
             [InsertOne({"_id": 2}), InsertOne({"_id": 1}), InsertOne({"_id": 3})],
             ordered=False,
         )
-        self.assertEqual((yield self.coll.count()), 3)
+        self.assertEqual((yield self.coll.count_documents({})), 3)
 
     @defer.inlineCallbacks
     def test_Mixed_Ordered_Ack(self):
@@ -147,7 +147,7 @@ class TestBulkInsert(SingleCollectionTest):
         result = yield self.coll.bulk_write(
             [InsertOne({"x": 42}), InsertOne({"y": 123})]
         )
-        self.assertEqual((yield self.coll.count()), 2)
+        self.assertEqual((yield self.coll.count_documents({})), 2)
         self.assertIsInstance(result, BulkWriteResult)
         self.assertEqual(result.inserted_count, 2)
 
@@ -237,7 +237,7 @@ class TestBulkDelete(SingleCollectionTest):
         result = yield self.coll.bulk_write(
             [DeleteOne({"x": 42}), DeleteOne({"x": {"$gt": 100}})]
         )
-        self.assertEqual((yield self.coll.count()), 1)
+        self.assertEqual((yield self.coll.count_documents({})), 1)
 
         self.assertIsInstance(result, BulkWriteResult)
         self.assertEqual(result.deleted_count, 2)
@@ -248,13 +248,13 @@ class TestHuge(SingleCollectionTest):
     @defer.inlineCallbacks
     def test_MoreThan1k(self):
         yield self.coll.bulk_write(InsertOne({"_id": i}) for i in range(2016))
-        self.assertEqual((yield self.coll.count()), 2016)
+        self.assertEqual((yield self.coll.count_documents({})), 2016)
 
     @defer.inlineCallbacks
     def test_MoreThan16Mb(self):
         str_8mb = "y" * 8388608
         yield self.coll.bulk_write(InsertOne({"x": str_8mb}) for _ in range(5))
-        self.assertEqual((yield self.coll.count()), 5)
+        self.assertEqual((yield self.coll.count_documents({})), 5)
 
         docs = yield self.coll.find()
         total_size = sum(len(bson.encode(doc)) for doc in docs)
