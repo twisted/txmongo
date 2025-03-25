@@ -1341,7 +1341,13 @@ class TestEstimateDocumentCount(SingleCollectionTest):
         cmds = await self.db.system.profile.find({"command.count": self.coll.name})
         self.assertEqual(len(cmds), 1)
         cmd = cmds[0]
-        self.assertEqual(cmd["planSummary"], "RECORD_STORE_FAST_COUNT")
+        self.assertIn(
+            cmd["planSummary"],
+            {
+                "RECORD_STORE_FAST_COUNT",
+                "COUNT",  # for MongoDB 4.0
+            },
+        )
 
     async def test_non_existing_collection(self):
         cnt = await self.db.non_existing_coll.estimated_document_count()
