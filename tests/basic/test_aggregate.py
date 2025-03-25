@@ -17,6 +17,7 @@ from twisted.internet import defer
 from twisted.trial import unittest
 
 import txmongo
+from txmongo import filter as qf
 
 mongo_host = "127.0.0.1"
 mongo_port = 27017
@@ -29,7 +30,8 @@ class TestAggregate(unittest.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         self.conn = yield txmongo.MongoConnection(mongo_host, mongo_port)
-        self.coll = self.conn.mydb.mycol
+        self.db = self.conn.mydb
+        self.coll = self.db.mycol
 
     @defer.inlineCallbacks
     def test_aggregate(self):
@@ -118,6 +120,53 @@ class TestAggregate(unittest.TestCase):
         # Initial batch size larger than the number of records
         res = yield self.coll.aggregate([group], initial_batch_size=(cnt + 10))
         self.assertEqual(len(res), cnt)
+
+    @defer.inlineCallbacks
+    def test_comment(self):
+        yield self.db.command("profile", 2)
+        try:
+            yield self.coll.aggregate([{"$match": {"oh": "hai"}}], comment="Hey")
+            cnt = yield self.db.system.profile.count_documents(
+                {"command.comment": "Hey"}
+            )
+            self.assertEqual(cnt, 1)
+        finally:
+            yield self.db.command("profile", 0)
+            yield self.db.system.profile.drop()
+
+    @defer.inlineCallbacks
+    def test_max_time_ms(self):
+        yield self.db.command("profile", 2)
+        try:
+            yield self.coll.aggregate([{"$match": {"oh": "hai"}}], max_time_ms=1234)
+            cnt = yield self.db.system.profile.count_documents(
+                {"command.maxTimeMS": 1234}
+            )
+            self.assertEqual(cnt, 1)
+        finally:
+            yield self.db.command("profile", 0)
+            yield self.db.system.profile.drop()
+
+    @defer.inlineCallbacks
+    def test_hint(self):
+        yield self.db.command("profile", 2)
+        try:
+            yield self.coll.create_index(qf.sort(qf.DESCENDING("x")))
+            yield self.coll.aggregate(
+                [{"$match": {"oh": "hai"}}], hint=qf.hint(qf.DESCENDING("x"))
+            )
+            cnt = yield self.db.system.profile.count_documents(
+                {"command.hint": {"x": -1}}
+            )
+            self.assertEqual(cnt, 1)
+        finally:
+            yield self.db.command("profile", 0)
+            yield self.db.system.profile.drop()
+
+    def test_typechecks(self):
+        self.assertRaises(TypeError, self.coll.aggregate, "invalid pipeline")
+        self.assertRaises(TypeError, self.coll.aggregate, [], comment=123)
+        self.assertRaises(TypeError, self.coll.aggregate, [], max_time_ms="123")
 
     @defer.inlineCallbacks
     def tearDown(self):

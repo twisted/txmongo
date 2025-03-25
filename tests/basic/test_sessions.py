@@ -61,6 +61,7 @@ class TestClientSessions(SingleCollectionTest):
         lambda coll, session: coll.find({}, session=session),
         lambda coll, session: coll.find_one({}, session=session),
         lambda coll, session: iterate_find_with_cursor(coll, session),
+        lambda coll, session: coll.count_documents({}, session=session),
     ]
 
     coll_writes = [

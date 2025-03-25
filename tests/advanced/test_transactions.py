@@ -57,7 +57,7 @@ class TestTransactions(unittest.TestCase):
     def setUp(self):
         self.__mongod = create_mongod(port=self.port, replset=self.rs_name)
         yield self.__mongod.start()
-        yield self.__check_reachable()
+        yield defer.ensureDeferred(self.__check_reachable())
         conn = ConnectionPool(self.uri_secondary_ok)
         yield conn.admin.command("replSetInitiate", self.rs_config)
 
@@ -363,3 +363,14 @@ class TestTransactions(unittest.TestCase):
             await session.abort_transaction()
             with self.assertRaises(InvalidOperation):
                 await session.abort_transaction()
+
+    async def test_count_documents(self):
+        async with self.conn.start_session() as session:
+            async with session.start_transaction():
+                await self.coll.insert_one({"x": 1}, session=session)
+                self.assertEqual(
+                    await self.coll.count_documents({}, session=session), 1
+                )
+                self.assertEqual(await self.coll.count_documents({}), 0)
+
+        self.assertEqual(await self.coll.count_documents({}), 1)

@@ -8,7 +8,7 @@ import collections.abc
 import time
 import warnings
 from operator import itemgetter
-from typing import Iterable, List, Mapping, Optional, Union
+from typing import Any, Iterable, List, Mapping, Optional, Union
 
 from bson import ObjectId
 from bson.codec_options import DEFAULT_CODEC_OPTIONS, CodecOptions
@@ -1030,6 +1030,52 @@ class Collection:
         )
 
     @timeout
+    def count_documents(
+        self,
+        filter: Mapping[str, Any],
+        *,
+        skip: int = None,
+        limit: int = None,
+        max_time_ms: int = None,
+        hint: qf.hint = None,
+        comment: str = None,
+        session: ClientSession = None,
+        _deadline=None,
+    ) -> Deferred[int]:
+        pipeline = [{"$match": filter}]
+        if skip is not None:
+            pipeline.append({"$skip": skip})
+        if limit is not None:
+            pipeline.append({"$limit": limit})
+        pipeline.append({"$group": {"_id": 1, "n": {"$sum": 1}}})
+
+        cmd = {
+            "aggregate": self.name,
+            "pipeline": pipeline,
+            "cursor": {},
+        }
+        if comment is not None:
+            cmd["comment"] = comment
+        if hint is not None:
+            if not isinstance(hint, qf.hint):
+                raise TypeError("hint must be an instance of txmongo.filter.hint")
+            cmd["hint"] = SON(hint["hint"])
+
+        def on_result(result):
+            if not result:
+                return 0
+            return result[0]["n"]
+
+        return self.aggregate(
+            pipeline,
+            comment=comment,
+            max_time_ms=max_time_ms,
+            hint=hint,
+            session=session,
+            _deadline=_deadline,
+        ).addCallback(on_result)
+
+    @timeout
     def filemd5(self, spec, **kwargs):
         if not isinstance(spec, ObjectId):
             raise ValueError(
@@ -1498,10 +1544,13 @@ class Collection:
         full_response=False,
         initial_batch_size=None,
         *,
+        comment: str = None,
+        max_time_ms: int = None,
+        hint: qf.hint = None,
         session: ClientSession = None,
         _deadline=None,
     ):
-        """aggregate(pipeline, full_response=False, *, session: ClientSession=None)"""
+        """aggregate(pipeline, full_response=False, *, comment: str = None, max_time_ms: int = None, hint: txmongo.filters.hint = None, session: ClientSession=None)"""
 
         def on_ok(raw, data=None):
             if data is None:
@@ -1526,13 +1575,29 @@ class Collection:
         else:
             cursor = {"batchSize": initial_batch_size}
 
+        if not isinstance(pipeline, list):
+            raise TypeError("pipeline must be a list")
+
+        cmd = {
+            "aggregate": self.name,
+            "pipeline": pipeline,
+            "cursor": cursor,
+        }
+        if comment is not None:
+            if not isinstance(comment, str):
+                raise TypeError("comment must be an instance of str")
+            cmd["comment"] = comment
+        if max_time_ms is not None:
+            if not isinstance(max_time_ms, int):
+                raise TypeError("max_time_ms must be an instance of int")
+            cmd["maxTimeMS"] = max_time_ms
+        if hint is not None:
+            if not isinstance(hint, qf.hint):
+                raise TypeError("hint must be an instance of txmongo.filter.hint")
+            cmd["hint"] = SON(hint["hint"])
+
         return self._database.command(
-            "aggregate",
-            self.name,
-            pipeline=pipeline,
-            session=session,
-            _deadline=_deadline,
-            cursor=cursor,
+            cmd, session=session, _deadline=_deadline
         ).addCallback(on_ok)
 
     @timeout

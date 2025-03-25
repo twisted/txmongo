@@ -1323,7 +1323,7 @@ class TestCount(SingleCollectionTest):
         self.assertEqual(cnt, 2)
 
 
-class TestEstimateDocumentCount(SingleCollectionTest):
+class TestEstimatedDocumentCount(SingleCollectionTest):
     @defer.inlineCallbacks
     def setUp(self):
         yield super().setUp()
@@ -1372,3 +1372,64 @@ class TestEstimateDocumentCount(SingleCollectionTest):
             TypeError, self.coll.estimated_document_count, max_time_ms="1234"
         )
         self.assertRaises(TypeError, self.coll.estimated_document_count, max_time_ms=[])
+
+
+class TestCountDocuments(SingleCollectionTest):
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super().setUp()
+        yield self.coll.insert_many([{"x": x} for x in range(100)])
+        yield self.db.command("profile", 2)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.db.command("profile", 0)
+        yield self.db.system.profile.drop()
+        yield super().tearDown()
+
+    async def test_estimated_document_count(self):
+        self.assertEqual((await self.coll.count_documents({})), 100)
+        self.assertEqual((await self.coll.count_documents({"x": {"$lt": 50}})), 50)
+
+    async def test_skip_limit(self):
+        self.assertEqual(await self.coll.count_documents({}, skip=10), 90)
+        self.assertEqual(await self.coll.count_documents({}, limit=20), 20)
+        self.assertEqual(
+            await self.coll.count_documents({"x": {"$lt": 10}}, limit=20), 10
+        )
+        self.assertEqual(
+            await self.coll.count_documents({"x": {"$lt": 10}}, skip=5, limit=20), 5
+        )
+
+    async def test_non_existing_collection(self):
+        cnt = await self.db.non_existing_coll.count_documents({})
+        self.assertEqual(cnt, 0)
+
+    async def test_comment(self):
+        await self.coll.count_documents({}, comment="Count comment")
+        cmds = await self.db.system.profile.count_documents(
+            {"command.comment": "Count comment"}
+        )
+        self.assertEqual(cmds, 1)
+
+    def test_comment_type_check(self):
+        self.assertRaises(TypeError, self.coll.count_documents, {}, comment=123)
+        self.assertRaises(TypeError, self.coll.count_documents, {}, comment=True)
+
+    async def test_max_time_ms(self):
+        await self.coll.count_documents({}, max_time_ms=1000)
+        cmds = await self.db.system.profile.count_documents({"command.maxTimeMS": 1000})
+        self.assertEqual(cmds, 1)
+
+    def test_max_time_ms_type_check(self):
+        self.assertRaises(TypeError, self.coll.count_documents, {}, max_time_ms="1234")
+
+    async def test_hint(self):
+        await self.coll.create_index(qf.sort(qf.DESCENDING("x")))
+        await self.coll.count_documents({}, hint=qf.hint(qf.DESCENDING("x")))
+        cmds = await self.db.system.profile.count_documents({"command.hint": {"x": -1}})
+        self.assertEqual(cmds, 1)
+
+    def test_hint_type_check(self):
+        self.assertRaises(TypeError, self.coll.count_documents, {}, hint={"x": 1})
+        self.assertRaises(TypeError, self.coll.count_documents, {}, hint=[("x", 1)])
