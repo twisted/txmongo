@@ -7,7 +7,7 @@ python:
 
 
 env:
-    - TOX_ENV=tw217
+    - TOX_ENV=tw228
     - TOX_ENV=tw2210
     - TOX_ENV=tw2310
     - TOX_ENV=twlatest

@@ -19,6 +19,7 @@ Features
   - You can find an example using transactions in `examples/transactions.py`
   - Limitations:
     - Only `write_concern` and `max_commit_time_ms` options are supported for `start_transaction()`
+- Minimum Twisted version is now 22.8.0
 
 API Changes
 ^^^^^^^^^^^
