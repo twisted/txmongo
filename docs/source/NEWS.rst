@@ -25,6 +25,11 @@ API Changes
 
 - find_one_and_* methods now returns None if called with unacknowledged write_concern.
 
+Bugfixes
+^^^^^^^^
+
+- Fixed compatibility with Twisted ≥24.10.0
+
 Release 24.1.0 (2024-11-13)
 ---------------------------
 

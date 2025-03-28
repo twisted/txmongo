@@ -91,21 +91,22 @@ def _apply_find_filter(spec, c_filter):
 
 _DEFERRED_METHODS = frozenset(
     {
+        "addBoth",
         "addCallback",
         "addCallbacks",
         "addErrback",
-        "addBoth",
-        "called",
-        "paused",
         "addTimeout",
-        "chainDeferred",
+        "asFuture",
         "callback",
+        "called",
+        "cancel",
+        "chainDeferred",
         "errback",
         "pause",
-        "unpause",
-        "cancel",
+        "paused",
+        "result",
         "send",
-        "asFuture",
+        "unpause",
     }
 )
 
