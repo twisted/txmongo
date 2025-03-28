@@ -16,8 +16,8 @@ Features
     call `commit_transaction()` or `abort_transaction()` to finish the transaction.
   - `ClientSession.start_transaction()` can also be used as an async context manager that will
     automatically commit the transaction when exiting the context or abort it in case of exception.
+  - You can find an example using transactions in `examples/transactions.py`
   - Limitations:
-    - No session options are supported for `start_session()` yet
     - Only `write_concern` and `max_commit_time_ms` options are supported for `start_transaction()`
 - Minimum Twisted version is now 22.8.0
 
@@ -25,6 +25,11 @@ API Changes
 ^^^^^^^^^^^
 
 - find_one_and_* methods now returns None if called with unacknowledged write_concern.
+
+Bugfixes
+^^^^^^^^
+
+- Fixed compatibility with Twisted ≥24.10.0
 
 Release 24.1.0 (2024-11-13)
 ---------------------------

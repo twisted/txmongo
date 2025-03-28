@@ -12,6 +12,7 @@ from tests.utils import catch_sent_msgs
 from txmongo import Database, MongoProtocol
 from txmongo.collection import Collection
 from txmongo.connection import ConnectionPool
+from txmongo.sessions import TransactionOptions
 
 
 class TestTransactions(unittest.TestCase):
@@ -207,6 +208,47 @@ class TestTransactions(unittest.TestCase):
         self.assertNotIn("writeConcern", insert.to_dict())
         self.assertIn("commitTransaction", commit.to_dict())
         self.assertEqual(commit.to_dict()["writeConcern"], {"w": 1, "wtimeout": 123})
+
+    async def test_inherit_conn_write_concern(self):
+        conn = ConnectionPool(self.uri + f"&w=majority&wtimeoutMS=1234")
+        try:
+            async with conn.start_session() as session:
+                with catch_sent_msgs() as messages:
+                    async with session.start_transaction():
+                        await conn.db.coll.insert_one({"x": 1}, session=session)
+
+            [_, commit] = messages
+            wc = commit.to_dict()["writeConcern"]
+            self.assertEqual(wc, {"w": "majority", "wtimeout": 1234})
+        finally:
+            await conn.disconnect()
+
+    async def test_no_default_transaction_options(self):
+        async with self.conn.start_session() as session:
+            with catch_sent_msgs() as messages:
+                async with session.start_transaction():
+                    await self.coll.insert_one({"x": 1}, session=session)
+
+        [_, commit] = messages
+        commit_msg = commit.to_dict()
+        self.assertEqual(commit_msg["writeConcern"], {})
+        self.assertNotIn("maxTimeMS", commit_msg)
+
+    async def test_default_transaction_options(self):
+        async with self.conn.start_session(
+            default_transaction_options=TransactionOptions(
+                write_concern=WriteConcern(w="majority", wtimeout=987),
+                max_commit_time_ms=12345,
+            )
+        ) as session:
+            with catch_sent_msgs() as messages:
+                async with session.start_transaction():
+                    await self.coll.insert_one({"x": 1}, session=session)
+
+        [_, commit] = messages
+        commit_cmd = commit.to_dict()
+        self.assertEqual(commit_cmd["writeConcern"], {"w": "majority", "wtimeout": 987})
+        self.assertEqual(commit_cmd["maxTimeMS"], 12345)
 
     async def test_transaction_options_validation(self):
         async with self.conn.start_session() as session:

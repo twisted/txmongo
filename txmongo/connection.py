@@ -21,7 +21,12 @@ from twisted.python import log
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Msg
-from txmongo.sessions import ClientSession, ServerSession, SessionOptions
+from txmongo.sessions import (
+    ClientSession,
+    ServerSession,
+    SessionOptions,
+    TransactionOptions,
+)
 from txmongo.types import Document
 from txmongo.utils import check_deadline, get_err, timeout
 
@@ -580,7 +585,9 @@ class ConnectionPool:
             return
         self.__server_sessions_cache.appendleft(server_session)
 
-    def start_session(self) -> ClientSession:
+    def start_session(
+        self, default_transaction_options: Optional[TransactionOptions] = None
+    ) -> ClientSession:
         """Start a logical session.
 
         Returns :class:`ClientSession` instance.
@@ -597,12 +604,21 @@ class ConnectionPool:
             session = conn.start_session()
             ...
             await session.end_session()
+
+        :param default_transaction_options:
+            The default transaction options to use for transactions started on this session.
         """
         if len(self.__auth_creds) > 1:
             raise ValueError(
                 "TxMongo: Cannot use sessions when multiple users are authenticated"
             )
-        return ClientSession(self, options=None, implicit=False)
+        return ClientSession(
+            self,
+            options=SessionOptions(
+                default_transaction_options=default_transaction_options
+            ),
+            implicit=False,
+        )
 
     def _get_implicit_session(self) -> Optional[ClientSession]:
         """May return None if multiple users are authenticated"""

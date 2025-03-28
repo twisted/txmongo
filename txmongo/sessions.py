@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ClientSession",
+    "TransactionOptions",
 ]
 
 _codec_options = DEFAULT_RAW_BSON_OPTIONS.with_options(
@@ -88,16 +89,31 @@ class ServerSession:
 
 @dataclass(frozen=True)
 class SessionOptions:
-    """Placeholder class for session options. Currently not used."""
+    default_transaction_options: Optional[TransactionOptions] = None
 
-    # TODO: implement defaultTransactionOptions
-    #       https://github.com/twisted/txmongo/issues/303
-
-    pass
+    def __post_init__(self):
+        if self.default_transaction_options is not None:
+            if not isinstance(self.default_transaction_options, TransactionOptions):
+                raise TypeError(
+                    f"default_transaction_options must be an instance of"
+                    f" txmongo.sessions.TransactionOptions, not: {self.default_transaction_options!r}"
+                )
 
 
 @dataclass(frozen=True)
 class TransactionOptions:
+    """Options for :meth:`ClientSession.start_transaction`.
+
+    :param write_concern:
+        The write concern to use for the transaction. If not provided, the write concern of the
+        connection will be used.
+
+    :param max_commit_time_ms:
+        The maximum amount of time to allow a single commitTransaction command to run.
+        This is an alias for the `maxTimeMS` option in the commitTransaction command.
+        if `None` (the default), `maxTimeMS` is not used.
+    """
+
     write_concern: Optional[WriteConcern] = None
     max_commit_time_ms: Optional[int] = None
 
@@ -303,10 +319,12 @@ class ClientSession:
         if self.in_transaction():
             raise InvalidOperation("Transaction already in progress")
 
+        default_opts = self.options.default_transaction_options or TransactionOptions()
+
         # Note: ↓ this may raise due to validation
         self._txn_options = TransactionOptions(
-            write_concern=write_concern,
-            max_commit_time_ms=max_commit_time_ms,
+            write_concern=write_concern or default_opts.write_concern,
+            max_commit_time_ms=max_commit_time_ms or default_opts.max_commit_time_ms,
         )
         self._txn_state = TxnState.STARTING
         self._materialize_server_session()
