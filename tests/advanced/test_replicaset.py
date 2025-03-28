@@ -333,15 +333,15 @@ class TestReplicaSet(unittest.TestCase):
             ping_timeout=5,
         )
         try:
-            yield conn.db.coll.count()
+            yield conn.db.coll.count_documents({})
             # check that 5s pingers won't break connection if it is healthy
             yield self.__sleep(6)
-            yield conn.db.coll.count()
+            yield conn.db.coll.count_documents({})
             yield self.__mongod[0].kill(signal.SIGSTOP)
             yield self.__sleep(0.2)
             while True:
                 try:
-                    yield conn.db.coll.count()
+                    yield conn.db.coll.count_documents({})
                     break
                 except AutoReconnect:
                     pass

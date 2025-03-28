@@ -49,7 +49,7 @@ class TestMongoFilters(unittest.TestCase):
         await self.db.command("profile", 0)
 
         profile_filter = {"command." + optionname: optionvalue}
-        cnt = await self.db.system.profile.count(profile_filter)
+        cnt = await self.db.system.profile.count_documents(profile_filter)
         await self.db.system.profile.drop()
         self.assertEqual(cnt, 1)
 
@@ -155,7 +155,7 @@ class TestMongoFilters(unittest.TestCase):
         yield self.db.command("profile", 0)
 
         profile_filter = {"command.sort.x": 1, "command.comment": comment}
-        cnt = yield self.db.system.profile.count(profile_filter)
+        cnt = yield self.db.system.profile.count_documents(profile_filter)
         self.assertEqual(cnt, 1)
 
     def test_Repr(self):

@@ -8,7 +8,7 @@ import collections.abc
 import time
 import warnings
 from operator import itemgetter
-from typing import Iterable, List, Mapping, Optional, Union
+from typing import Any, Iterable, List, Mapping, Optional, Union
 
 from bson import ObjectId
 from bson.codec_options import DEFAULT_CODEC_OPTIONS, CodecOptions
@@ -974,6 +974,8 @@ class Collection:
     def count(self, filter=None, **kwargs):
         """Get the number of documents in this collection.
 
+        This method is deprecated. Please use :meth:`count_documents` or :meth:`estimated_document_count` instead.
+
         :param filter:
             argument is a query document that selects which documents to
             count in the collection.
@@ -990,6 +992,11 @@ class Collection:
         :returns: a :class:`Deferred` that called back with a number of
                   documents matching the criteria.
         """
+        warnings.warn(
+            "TxMongo: count() method is deprecated. Please use count_documents() or estimated_document_count() methods instead.",
+            DeprecationWarning,
+        )
+
         if "hint" in kwargs:
             hint = kwargs["hint"]
             if not isinstance(hint, qf.hint):
@@ -999,6 +1006,75 @@ class Collection:
         return self._database.command(
             "count", self._collection_name, query=filter or SON(), **kwargs
         ).addCallback(lambda result: int(result["n"]))
+
+    @timeout
+    def estimated_document_count(
+        self, *, comment: str = None, max_time_ms: int = None, _deadline=None
+    ) -> Deferred[int]:
+        """Get an estimate of the number of documents in this collection using collection metadata.
+
+        :returns: a :class:`Deferred` that called back with an estimated number of documents in the collection.
+        """
+
+        cmd = {"count": self.name}
+        if comment is not None:
+            if not isinstance(comment, str):
+                raise TypeError("comment must be an instance of str")
+            cmd["comment"] = comment
+        if max_time_ms is not None:
+            if not isinstance(max_time_ms, int):
+                raise TypeError("max_time_ms must be an instance of int")
+            cmd["maxTimeMS"] = max_time_ms
+
+        return self._database.command(cmd, _deadline=_deadline).addCallback(
+            lambda result: int(result["n"])
+        )
+
+    @timeout
+    def count_documents(
+        self,
+        filter: Mapping[str, Any],
+        *,
+        skip: int = None,
+        limit: int = None,
+        max_time_ms: int = None,
+        hint: qf.hint = None,
+        comment: str = None,
+        session: ClientSession = None,
+        _deadline=None,
+    ) -> Deferred[int]:
+        pipeline = [{"$match": filter}]
+        if skip is not None:
+            pipeline.append({"$skip": skip})
+        if limit is not None:
+            pipeline.append({"$limit": limit})
+        pipeline.append({"$group": {"_id": 1, "n": {"$sum": 1}}})
+
+        cmd = {
+            "aggregate": self.name,
+            "pipeline": pipeline,
+            "cursor": {},
+        }
+        if comment is not None:
+            cmd["comment"] = comment
+        if hint is not None:
+            if not isinstance(hint, qf.hint):
+                raise TypeError("hint must be an instance of txmongo.filter.hint")
+            cmd["hint"] = SON(hint["hint"])
+
+        def on_result(result):
+            if not result:
+                return 0
+            return result[0]["n"]
+
+        return self.aggregate(
+            pipeline,
+            comment=comment,
+            max_time_ms=max_time_ms,
+            hint=hint,
+            session=session,
+            _deadline=_deadline,
+        ).addCallback(on_result)
 
     @timeout
     def filemd5(self, spec, **kwargs):
@@ -1469,10 +1545,31 @@ class Collection:
         full_response=False,
         initial_batch_size=None,
         *,
+        comment: str = None,
+        max_time_ms: int = None,
+        hint: qf.hint = None,
         session: ClientSession = None,
         _deadline=None,
     ):
-        """aggregate(pipeline, full_response=False, *, session: ClientSession=None)"""
+        """aggregate(pipeline, full_response=False, *, comment: str = None, max_time_ms: int = None, hint: txmongo.filters.hint = None, session: ClientSession=None)
+
+        Perform an aggregation using the aggregation framework on this collection.
+
+        :param pipeline:
+            a list of aggregation pipeline stages.
+        :param full_response:
+            if True, the result will include the full response from the server.
+        :param initial_batch_size:
+            the number of documents to return in the first batch.
+        :param comment:
+            a string to attach to the command for debugging purposes.
+        :param max_time_ms:
+            the maximum amount of time (ms) to allow the operation to run.
+        :param hint:
+            an index to use for the aggregation. Must be a :class:`txmongo.filter.hint` instance.
+        :param session:
+            Optional :class:`~txmongo.sessions.ClientSession` to use for this operation.
+        """
 
         def on_ok(raw, data=None):
             if data is None:
@@ -1497,13 +1594,29 @@ class Collection:
         else:
             cursor = {"batchSize": initial_batch_size}
 
+        if not isinstance(pipeline, list):
+            raise TypeError("pipeline must be a list")
+
+        cmd = {
+            "aggregate": self.name,
+            "pipeline": pipeline,
+            "cursor": cursor,
+        }
+        if comment is not None:
+            if not isinstance(comment, str):
+                raise TypeError("comment must be an instance of str")
+            cmd["comment"] = comment
+        if max_time_ms is not None:
+            if not isinstance(max_time_ms, int):
+                raise TypeError("max_time_ms must be an instance of int")
+            cmd["maxTimeMS"] = max_time_ms
+        if hint is not None:
+            if not isinstance(hint, qf.hint):
+                raise TypeError("hint must be an instance of txmongo.filter.hint")
+            cmd["hint"] = SON(hint["hint"])
+
         return self._database.command(
-            "aggregate",
-            self.name,
-            pipeline=pipeline,
-            session=session,
-            _deadline=_deadline,
-            cursor=cursor,
+            cmd, session=session, _deadline=_deadline
         ).addCallback(on_ok)
 
     @timeout

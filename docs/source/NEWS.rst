@@ -25,6 +25,8 @@ API Changes
 ^^^^^^^^^^^
 
 - find_one_and_* methods now returns None if called with unacknowledged write_concern.
+- `Collection.count()` method is deprecated
+  - Please use new `Collection.count_documents()` and `Collection.estimated_document_count()` methods.
 
 Bugfixes
 ^^^^^^^^

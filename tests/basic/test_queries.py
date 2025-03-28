@@ -628,7 +628,7 @@ class TestInsertOne(SingleCollectionTest):
         self.assertEqual(result.acknowledged, True)
         self.assertIsInstance(result.inserted_id, ObjectId)
 
-        count = yield self.coll.count()
+        count = yield self.coll.count_documents({})
         self.assertEqual(count, 1)
 
     @defer.inlineCallbacks
@@ -643,7 +643,7 @@ class TestInsertOne(SingleCollectionTest):
 
         # It's ok to issue count() right after unacknowledged insert because
         # we have exactly one connection
-        count = yield self.coll.count()
+        count = yield self.coll.count_documents({})
         self.assertEqual(count, 1)
 
     @defer.inlineCallbacks
@@ -724,7 +724,7 @@ class TestInsertMany(SingleCollectionTest):
             self.coll.insert_many(self.more_than_1k), BulkWriteError
         )
         self.assertEqual(error.details["nInserted"], 500)
-        self.assertEqual((yield self.coll.count()), 500)
+        self.assertEqual((yield self.coll.count_documents({})), 500)
         self.assertEqual(len(error.details["writeErrors"]), 1)
         self.assertEqual(error.details["writeErrors"][0]["index"], 500)
         self.assertEqual(error.details["writeErrors"][0]["op"], {"_id": 499})
@@ -749,7 +749,8 @@ class TestInsertMany(SingleCollectionTest):
             self.coll.insert_many(self.more_than_1k, ordered=False), BulkWriteError
         )
         self.assertEqual(error.details["nInserted"], len(self.more_than_1k) - 1)
-        self.assertEqual((yield self.coll.count()), len(self.more_than_1k) - 1)
+        cnt = yield self.coll.count_documents({})
+        self.assertEqual(cnt, len(self.more_than_1k) - 1)
         self.assertEqual(len(error.details["writeErrors"]), 1)
         self.assertEqual(error.details["writeErrors"][0]["index"], 500)
         self.assertEqual(error.details["writeErrors"][0]["op"], {"_id": 499})
@@ -785,7 +786,7 @@ class TestInsertMany(SingleCollectionTest):
         huge = {"y": "a" * (16 * 1024 * 1024 - 100)}
 
         # This call will trigger ismaster which we don't want to include in call count
-        yield self.coll.count()
+        yield self.coll.count_documents({})
 
         with catch_sent_msgs() as messages:
             result = yield self.coll.insert_many([small, huge])
@@ -837,7 +838,7 @@ class TestUpdateOne(SingleCollectionTest):
         result = yield coll.update_one({"y": 123}, {"$set": {"z": 456}}, upsert=True)
         self.assertEqual(result.acknowledged, False)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 3)
 
     def test_InvalidUpdate(self):
@@ -943,7 +944,7 @@ class TestUpdateMany(SingleCollectionTest):
         self.assertEqual(result.modified_count, 2)
         self.assertEqual(result.upserted_id, None)
 
-        cnt = yield self.coll.count({"y": 5})
+        cnt = yield self.coll.count_documents({"y": 5})
         self.assertEqual(cnt, 2)
 
     @defer.inlineCallbacks
@@ -953,7 +954,7 @@ class TestUpdateMany(SingleCollectionTest):
         self.assertIsInstance(result, UpdateResult)
         self.assertEqual(result.acknowledged, False)
 
-        cnt = yield self.coll.count({"y": 5})
+        cnt = yield self.coll.count_documents({"y": 5})
         self.assertEqual(cnt, 2)
 
     @defer.inlineCallbacks
@@ -964,7 +965,7 @@ class TestUpdateMany(SingleCollectionTest):
         self.assertEqual(result.modified_count, 0)
         self.assertIsInstance(result.upserted_id, ObjectId)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 3)
 
     @defer.inlineCallbacks
@@ -973,7 +974,7 @@ class TestUpdateMany(SingleCollectionTest):
         result = yield coll.update_many({"x": 5}, {"$set": {"y": 5}}, upsert=True)
         self.assertEqual(result.acknowledged, False)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 3)
 
     def test_InvalidUpdate(self):
@@ -1007,7 +1008,7 @@ class TestDeleteOne(SingleCollectionTest):
         self.assertEqual(result.acknowledged, True)
         self.assertEqual(result.deleted_count, 1)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 1)
 
     @defer.inlineCallbacks
@@ -1018,7 +1019,7 @@ class TestDeleteOne(SingleCollectionTest):
         self.assertIsInstance(result, DeleteResult)
         self.assertEqual(result.acknowledged, False)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 1)
 
     @defer.inlineCallbacks
@@ -1048,7 +1049,7 @@ class TestDeleteOne(SingleCollectionTest):
         self.assertIsInstance(result, DeleteResult)
         self.assertEqual(result.deleted_count, 1)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 3)
 
 
@@ -1070,7 +1071,7 @@ class TestDeleteMany(SingleCollectionTest):
         self.assertEqual(result.acknowledged, True)
         self.assertEqual(result.deleted_count, 2)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 0)
 
     @defer.inlineCallbacks
@@ -1081,7 +1082,7 @@ class TestDeleteMany(SingleCollectionTest):
         self.assertIsInstance(result, DeleteResult)
         self.assertEqual(result.acknowledged, False)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 0)
 
     @defer.inlineCallbacks
@@ -1107,7 +1108,7 @@ class TestDeleteMany(SingleCollectionTest):
         self.assertIsInstance(result, DeleteResult)
         self.assertEqual(result.deleted_count, 2)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 2)
 
     def test_InvalidArguments(self):
@@ -1136,7 +1137,7 @@ class TestFindOneAndDelete(SingleCollectionTest):
         )
         self.assertEqual(doc["x"], 3)
 
-        cnt = yield self.coll.count()
+        cnt = yield self.coll.count_documents({})
         self.assertEqual(cnt, 1)
 
     @defer.inlineCallbacks
@@ -1321,3 +1322,117 @@ class TestCount(SingleCollectionTest):
 
         cnt = yield self.coll.count(skip=1)
         self.assertEqual(cnt, 2)
+
+
+class TestEstimatedDocumentCount(SingleCollectionTest):
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super().setUp()
+        yield self.coll.insert_many([{"x": 1} for _ in range(100)])
+        yield self.db.command("profile", 2)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.db.command("profile", 0)
+        yield self.db.system.profile.drop()
+        yield super().tearDown()
+
+    async def test_estimated_document_count(self):
+        self.assertEqual((await self.coll.estimated_document_count()), 100)
+        cmds = await self.db.system.profile.find({"command.count": self.coll.name})
+        self.assertEqual(len(cmds), 1)
+        cmd = cmds[0]
+        self.assertIn(
+            cmd["planSummary"],
+            {
+                "RECORD_STORE_FAST_COUNT",
+                "COUNT",  # for MongoDB 4.0
+            },
+        )
+
+    async def test_non_existing_collection(self):
+        cnt = await self.db.non_existing_coll.estimated_document_count()
+        self.assertEqual(cnt, 0)
+
+    async def test_comment(self):
+        await self.db.coll.estimated_document_count(comment="Test comment")
+        cmds = await self.db.system.profile.count_documents(
+            {"command.comment": "Test comment"}
+        )
+        self.assertEqual(cmds, 1)
+
+    def test_comment_type(self):
+        self.assertRaises(TypeError, self.coll.estimated_document_count, comment=123)
+        self.assertRaises(TypeError, self.coll.estimated_document_count, comment=[])
+
+    async def test_max_time_ms(self):
+        await self.db.coll.estimated_document_count(max_time_ms=1234)
+        cmds = await self.db.system.profile.count_documents({"command.maxTimeMS": 1234})
+        self.assertEqual(cmds, 1)
+
+    def test_max_time_ms_type(self):
+        self.assertRaises(
+            TypeError, self.coll.estimated_document_count, max_time_ms="1234"
+        )
+        self.assertRaises(TypeError, self.coll.estimated_document_count, max_time_ms=[])
+
+
+class TestCountDocuments(SingleCollectionTest):
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super().setUp()
+        yield self.coll.insert_many([{"x": x} for x in range(100)])
+        yield self.db.command("profile", 2)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.db.command("profile", 0)
+        yield self.db.system.profile.drop()
+        yield super().tearDown()
+
+    async def test_estimated_document_count(self):
+        self.assertEqual((await self.coll.count_documents({})), 100)
+        self.assertEqual((await self.coll.count_documents({"x": {"$lt": 50}})), 50)
+
+    async def test_skip_limit(self):
+        self.assertEqual(await self.coll.count_documents({}, skip=10), 90)
+        self.assertEqual(await self.coll.count_documents({}, limit=20), 20)
+        self.assertEqual(
+            await self.coll.count_documents({"x": {"$lt": 10}}, limit=20), 10
+        )
+        self.assertEqual(
+            await self.coll.count_documents({"x": {"$lt": 10}}, skip=5, limit=20), 5
+        )
+
+    async def test_non_existing_collection(self):
+        cnt = await self.db.non_existing_coll.count_documents({})
+        self.assertEqual(cnt, 0)
+
+    async def test_comment(self):
+        await self.coll.count_documents({}, comment="Count comment")
+        cmds = await self.db.system.profile.count_documents(
+            {"command.comment": "Count comment"}
+        )
+        self.assertEqual(cmds, 1)
+
+    def test_comment_type_check(self):
+        self.assertRaises(TypeError, self.coll.count_documents, {}, comment=123)
+        self.assertRaises(TypeError, self.coll.count_documents, {}, comment=True)
+
+    async def test_max_time_ms(self):
+        await self.coll.count_documents({}, max_time_ms=1000)
+        cmds = await self.db.system.profile.count_documents({"command.maxTimeMS": 1000})
+        self.assertEqual(cmds, 1)
+
+    def test_max_time_ms_type_check(self):
+        self.assertRaises(TypeError, self.coll.count_documents, {}, max_time_ms="1234")
+
+    async def test_hint(self):
+        await self.coll.create_index(qf.sort(qf.DESCENDING("x")))
+        await self.coll.count_documents({}, hint=qf.hint(qf.DESCENDING("x")))
+        cmds = await self.db.system.profile.count_documents({"command.hint": {"x": -1}})
+        self.assertEqual(cmds, 1)
+
+    def test_hint_type_check(self):
+        self.assertRaises(TypeError, self.coll.count_documents, {}, hint={"x": 1})
+        self.assertRaises(TypeError, self.coll.count_documents, {}, hint=[("x", 1)])
