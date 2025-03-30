@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Release 25.0.0 (unspecified)
+Release 25.0.0 (2025-03-30)
 ----------------------------
 
 Features
