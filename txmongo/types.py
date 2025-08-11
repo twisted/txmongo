@@ -1,4 +1,4 @@
-from typing import Union, MutableMapping
+from typing import MutableMapping, Union
 
 from bson.raw_bson import RawBSONDocument
 
