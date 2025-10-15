@@ -31,7 +31,7 @@ jobs:
           path: htmlcov
 
   advanced:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         python-version: ['3.8', '3.11', '3.12']
@@ -54,7 +54,7 @@ jobs:
         run: tox -f py${{ matrix.python-version }} advanced
 
   advanced_old_mongo:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         python-version: ['3.8', '3.11', '3.12']
