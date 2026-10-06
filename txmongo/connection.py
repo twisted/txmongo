@@ -36,6 +36,18 @@ _PRIMARY_READ_PREFERENCES = {
 }
 
 
+def _parse_uri(uri: str) -> dict:
+    """parse_uri() with URI option names lowercased.
+
+    PyMongo < 4.14 returned options as a case-insensitive dict with lowercase
+    keys; since 4.14 it is a plain dict with camelCase keys (``replicaSet``,
+    ``authSource``...). txmongo looks options up in lowercase.
+    """
+    parsed = parse_uri(uri)
+    options = {key.lower(): value for key, value in parsed["options"].items()}
+    return {**parsed, "options": options}
+
+
 class _Connection(ReconnectingClientFactory):
     __notify_ready = None
     __allnodes = None
@@ -279,7 +291,7 @@ class ConnectionPool:
         if not uri.startswith("mongodb://") and not uri.startswith("mongodb+srv://"):
             uri = "mongodb://" + uri
 
-        self.__uri = parse_uri(uri)
+        self.__uri = _parse_uri(uri)
 
         wc_options = {**self.__uri["options"], **kwargs}
         self.__write_concern = self.__parse_write_concern_options(wc_options)

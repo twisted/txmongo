@@ -1,6 +1,17 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+Bugfixes
+^^^^^^^^
+
+- Support PyMongo up to 4.18.2. Since PyMongo 4.14 `parse_uri()` returns options with
+  camelCase keys, so `replicaSet`, `authSource`, `authMechanism`, `readPreference` and
+  `wtimeoutMS` from the connection URI were silently ignored. URI option names are now
+  normalized to lowercase.
+
 Release 25.0.0 (2025-03-30)
 ----------------------------
 
