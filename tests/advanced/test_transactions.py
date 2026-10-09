@@ -86,6 +86,8 @@ class TestTransactions(unittest.TestCase):
         self.conn = ConnectionPool(self.uri)
         self.db = self.conn.db
         self.coll = self.db.coll
+        # MongoDB 4.0 and 4.2 cannot create collections inside a transaction.
+        yield self.db.command("create", self.coll.name)
 
     @defer.inlineCallbacks
     def tearDown(self):
