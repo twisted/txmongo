@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Unreleased
+Release 26.0.0 (2026-10-08)
 ----------
 
 Bugfixes
