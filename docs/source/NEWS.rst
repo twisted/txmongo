@@ -10,6 +10,17 @@ API Changes
 - TxMongo now requires PyMongo 4.18.3 (fixes an out-of-bounds read in BSON decoding of
   malformed Regex elements) and therefore Python 3.9+.
 
+Features
+^^^^^^^^
+
+- SCRAM-SHA-256 authentication (``authMechanism=SCRAM-SHA-256``).
+
+Bugfixes
+^^^^^^^^
+
+- Authentication commands are sent with OP_MSG instead of legacy OP_QUERY,
+  which servers such as Amazon DocumentDB reject.
+
 Release 26.0.0 (2026-10-23)
 ---------------------------
 

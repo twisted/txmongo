@@ -16,14 +16,15 @@ decoding as well as Exception types, when applicable.
 from __future__ import annotations
 
 import base64
+import hashlib
 import hmac
 import logging
 import struct
 import warnings
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
+from functools import partial
 from hashlib import pbkdf2_hmac as _hi
-from hashlib import sha1
 from random import SystemRandom
 from typing import Dict, List, Optional
 
@@ -37,6 +38,7 @@ from pymongo.errors import (
     NotPrimaryError,
     OperationFailure,
 )
+from pymongo.saslprep import saslprep
 from pymongo.synchronous import auth
 from twisted.internet import defer, error, protocol
 from twisted.python import failure, log
@@ -623,9 +625,20 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
             Query(collection=cmd_collection, query=bson.encode(query))
         ).addCallback(lambda response: bson.decode(response.documents[0]))
 
+    def send_auth_command(self, database, command) -> defer.Deferred[dict]:
+        msg = Msg.create({**command, "$db": str(database)})
+        return self._send_raw_msg(msg).addCallback(lambda response: response.to_dict())
+
     @defer.inlineCallbacks
-    def authenticate_scram_sha1(self, database_name, username, password):
+    def authenticate_scram(self, database_name, username, password, mechanism):
         # Totally stolen from pymongo.auth
+        if mechanism == "SCRAM-SHA-256":
+            digestmod = hashlib.sha256
+            data = saslprep(password).encode("utf-8")
+        else:
+            digestmod = hashlib.sha1
+            data = auth._password_digest(username, password).encode("utf-8")
+
         user = username.replace("=", "=3D").replace(",", "=2C")
         nonce = base64.standard_b64encode(str(SystemRandom().random()).encode("ascii"))[
             2:
@@ -635,12 +648,16 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
         cmd = SON(
             [
                 ("saslStart", 1),
-                ("mechanism", "SCRAM-SHA-1"),
+                ("mechanism", mechanism),
                 ("autoAuthorize", 1),
                 ("payload", Binary(b"n,," + first_bare)),
             ]
         )
-        result = yield self.send_op_query_command(database_name, cmd)
+        result = yield self.send_auth_command(database_name, cmd)
+        if not result["ok"]:
+            raise MongoAuthenticationError(
+                "TxMongo: " + result.get("errmsg", "authentication failed.")
+            )
 
         server_first = result["payload"]
         parsed = auth._parse_scram_response(server_first)
@@ -652,23 +669,20 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
 
         without_proof = b"c=biws,r=" + rnonce
         salted_pass = _hi(
-            "sha1",
-            auth._password_digest(username, password).encode("utf-8"),
-            base64.standard_b64decode(salt),
-            iterations,
+            digestmod().name, data, base64.standard_b64decode(salt), iterations
         )
-        client_key = hmac.HMAC(salted_pass, b"Client Key", sha1).digest()
-        stored_key = sha1(client_key).digest()
+        client_key = hmac.HMAC(salted_pass, b"Client Key", digestmod).digest()
+        stored_key = digestmod(client_key).digest()
         auth_msg = b",".join((first_bare, server_first, without_proof))
-        client_sig = hmac.HMAC(stored_key, auth_msg, sha1).digest()
+        client_sig = hmac.HMAC(stored_key, auth_msg, digestmod).digest()
         client_proof = b"p=" + base64.standard_b64encode(
             auth._xor(client_key, client_sig)
         )
         client_final = b",".join((without_proof, client_proof))
 
-        server_key = hmac.HMAC(salted_pass, b"Server Key", sha1).digest()
+        server_key = hmac.HMAC(salted_pass, b"Server Key", digestmod).digest()
         server_sig = base64.standard_b64encode(
-            hmac.HMAC(server_key, auth_msg, sha1).digest()
+            hmac.HMAC(server_key, auth_msg, digestmod).digest()
         )
 
         cmd = SON(
@@ -678,7 +692,7 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
                 ("payload", Binary(client_final)),
             ]
         )
-        result = yield self.send_op_query_command(database_name, cmd)
+        result = yield self.send_auth_command(database_name, cmd)
 
         if not result["ok"]:
             raise MongoAuthenticationError("TxMongo: authentication failed.")
@@ -699,7 +713,7 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
                     ("payload", Binary(b"")),
                 ]
             )
-            result = yield self.send_op_query_command(database_name, cmd)
+            result = yield self.send_auth_command(database_name, cmd)
             if not (result["ok"] and result["done"]):
                 raise MongoAuthenticationError(
                     "TxMongo: SASL conversation failed to complete."
@@ -710,7 +724,7 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
         query = SON(
             [("authenticate", 1), ("mechanism", "MONGODB-X509"), ("user", username)]
         )
-        result = yield self.send_op_query_command("$external", query)
+        result = yield self.send_auth_command("$external", query)
         if not result["ok"]:
             raise MongoAuthenticationError(result["errmsg"])
         return result
@@ -724,12 +738,12 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
         yield self.__auth_lock.acquire()
 
         try:
-            if mechanism == "SCRAM-SHA-1":
-                auth_func = self.authenticate_scram_sha1
+            if mechanism in ("SCRAM-SHA-1", "SCRAM-SHA-256"):
+                auth_func = partial(self.authenticate_scram, mechanism=mechanism)
             elif mechanism == "MONGODB-X509":
                 auth_func = self.authenticate_mongo_x509
             elif mechanism == "DEFAULT":
-                auth_func = self.authenticate_scram_sha1
+                auth_func = partial(self.authenticate_scram, mechanism="SCRAM-SHA-1")
             else:
                 raise MongoAuthenticationError(
                     "TxMongo: Unknown authentication mechanism: {0}".format(mechanism)
