@@ -10,6 +10,13 @@ API Changes
 - TxMongo now requires PyMongo 4.18.3 (fixes an out-of-bounds read in BSON decoding of
   malformed Regex elements) and therefore Python 3.9+.
 
+Bugfixes
+^^^^^^^^
+
+- With a non-primary read preference (e.g. ``readPreference=secondaryPreferred``) TxMongo
+  skipped the ``ismaster`` handshake, so it never learned the other replica set members,
+  couldn't fail over to them, and ignored server limits and ``replicaSet`` name checks.
+
 Release 26.0.0 (2026-10-23)
 ---------------------------
 
