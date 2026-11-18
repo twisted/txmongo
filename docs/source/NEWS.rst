@@ -10,6 +10,14 @@ API Changes
 - TxMongo now requires PyMongo 4.18.3 (fixes an out-of-bounds read in BSON decoding of
   malformed Regex elements) and therefore Python 3.9+.
 
+Bugfixes
+^^^^^^^^
+
+- Documents larger than the server's ``maxBsonObjectSize`` now raise ``DocumentTooLarge``
+  before being sent, like PyMongo. Previously documents over 48MB made the server drop
+  the connection (``AutoReconnect``) and ``insert_many()``/``bulk_write()`` sent an
+  empty batch.
+
 Release 26.0.0 (2026-10-23)
 ---------------------------
 

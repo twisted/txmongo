@@ -34,6 +34,7 @@ from pymongo.errors import (
     ConfigurationError,
     ConnectionFailure,
     CursorNotFound,
+    DocumentTooLarge,
     NotPrimaryError,
     OperationFailure,
 )
@@ -79,6 +80,8 @@ except ImportError:
 DEFAULT_MAX_BSON_SIZE = 16777216
 DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
 DEFAULT_MAX_MESSAGE_SIZE = 48000000
+# Server accepts command documents this much larger than maxBsonObjectSize
+COMMAND_OVERHEAD = 16 * 1024
 
 
 INT_MAX = 2147483647
@@ -473,9 +476,9 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
     min_wire_version = None
     max_wire_version = None
 
-    max_bson_size = None
-    max_write_batch_size = None
-    max_message_size = None
+    max_bson_size = DEFAULT_MAX_BSON_SIZE
+    max_write_batch_size = DEFAULT_MAX_WRITE_BATCH_SIZE
+    max_message_size = DEFAULT_MAX_MESSAGE_SIZE
 
     def __init__(self):
         super().__init__()
@@ -561,6 +564,19 @@ class MongoProtocol(MongoReceiverProtocol, MongoSenderProtocol):
 
     def _send_raw_msg(self, msg: Msg) -> defer.Deferred[Optional[Msg]]:
         """Send OP_MSG and return result as Msg object (or None if not acknowledged)"""
+        # Check sizes before sending: oversized messages make the server drop the connection
+        max_cmd_size = self.max_bson_size + COMMAND_OVERHEAD
+        for key, docs in [("", [msg.body]), *msg.payload.items()]:
+            limit = self.max_bson_size if key == "documents" else max_cmd_size
+            for doc in docs:
+                if len(doc) > limit:
+                    return defer.fail(
+                        DocumentTooLarge(
+                            f"TxMongo: BSON document too large ({len(doc)} bytes), "
+                            f"the maximum size is {limit} bytes"
+                        )
+                    )
+
         request_id = self._send(msg)
         if msg.acknowledged:
             return self.__wait_for_reply_to(request_id)
