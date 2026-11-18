@@ -1456,10 +1456,15 @@ class Collection:
         if "bucket_size" in kwargs:
             index["bucketSize"] = kwargs.pop("bucket_size")
 
+        # commitQuorum is a createIndexes command field, not an index option
+        cmd_options = {}
+        if "commitQuorum" in kwargs:
+            cmd_options["commitQuorum"] = kwargs.pop("commitQuorum")
+
         index.update(kwargs)
 
         return self._database.command(
-            "createIndexes", self.name, indexes=[index]
+            "createIndexes", self.name, indexes=[index], **cmd_options
         ).addCallback(lambda _: name)
 
     @timeout
