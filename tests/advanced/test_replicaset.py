@@ -177,6 +177,31 @@ class TestReplicaSet(unittest.TestCase):
             yield conn.disconnect()
 
     @defer.inlineCallbacks
+    def test_SlaveOkFailover(self):
+        # With a secondary read preference txmongo used to skip ismaster, so it
+        # never learned the other members and could not fail over to them
+        conn = ConnectionPool(
+            f"mongodb://localhost:{self.ports[1]}/?readPreference=secondaryPreferred",
+            max_delay=1,
+        )
+        try:
+            yield conn.db.coll.find(flags=QUERY_SLAVE_OK)
+            yield self.__mongod[1].stop()
+
+            for _ in range(10):
+                try:
+                    result = yield conn.db.coll.find(flags=QUERY_SLAVE_OK, timeout=3)
+                    self.assertEqual(result, [])
+                    break
+                except (AutoReconnect, TimeExceeded):
+                    pass
+            else:
+                self.fail("Did not fail over to another replica set member")
+        finally:
+            yield conn.disconnect()
+            self.flushLoggedErrors(AutoReconnect)
+
+    @defer.inlineCallbacks
     def test_SwitchToMasterOnConnect(self):
         # Reverse hosts order
         try:
