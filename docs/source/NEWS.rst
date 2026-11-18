@@ -10,6 +10,12 @@ API Changes
 - TxMongo now requires PyMongo 4.18.3 (fixes an out-of-bounds read in BSON decoding of
   malformed Regex elements) and therefore Python 3.9+.
 
+Features
+^^^^^^^^
+
+- ``collation`` argument for ``find()``, ``find_one()``, ``aggregate()`` and
+  ``count_documents()``, and ``Cursor.collation()``.
+
 Release 26.0.0 (2026-10-23)
 ---------------------------
 
