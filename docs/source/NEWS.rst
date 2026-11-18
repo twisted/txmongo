@@ -1,6 +1,15 @@
 Changelog
 =========
 
+Release UNRELEASED
+------------------
+
+API Changes
+^^^^^^^^^^^
+
+- TxMongo now requires PyMongo 4.18.3 (fixes an out-of-bounds read in BSON decoding of
+  malformed Regex elements) and therefore Python 3.9+.
+
 Release 26.0.0 (2026-10-23)
 ---------------------------
 

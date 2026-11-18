@@ -19,7 +19,7 @@ protocol on non-blocking sockets. The API derives from the original PyMongo.
 
 Compatibility
 -------------
-Python 3.8+
+Python 3.9+
 MongoDB 4.0+
 
 Installing
