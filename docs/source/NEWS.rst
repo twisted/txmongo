@@ -10,6 +10,14 @@ API Changes
 - TxMongo now requires PyMongo 4.18.3 (fixes an out-of-bounds read in BSON decoding of
   malformed Regex elements) and therefore Python 3.9+.
 
+Features
+^^^^^^^^
+
+- TLS can be enabled from the connection URI: ``tls=true``/``ssl=true``, ``tlsCAFile``,
+  ``tlsCertificateKeyFile``, ``tlsAllowInvalidHostnames``, ``tlsAllowInvalidCertificates``
+  and ``tlsInsecure``. Certificates are verified against each node's hostname (with SNI),
+  which makes MongoDB Atlas work without a custom ``ssl_context_factory``.
+
 Release 26.0.0 (2026-10-23)
 ---------------------------
 

@@ -15,21 +15,13 @@ Quick Usage Example
 
 .. code-block:: python
 
-    from OpenSSL import SSL
     from txmongo.connection import ConnectionPool
-    from twisted.internet import defer, reactor, ssl
-
-    class ServerTLSContext(ssl.DefaultOpenSSLContextFactory):
-        def __init__(self, *args, **kw):
-            kw['sslmethod'] = SSL.TLSv1_METHOD
-            ssl.DefaultOpenSSLContextFactory.__init__(self, *args, **kw)
+    from twisted.internet import defer, reactor
 
     @defer.inlineCallbacks
     def example():
-        tls_ctx = ServerTLSContext(privateKeyFileName='./mongodb.key', certificateFileName='./mongodb.crt')
         mongodb_uri = "mongodb://localhost:27017"
-
-        mongo = yield ConnectionPool(mongodb_uri, ssl_context_factory=tls_ctx)
+        mongo = yield ConnectionPool(mongodb_uri)
 
         foo = mongo.foo  # `foo` database
         test = foo.test  # `test` collection
@@ -37,11 +29,27 @@ Quick Usage Example
         # fetch some documents
         docs = yield test.find(limit=10)
         for doc in docs:
-            print((doc))
+            print(doc)
 
     if __name__ == '__main__':
         example().addCallback(lambda ign: reactor.stop())
         reactor.run()
+
+TLS
+---
+
+Enable TLS with URI options (requires ``pyOpenSSL`` and ``service_identity``,
+e.g. ``pip install twisted[tls]``). The server certificate is verified against
+the system trust store and each node's hostname:
+
+.. code-block:: python
+
+    mongo = ConnectionPool("mongodb://db.example.com:27017/?tls=true")
+
+Supported options: ``tlsCAFile``, ``tlsCertificateKeyFile`` (client certificate
+and key in one PEM file), ``tlsAllowInvalidHostnames``,
+``tlsAllowInvalidCertificates`` / ``tlsInsecure``. For anything else pass your own
+``ssl_context_factory`` to ``ConnectionPool``; it takes precedence over URI options.
 
 
 User's Guide
