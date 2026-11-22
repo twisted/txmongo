@@ -17,6 +17,7 @@ import time
 import bson
 from bson import CodecOptions, ObjectId
 from bson.son import SON
+from pymongo.collation import Collation, CollationStrength
 from pymongo.collection import ReturnDocument
 from pymongo.errors import (
     BulkWriteError,
@@ -395,6 +396,52 @@ class TestFind(SingleCollectionTest):
     def test_CursorCollection(self):
         cursor = self.coll.find().batch_size(45)
         self.assertIs(cursor.collection, self.coll)
+
+
+class TestCollation(SingleCollectionTest):
+    case_insensitive = {"locale": "en", "strength": 2}
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super().setUp()
+        yield self.coll.insert_many(
+            [{"name": "Alice"}, {"name": "alice"}, {"name": "Bob"}]
+        )
+
+    @defer.inlineCallbacks
+    def test_find(self):
+        docs = yield self.coll.find({"name": "ALICE"}, collation=self.case_insensitive)
+        self.assertEqual(len(docs), 2)
+        self.assertEqual((yield self.coll.find({"name": "ALICE"})), [])
+
+    @defer.inlineCallbacks
+    def test_cursor_method(self):
+        docs = yield self.coll.find({"name": "ALICE"}).collation(
+            Collation(locale="en", strength=CollationStrength.SECONDARY)
+        )
+        self.assertEqual(len(docs), 2)
+
+    @defer.inlineCallbacks
+    def test_find_one(self):
+        doc = yield self.coll.find_one({"name": "BOB"}, collation=self.case_insensitive)
+        self.assertEqual(doc["name"], "Bob")
+
+    @defer.inlineCallbacks
+    def test_count_documents(self):
+        n = yield self.coll.count_documents(
+            {"name": "alice"}, collation=self.case_insensitive
+        )
+        self.assertEqual(n, 2)
+
+    @defer.inlineCallbacks
+    def test_aggregate(self):
+        docs = yield self.coll.aggregate(
+            [{"$match": {"name": "ALICE"}}], collation=self.case_insensitive
+        )
+        self.assertEqual(len(docs), 2)
+
+    def test_invalid(self):
+        self.assertRaises(TypeError, self.coll.find, {}, collation="en")
 
 
 class TestLimit(SingleCollectionTest):
