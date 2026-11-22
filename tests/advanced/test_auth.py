@@ -517,6 +517,9 @@ SJob7FjDAWWJeLCfsmu6Vy2OVg==
         self.ca_certfile = self.__create_keyfile(self.ca_cert)
         self.client_keyfile = self.__create_keyfile(self.client_key)
         self.client_certfile = self.__create_keyfile(self.client_cert)
+        self.client_keycertfile = self.__create_keyfile(
+            self.client_cert + self.client_key
+        )
 
         self.ssl_factory = ssl.DefaultOpenSSLContextFactory(
             privateKeyFileName=self.client_keyfile,
@@ -571,6 +574,7 @@ SJob7FjDAWWJeLCfsmu6Vy2OVg==
         os.unlink(self.ca_certfile)
         os.unlink(self.client_keyfile)
         os.unlink(self.client_certfile)
+        os.unlink(self.client_keycertfile)
 
     @defer.inlineCallbacks
     def test_auth(self):
@@ -585,6 +589,27 @@ SJob7FjDAWWJeLCfsmu6Vy2OVg==
             yield conn.db.coll.insert_one({"x": 42})
             cnt = yield conn.db.coll.count_documents({})
             self.assertEqual(cnt, 1)
+        finally:
+            yield conn.disconnect()
+
+    def __tls_uri(self, extra=""):
+        return (
+            f"mongodb://localhost:{self.port}/?tls=true&tlsCAFile={self.ca_certfile}"
+            f"&tlsCertificateKeyFile={self.client_keycertfile}{extra}"
+        )
+
+    @defer.inlineCallbacks
+    def test_uri_tls(self):
+        # Test server certificate is issued to "DC=server,O=txmongo", not "localhost"
+        conn = connection.ConnectionPool(
+            self.__tls_uri("&tlsAllowInvalidHostnames=true")
+        )
+        try:
+            yield conn.db.authenticate(
+                self.client_subject, "", mechanism="MONGODB-X509"
+            )
+            yield conn.db.coll.insert_one({"x": 42})
+            self.assertEqual((yield conn.db.coll.count_documents({})), 1)
         finally:
             yield conn.disconnect()
 

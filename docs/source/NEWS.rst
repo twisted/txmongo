@@ -14,12 +14,25 @@ Features
 ^^^^^^^^
 
 - SCRAM-SHA-256 authentication (``authMechanism=SCRAM-SHA-256``).
+- TLS can be enabled from the connection URI: ``tls=true``/``ssl=true``, ``tlsCAFile``,
+  ``tlsCertificateKeyFile``, ``tlsAllowInvalidHostnames``, ``tlsAllowInvalidCertificates``
+  and ``tlsInsecure``. Certificates are verified against each node's hostname (with SNI),
+  which makes MongoDB Atlas work without a custom ``ssl_context_factory``.
+- ``collation`` argument for ``find()``, ``find_one()``, ``aggregate()`` and
+  ``count_documents()``, and ``Cursor.collation()``.
 
 Bugfixes
 ^^^^^^^^
 
 - Authentication commands are sent with OP_MSG instead of legacy OP_QUERY,
   which servers such as Amazon DocumentDB reject.
+- Documents larger than the server's ``maxBsonObjectSize`` now raise ``DocumentTooLarge``
+  before being sent, like PyMongo. Previously documents over 48MB made the server drop
+  the connection (``AutoReconnect``) and ``insert_many()``/``bulk_write()`` sent an
+  empty batch.
+- With a non-primary read preference (e.g. ``readPreference=secondaryPreferred``) TxMongo
+  skipped the ``ismaster`` handshake, so it never learned the other replica set members,
+  couldn't fail over to them, and ignored server limits and ``replicaSet`` name checks.
 
 Release 26.0.0 (2026-10-23)
 ---------------------------

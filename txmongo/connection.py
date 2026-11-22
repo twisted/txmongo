@@ -16,8 +16,10 @@ from pymongo.read_preferences import ReadPreference
 from pymongo.uri_parser import parse_uri
 from pymongo.write_concern import WriteConcern
 from twisted.internet import defer, reactor, task
+from twisted.internet.interfaces import IOpenSSLClientConnectionCreator
 from twisted.internet.protocol import ClientFactory, ReconnectingClientFactory
 from twisted.python import log
+from zope.interface import implementer
 
 from txmongo.database import Database
 from txmongo.protocol import MongoProtocol, Msg
@@ -46,6 +48,62 @@ def _parse_uri(uri: str) -> dict:
     parsed = parse_uri(uri)
     options = {key.lower(): value for key, value in parsed["options"].items()}
     return {**parsed, "options": options}
+
+
+@implementer(IOpenSSLClientConnectionCreator)
+class _TLSForCurrentHost:
+    """optionsForClientTLS() for the host the connector currently points at.
+
+    _Connection moves its connector between replica set members, so the
+    hostname for SNI and certificate verification is looked up per connection.
+    """
+
+    def __init__(self, trust_root, client_certificate):
+        self.trust_root = trust_root
+        self.client_certificate = client_certificate
+
+    def clientConnectionForTLS(self, tls_protocol):
+        from twisted.internet import ssl
+
+        host = tls_protocol.wrappedProtocol.factory.connector.host
+        return ssl.optionsForClientTLS(
+            host,
+            trustRoot=self.trust_root,
+            clientCertificate=self.client_certificate,
+        ).clientConnectionForTLS(tls_protocol)
+
+
+def _tls_from_uri_options(options: dict):
+    """Build a TLS connection creator from (lowercased) tls* URI options."""
+    from twisted.internet import ssl
+
+    trust_root = ssl.platformTrust()
+    if "tlscafile" in options:
+        with open(options["tlscafile"], "rb") as f:
+            end = b"-----END CERTIFICATE-----"
+            trust_root = ssl.trustRootFromCertificates(
+                [
+                    ssl.Certificate.loadPEM(pem + end)
+                    for pem in f.read().split(end)
+                    if b"-----BEGIN CERTIFICATE-----" in pem
+                ]
+            )
+
+    client_certificate = None
+    client_cert_kwargs = {}
+    if "tlscertificatekeyfile" in options:
+        with open(options["tlscertificatekeyfile"], "rb") as f:
+            client_certificate = ssl.PrivateCertificate.loadPEM(f.read())
+        client_cert_kwargs = {
+            "privateKey": client_certificate.privateKey.original,
+            "certificate": client_certificate.original,
+        }
+
+    if options.get("tlsinsecure") or options.get("tlsallowinvalidcertificates"):
+        return ssl.CertificateOptions(verify=False, **client_cert_kwargs)
+    if options.get("tlsallowinvalidhostnames"):
+        return ssl.CertificateOptions(trustRoot=trust_root, **client_cert_kwargs)
+    return _TLSForCurrentHost(trust_root, client_certificate)
 
 
 class _Connection(ReconnectingClientFactory):
@@ -87,10 +145,9 @@ class _Connection(ReconnectingClientFactory):
             slaveok = uri_options["readpreference"] not in _PRIMARY_READ_PREFERENCES
 
         try:
-            if not slaveok:
-                # Update our server configuration. This may disconnect if the node
-                # is not a master.
-                yield self.configure(proto)
+            # Update our server configuration. This may disconnect if the node
+            # is not a master and the read preference requires one.
+            yield self.configure(proto, require_primary=not slaveok)
 
             yield self._auth_proto(proto)
             self.setInstance(instance=proto)
@@ -103,7 +160,7 @@ class _Connection(ReconnectingClientFactory):
         return proto.send_op_query_command("admin", {"ismaster": 1})
 
     @defer.inlineCallbacks
-    def configure(self, proto: MongoProtocol):
+    def configure(self, proto: MongoProtocol, require_primary: bool = True):
         """
         Configures the protocol using the information gathered from the
         remote Mongo instance. Such information may contain the max
@@ -154,7 +211,7 @@ class _Connection(ReconnectingClientFactory):
 
         # Check if this node is the master.
         ismaster = config.get("ismaster")
-        if not ismaster:
+        if require_primary and not ismaster:
             msg = "TxMongo: MongoDB host `%s` is not master." % config.get("me")
             raise AutoReconnect(msg)
 
@@ -320,6 +377,8 @@ class ConnectionPool:
 
         host, port = self.__uri["nodelist"][0]
 
+        if ssl_context_factory is None and self.__uri["options"].get("tls"):
+            ssl_context_factory = _tls_from_uri_options(self.__uri["options"])
         self.ssl_context_factory = ssl_context_factory
 
         initial_delay = kwargs.get("retry_delay", 30)
