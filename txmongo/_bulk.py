@@ -90,7 +90,7 @@ class _Run:
 
             enough_docs = msg_doc_count >= proto.max_write_batch_size
             enough_size = msg_size + len(doc_bytes) >= proto.max_message_size
-            if enough_docs or enough_size:
+            if msg_doc_count and (enough_docs or enough_size):
                 yield docs_offset, msg
 
                 msg.payload[payload_arg_name] = []

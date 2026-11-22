@@ -21,6 +21,7 @@ from pymongo.collation import Collation, CollationStrength
 from pymongo.collection import ReturnDocument
 from pymongo.errors import (
     BulkWriteError,
+    DocumentTooLarge,
     DuplicateKeyError,
     InvalidOperation,
     OperationFailure,
@@ -605,6 +606,34 @@ class TestUpdate(SingleCollectionTest):
 
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0], {"x": 123})
+
+
+class TestDocumentTooLarge(SingleCollectionTest):
+
+    @defer.inlineCallbacks
+    def test_DocumentTooLarge(self):
+        too_large = 16 * 1024 * 1024 + 1  # MongoDB's default maxBsonObjectSize + 1
+        huge = 50 * 1000 * 1000  # larger than maxMessageSizeBytes
+        yield self.coll.insert_one({"_id": 1})
+
+        for size in [too_large, huge]:
+            yield self.assertFailure(
+                self.coll.insert_one({"x": "a" * size}), DocumentTooLarge
+            )
+            yield self.assertFailure(
+                self.coll.insert_many([{"x": "a" * size}]), DocumentTooLarge
+            )
+        yield self.assertFailure(
+            self.coll.replace_one({"_id": 1}, {"x": "a" * huge}), DocumentTooLarge
+        )
+        yield self.assertFailure(
+            self.coll.update_one({"_id": 1}, {"$set": {"x": "a" * huge}}),
+            DocumentTooLarge,
+        )
+
+        # Connection is still usable
+        yield self.coll.insert_one({"_id": 2})
+        self.assertEqual((yield self.coll.count_documents({})), 2)
 
 
 class TestDistinct(SingleCollectionTest):
