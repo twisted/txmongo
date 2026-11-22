@@ -1,13 +1,9 @@
 include *.rst
 include *.txt
-include .travis.yml
 include LICENSE
 include tox.ini
 include *.spec
-include AUTHORS
-include CONTRIBUTORS
 include Makefile
-prune debian
 prune docs
 recursive-include examples *.py
 recursive-include examples *.sh

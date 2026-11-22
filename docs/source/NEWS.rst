@@ -17,6 +17,15 @@ Features
   ``tlsCertificateKeyFile``, ``tlsAllowInvalidHostnames``, ``tlsAllowInvalidCertificates``
   and ``tlsInsecure``. Certificates are verified against each node's hostname (with SNI),
   which makes MongoDB Atlas work without a custom ``ssl_context_factory``.
+- ``collation`` argument for ``find()``, ``find_one()``, ``aggregate()`` and
+  ``count_documents()``, and ``Cursor.collation()``.
+
+Bugfixes
+^^^^^^^^
+
+- With a non-primary read preference (e.g. ``readPreference=secondaryPreferred``) TxMongo
+  skipped the ``ismaster`` handshake, so it never learned the other replica set members,
+  couldn't fail over to them, and ignored server limits and ``replicaSet`` name checks.
 
 Release 26.0.0 (2026-10-23)
 ---------------------------
