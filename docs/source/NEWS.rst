@@ -13,6 +13,10 @@ API Changes
 Features
 ^^^^^^^^
 
+- TLS can be enabled from the connection URI: ``tls=true``/``ssl=true``, ``tlsCAFile``,
+  ``tlsCertificateKeyFile``, ``tlsAllowInvalidHostnames``, ``tlsAllowInvalidCertificates``
+  and ``tlsInsecure``. Certificates are verified against each node's hostname (with SNI),
+  which makes MongoDB Atlas work without a custom ``ssl_context_factory``.
 - ``collation`` argument for ``find()``, ``find_one()``, ``aggregate()`` and
   ``count_documents()``, and ``Cursor.collation()``.
 
