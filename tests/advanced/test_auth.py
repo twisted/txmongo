@@ -322,6 +322,34 @@ class TestMongoAuth(unittest.TestCase, MongoAuth):
             yield conn.disconnect()
 
     @defer.inlineCallbacks
+    def test_Explicit_SCRAM_SHA_256(self):
+        conn = self.__get_connection()
+        try:
+            yield conn[self.db1].authenticate(
+                self.login1, self.password1, mechanism="SCRAM-SHA-256"
+            )
+            yield conn[self.db1][self.coll].find_one()
+        finally:
+            yield conn.disconnect()
+
+    @defer.inlineCallbacks
+    def test_Explicit_SCRAM_SHA_256_WrongPassword(self):
+        conn = self.__get_connection()
+        try:
+            # Force connect
+            yield self.assertFailure(
+                conn[self.db1][self.coll].find_one(), OperationFailure
+            )
+            yield self.assertFailure(
+                conn[self.db1].authenticate(
+                    self.login1, self.password1 + "x", mechanism="SCRAM-SHA-256"
+                ),
+                MongoAuthenticationError,
+            )
+        finally:
+            yield conn.disconnect()
+
+    @defer.inlineCallbacks
     def test_InvalidArgs(self):
         conn = self.__get_connection()
         try:

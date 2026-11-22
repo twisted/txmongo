@@ -13,6 +13,7 @@ API Changes
 Features
 ^^^^^^^^
 
+- SCRAM-SHA-256 authentication (``authMechanism=SCRAM-SHA-256``).
 - TLS can be enabled from the connection URI: ``tls=true``/``ssl=true``, ``tlsCAFile``,
   ``tlsCertificateKeyFile``, ``tlsAllowInvalidHostnames``, ``tlsAllowInvalidCertificates``
   and ``tlsInsecure``. Certificates are verified against each node's hostname (with SNI),
@@ -23,6 +24,8 @@ Features
 Bugfixes
 ^^^^^^^^
 
+- Authentication commands are sent with OP_MSG instead of legacy OP_QUERY,
+  which servers such as Amazon DocumentDB reject.
 - Documents larger than the server's ``maxBsonObjectSize`` now raise ``DocumentTooLarge``
   before being sent, like PyMongo. Previously documents over 48MB made the server drop
   the connection (``AutoReconnect``) and ``insert_many()``/``bulk_write()`` sent an
