@@ -13,6 +13,7 @@ from typing import Any, Iterable, List, Mapping, Optional, Union
 from bson import ObjectId
 from bson.codec_options import DEFAULT_CODEC_OPTIONS, CodecOptions
 from bson.son import SON
+from pymongo.collation import Collation, validate_collation_or_none
 from pymongo.collection import ReturnDocument
 from pymongo.common import (
     validate_boolean,
@@ -169,6 +170,7 @@ class Cursor(Deferred):
         batch_size: int = 0,
         allow_partial_results: bool = False,
         flags: int = 0,
+        collation: Optional[Mapping] = None,
         session: Optional[ClientSession],
         timeout: Optional[float] = None,
     ):
@@ -191,6 +193,7 @@ class Cursor(Deferred):
         self.batch_size(batch_size)
         self.allow_partial_results(allow_partial_results)
         self.timeout(timeout)
+        self.collation(collation)
 
         self._flags = flags
 
@@ -259,6 +262,14 @@ class Cursor(Deferred):
         """Adds a comment to the query."""
         self._check_command_not_sent()
         self._modifiers.update(qf.comment(comment))
+        return self
+
+    def collation(self, collation: Union[Collation, Mapping, None]) -> Cursor:
+        """
+        Set the collation, a dict or :class:`~pymongo.collation.Collation`, for string comparison.
+        """
+        self._check_command_not_sent()
+        self._collation = validate_collation_or_none(collation)
         return self
 
     def explain(self) -> Cursor:
@@ -367,6 +378,7 @@ class Cursor(Deferred):
         batch_size,
         allow_partial_results,
         flags: int,
+        collation: Optional[dict] = None,
     ) -> Msg:
         cmd = {"find": coll_name}
         if "$query" in filter_with_modifiers:
@@ -399,6 +411,8 @@ class Cursor(Deferred):
             cmd["$readPreference"] = {"mode": "secondaryPreferred"}
         if allow_partial_results or flags & QUERY_PARTIAL:
             cmd["allowPartialResults"] = True
+        if collation:
+            cmd["collation"] = collation
 
         if "$explain" in filter_with_modifiers:
             cmd.pop("$explain")
@@ -425,6 +439,7 @@ class Cursor(Deferred):
             self._batch_size,
             self._allow_partial_results,
             self._flags,
+            self._collation,
         )
 
     def _after_connection(self, proto: MongoProtocol, _deadline: Optional[float]):
@@ -752,11 +767,12 @@ class Collection:
         batch_size=0,
         allow_partial_results: bool = False,
         flags=0,
+        collation: Union[Collation, Mapping, None] = None,
         session: ClientSession = None,
         timeout: Optional[float] = None,
         deadline: Optional[float] = None,
     ):
-        """find(filter=None, projection=None, skip=0, limit=0, sort=None, *, batch_size=0, allow_partial_results=False, session: ClientSession=None)
+        """find(filter=None, projection=None, skip=0, limit=0, sort=None, *, batch_size=0, allow_partial_results=False, collation=None, session: ClientSession=None)
 
         Find documents in a collection.
 
@@ -791,6 +807,10 @@ class Collection:
         :param allow_partial_results:
             if True, mongos will return partial results if some shards are down
             instead of returning an error
+
+        :param collation:
+            a dict or :class:`~pymongo.collation.Collation` for string comparison,
+            e.g. ``{"locale": "en", "strength": 2}`` for case-insensitive matching.
 
         :param session:
             Optional :class:`~txmongo.sessions.ClientSession` to use for this query
@@ -842,6 +862,7 @@ class Collection:
             batch_size=batch_size,
             allow_partial_results=allow_partial_results,
             flags=flags,
+            collation=collation,
             session=session,
             timeout=timeout,
         )
@@ -936,10 +957,11 @@ class Collection:
         *,
         allow_partial_results=False,
         flags=0,
+        collation: Union[Collation, Mapping, None] = None,
         session: ClientSession = None,
         _deadline=None,
     ):
-        """find_one(filter=None, projection=None, skip=0, sort=None, *, allow_partial_results=False, session: ClientSession=None)
+        """find_one(filter=None, projection=None, skip=0, sort=None, *, allow_partial_results=False, collation=None, session: ClientSession=None)
 
         Get a single document from the collection.
 
@@ -964,6 +986,7 @@ class Collection:
                 modifiers=sort,
                 allow_partial_results=allow_partial_results,
                 flags=flags,
+                collation=collation,
                 session=session,
             )
             .next_batch(deadline=_deadline)
@@ -1040,6 +1063,7 @@ class Collection:
         max_time_ms: int = None,
         hint: qf.hint = None,
         comment: str = None,
+        collation: Union[Collation, Mapping, None] = None,
         session: ClientSession = None,
         _deadline=None,
     ) -> Deferred[int]:
@@ -1049,18 +1073,6 @@ class Collection:
         if limit is not None:
             pipeline.append({"$limit": limit})
         pipeline.append({"$group": {"_id": 1, "n": {"$sum": 1}}})
-
-        cmd = {
-            "aggregate": self.name,
-            "pipeline": pipeline,
-            "cursor": {},
-        }
-        if comment is not None:
-            cmd["comment"] = comment
-        if hint is not None:
-            if not isinstance(hint, qf.hint):
-                raise TypeError("hint must be an instance of txmongo.filter.hint")
-            cmd["hint"] = SON(hint["hint"])
 
         def on_result(result):
             if not result:
@@ -1072,6 +1084,7 @@ class Collection:
             comment=comment,
             max_time_ms=max_time_ms,
             hint=hint,
+            collation=collation,
             session=session,
             _deadline=_deadline,
         ).addCallback(on_result)
@@ -1548,6 +1561,7 @@ class Collection:
         comment: str = None,
         max_time_ms: int = None,
         hint: qf.hint = None,
+        collation: Union[Collation, Mapping, None] = None,
         session: ClientSession = None,
         _deadline=None,
     ):
@@ -1567,6 +1581,8 @@ class Collection:
             the maximum amount of time (ms) to allow the operation to run.
         :param hint:
             an index to use for the aggregation. Must be a :class:`txmongo.filter.hint` instance.
+        :param collation:
+            a dict or :class:`~pymongo.collation.Collation` for string comparison.
         :param session:
             Optional :class:`~txmongo.sessions.ClientSession` to use for this operation.
         """
@@ -1614,6 +1630,8 @@ class Collection:
             if not isinstance(hint, qf.hint):
                 raise TypeError("hint must be an instance of txmongo.filter.hint")
             cmd["hint"] = SON(hint["hint"])
+        if collation is not None:
+            cmd["collation"] = validate_collation_or_none(collation)
 
         return self._database.command(
             cmd, session=session, _deadline=_deadline

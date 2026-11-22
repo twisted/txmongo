@@ -16,13 +16,13 @@ decoding as well as Exception types, when applicable.
 from __future__ import annotations
 
 import base64
-import hashlib
 import hmac
 import logging
 import struct
 import warnings
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
+from hashlib import pbkdf2_hmac as _hi
 from hashlib import sha1
 from random import SystemRandom
 from typing import Dict, List, Optional
@@ -38,6 +38,7 @@ from pymongo.errors import (
     NotPrimaryError,
     OperationFailure,
 )
+from pymongo.synchronous import auth
 from twisted.internet import defer, error, protocol
 from twisted.python import failure, log
 
@@ -45,37 +46,6 @@ from txmongo.pymongo_errors import _NOT_MASTER_CODES
 from txmongo.pymongo_internals import _check_command_response
 from txmongo.sessions import ClientSession
 from txmongo.types import Document
-
-try:
-    from pymongo.synchronous import auth
-except ImportError:
-    # For pymongo <= 4.8
-    from pymongo import auth
-
-try:
-    from hashlib import pbkdf2_hmac as _hi
-except ImportError:
-
-    def _hi(hash_name, data, salt, iterations):
-        """A simple implementation of PBKDF2-HMAC."""
-        mac = hmac.HMAC(data, None, getattr(hashlib, hash_name))
-
-        def _digest(msg, mac=mac):
-            """Get a digest for msg."""
-            _mac = mac.copy()
-            _mac.update(msg)
-            return _mac.digest()
-
-        from_bytes = int.from_bytes
-        to_bytes = int.to_bytes
-
-        _u1 = _digest(salt + b"\x00\x00\x00\x01")
-        _ui = from_bytes(_u1, "big")
-        for _ in range(iterations - 1):
-            _u1 = _digest(_u1)
-            _ui ^= from_bytes(_u1, "big")
-        return to_bytes(_ui, mac.digest_size, "big")
-
 
 DEFAULT_MAX_BSON_SIZE = 16777216
 DEFAULT_MAX_WRITE_BATCH_SIZE = 1000
