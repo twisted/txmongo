@@ -17,6 +17,7 @@ Based on pymongo driver's test_collection.py
 """
 
 import uuid
+from unittest.mock import patch
 
 from bson import CodecOptions, UuidRepresentation
 from pymongo import errors
@@ -175,6 +176,21 @@ class TestCollectionMethods(unittest.TestCase):
             qf.sort(qf.ASCENDING("hello") + qf.DESCENDING("world"))
         )
         self.assertEquals(ix, "hello_1_world_-1")
+
+    @defer.inlineCallbacks
+    def test_create_index_commit_quorum(self):
+        with patch.object(
+            self.coll._database, "command", return_value=defer.succeed({})
+        ) as command:
+            yield self.coll.create_index(
+                qf.sort(qf.ASCENDING("hello")), commitQuorum="majority"
+            )
+        command.assert_called_once_with(
+            "createIndexes",
+            self.coll.name,
+            indexes=[{"name": "hello_1", "key": {"hello": 1}}],
+            commitQuorum="majority",
+        )
 
     @defer.inlineCallbacks
     def test_create_index_nodup(self):
